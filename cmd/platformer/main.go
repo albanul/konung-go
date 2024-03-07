@@ -118,7 +118,7 @@ func onGopherEnter(entity *entities.Entity, eventPayload event.EnterPayload) eve
 	}
 
 	if jumping {
-		entity.ShiftY(-entity.Speed.Y())
+		entity.Delta[1] = -entity.Speed.Y()
 	}
 
 	entity.ShiftDelta()
