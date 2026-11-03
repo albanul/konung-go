@@ -4,7 +4,7 @@
 
 The available [Konung walkthrough](https://shara-games.ru/knyaz/) identifies **Old Camp** as Dragomir's starting location. This supports the intended scene for the New Game menu action. The walkthrough does not connect Old Camp to a particular `KONUNG.N` filename.
 
-`OBJECTS.RES` contains indexed, animated game objects. Entry **16** decodes as a small human-shaped figure (27 × 48 pixels, palette 159); it is doubled in the temporary scene for visibility. It is a generic person placeholder, not an identified Dragomir sprite. Entry 4 is a plant-like monster, and entry 5 is the corpse-like humanoid that was mistakenly selected in an earlier build.
+`OBJECTS.RES` entry **15** decodes as a robed human-shaped figure (30 × 74 pixels, palette 152). The current scene pairs it with `GRAPH.RES` Type 5 sprite **10**, a standalone sword, as a temporary sword-bearing fighter. This is a visual approximation; the character's identity and warrior role are not established by the resource data. Entry 16 is a child-sized person, entry 4 is a plant-like monster, and entry 5 is the corpse-like humanoid that was mistakenly selected in an earlier build.
 
 ## Candidate map and uncertainty
 
@@ -36,16 +36,16 @@ The useful portions of `GRAPH.RES` for the scene are:
 
 The nested block's recorded payload size is 1,880,262 bytes. These layout details were checked against the local file bytes and the extractor's source. They are separate from the leading Type 5 cursor sprites listed in [the GRAPH sprite catalog](konung_graph_sprites.md).
 
-## `OBJECTS.RES` image path used by the placeholder
+## `OBJECTS.RES` image path and object lookup
 
 The external [CTPAX-X object extractor source](https://www.ctpax-x.org/index.php?goto=files&show=147&view=sources/knobjres.c) describes the Type 2 object block layout used here:
 
-* The object table occupies offsets `0x8..0x1007`; each 8-byte entry stores an object offset and size/boundary value. The first object offset is zero, so its first dword overlaps the generic header's reserved word. For object entry 16, the first dword of its table entry is `0x00E320BE`; adding base `0x1008` gives Type 2 block offset `0x00E330C6`.
+* The object table occupies offsets `0x8..0x1007`; each 8-byte entry stores an object offset and size/boundary value. The first object offset is zero, so its first dword overlaps the generic header's reserved word. For object entry 15, the first dword of its table entry points to Type 2 block offset `0x00DD9BBE` after adding base `0x1008`.
 * Type 2 blocks contain a 48 × 19 word header, 1,024 frame/shadow offsets at block offset `0x728`, and image bytes starting at block offset `0x3228`.
 * Adjacent frame/shadow offsets are XOR-swapped in the stored table; the first image is decoded with the indexed RLE format. Palette assignments for the first 24 object entries are listed in the extractor source.
 * Transparent object pixels use RGB555 magenta `0x7C1F`.
 
-For the current person placeholder, entry **16** uses palette **159**, matching the source extractor's palette map. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes selects a different object and produced the corpse-like character in the previous build.
+The current scene uses entry **15**, palette **152**, and sword sprite `GRAPH.T5:10`. Object entry **16** uses palette **159** and is a child-sized figure; object entry **5** is the corpse-like sprite. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes changes which object is selected.
 
 The specific palette assignment and offsets above describe the selected placeholder path, not a character identity. The live Ebitengine scene reads `GRAPH.RES`, `OBJECTS.RES`, and the candidate `KONUNG.1` directly; it does not depend on extracted image files.
 

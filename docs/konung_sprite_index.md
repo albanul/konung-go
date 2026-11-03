@@ -16,7 +16,7 @@ The index has 1,425 data rows: 11 GRAPH Type 5 sprites, 512 GRAPH table slots, 5
 
 ## Useful lookups
 
-Object entry 16 is the current small human-shaped placeholder. It is 27 × 48 pixels in its first frame, uses palette 159, and has 129 indexed animation frames. Its identity is unknown. Object entry 5 is the corpse-like humanoid that was mistakenly selected earlier; see [the Old Camp scene findings](konung_start_location.md).
+The current scene combines object entry 15 (a robed human-shaped figure) with `GRAPH.T5` sprite 10 (a standalone sword) as a temporary sword-bearing fighter. Entry 15 is 30 × 74 pixels in its first frame and uses palette 152. Its identity and warrior role are not confirmed. Entry 16 is a child-sized figure; entry 5 is the corpse-like humanoid that was mistakenly selected earlier. See [the Old Camp scene findings](konung_start_location.md).
 
 ```sh
 # Find an object by one-based OBJECTS.RES ID

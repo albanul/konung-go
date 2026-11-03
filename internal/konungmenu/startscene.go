@@ -16,6 +16,10 @@ const (
 	mapPlanes        = 7
 	mapStride        = 18400
 	terrainTileCount = 304
+	grassMapPlane    = 1
+	grassFillTile    = 15
+	fighterObjectID  = 15
+	fighterSwordID   = 10
 )
 
 func loadStartScene(graphPath, mapPath, objectsPath string) (*ebiten.Image, error) {
@@ -38,13 +42,25 @@ func loadStartScene(graphPath, mapPath, objectsPath string) (*ebiten.Image, erro
 	if err != nil {
 		return nil, err
 	}
-	person, err := decodeObjectFrame(personData, graphData, 16)
+	fighter, err := decodeObjectFrame(personData, graphData, fighterObjectID)
 	if err != nil {
 		return nil, err
 	}
+	swordFrame, err := loadGraphSprite(graphPath, fighterSwordID)
+	if err != nil {
+		return nil, err
+	}
+	sword := ebiten.NewImageFromImage(swordFrame)
 
 	scene := ebiten.NewImage(ScreenWidth, ScreenHeight)
-	scene.Fill(color.RGBA{R: 14, G: 24, B: 17, A: 255})
+	// Fill the viewport with the game's grass tile so map transparency reads as
+	// open ground instead of the dark outside-map color.
+	grass := tiles[grassFillTile]
+	for y := -64; y < ScreenHeight+64; y += 32 {
+		for x := -114; x < ScreenWidth+114; x += 56 {
+			drawAt(scene, grass, x, y)
+		}
+	}
 	type tilePlacement struct {
 		image *ebiten.Image
 		x, y  int
@@ -52,37 +68,33 @@ func loadStartScene(graphPath, mapPath, objectsPath string) (*ebiten.Image, erro
 	var placements []tilePlacement
 	minX, minY := int(^uint(0)>>1), int(^uint(0)>>1)
 	maxX, maxY := -minX, -minY
-	// KONUNG.1 is used as the provisional Old Camp map. The layer values are
-	// drawn in file order; the original renderer's precise layer semantics are
-	// still being traced. The 8x4 isometric cell step matches the full map's
-	// observed extent; centering the referenced tile bounds keeps it onscreen.
-	for plane := 0; plane < mapPlanes; plane++ {
-		for cell := 0; cell < mapColumns*mapRows; cell++ {
-			cx, cy := cell%mapColumns, cell/mapColumns
-			x := (cx-cy)*8 - 57
-			y := (cx+cy-(mapColumns+mapRows)/2)*4 - 32
-			// Map cells hold two byte-sized tile references. This interpretation
-			// matches the byte range and the engine's 256-entry tile addressing.
-			cellOffset := plane*mapStride + cell*2
-			for _, id := range mapData[cellOffset : cellOffset+2] {
-				if id == 0 || id == 0xff || int(id) >= len(tiles) || tiles[id] == nil {
-					continue
-				}
-				img := tiles[id]
-				w, h := img.Bounds().Dx(), img.Bounds().Dy()
-				placements = append(placements, tilePlacement{img, x, y})
-				if x < minX {
-					minX = x
-				}
-				if y < minY {
-					minY = y
-				}
-				if x+w > maxX {
-					maxX = x + w
-				}
-				if y+h > maxY {
-					maxY = y + h
-				}
+	// KONUNG.1 is still a provisional Old Camp candidate. Render its grass
+	// plane only; the other planes' meaning and draw order are not yet verified.
+	for cell := 0; cell < mapColumns*mapRows; cell++ {
+		cx, cy := cell%mapColumns, cell/mapColumns
+		x := (cx-cy)*8 - 57
+		y := (cx+cy-(mapColumns+mapRows)/2)*4 - 32
+		cellOffset := grassMapPlane*mapStride + cell*2
+		value := binary.LittleEndian.Uint16(mapData[cellOffset : cellOffset+2])
+		ids := []byte{byte(value), byte(value >> 8)}
+		for _, id := range ids {
+			if id == 0 || id == 0xff || int(id) >= len(tiles) || tiles[id] == nil {
+				continue
+			}
+			img := tiles[id]
+			w, h := img.Bounds().Dx(), img.Bounds().Dy()
+			placements = append(placements, tilePlacement{img, x, y})
+			if x < minX {
+				minX = x
+			}
+			if y < minY {
+				minY = y
+			}
+			if x+w > maxX {
+				maxX = x + w
+			}
+			if y+h > maxY {
+				maxY = y + h
 			}
 		}
 	}
@@ -91,11 +103,16 @@ func loadStartScene(graphPath, mapPath, objectsPath string) (*ebiten.Image, erro
 	for _, p := range placements {
 		drawAt(scene, p.image, p.x+shiftX, p.y+shiftY)
 	}
-	// Use a nearby 2x nearest-neighbor size for visibility in the 800x600 view.
-	personOp := &ebiten.DrawImageOptions{}
-	personOp.GeoM.Scale(2, 2)
-	personOp.GeoM.Translate(float64(ScreenWidth/2-person.Bounds().Dx()), float64(ScreenHeight/2-person.Bounds().Dy()))
-	scene.DrawImage(person, personOp)
+	// Enlarge the human sprite and place the game's standalone sword beside its
+	// outstretched hand as a provisional fighter silhouette.
+	fighterOp := &ebiten.DrawImageOptions{}
+	fighterOp.GeoM.Scale(2, 2)
+	fighterOp.GeoM.Translate(float64(ScreenWidth/2-fighter.Bounds().Dx()), float64(ScreenHeight/2-fighter.Bounds().Dy()))
+	scene.DrawImage(fighter, fighterOp)
+	swordOp := &ebiten.DrawImageOptions{}
+	swordOp.GeoM.Scale(1.5, 1.5)
+	swordOp.GeoM.Translate(370, 300)
+	scene.DrawImage(sword, swordOp)
 	return scene, nil
 }
 
