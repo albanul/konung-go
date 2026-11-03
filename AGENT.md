@@ -6,13 +6,17 @@ This repository reimplements parts of the 1999 game «Князь: Легенды
 
 Use the existing findings as a starting point. Before reverse engineering a resource format, check the reference documents below and update them with verified findings so the same work does not need to be repeated.
 
-## Reference documents
+## Legacy game data references
 
 * [Resource formats, Type 5 frame/RLE details, FLAMES frame catalog, and parser usage](docs/konung_res_format.md)
 * [GRAPH.RES sprite and cursor catalog](docs/konung_graph_sprites.md)
-* [Ebitengine main menu: assets, frame mapping, input, and resource lookup](docs/konung_menu.md)
+* [Original 640/800 menu RES frame catalog](docs/konung_menu_res.md)
 
 Keep this file focused on project-wide working instructions. Put detailed format specifications, offsets, inventories, and investigation notes in the relevant reference document.
+
+## Implementation notes
+
+* [Ebitengine menu implementation](docs/konung_menu.md)
 
 ## Environment and commands
 
