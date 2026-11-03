@@ -2,6 +2,10 @@
 
 This is the searchable index for image resources in the installed Konung data. The complete row-by-row inventory is [konung_sprite_index.tsv](data/konung_sprite_index.tsv). It is plain tab-separated text, so it can be searched with `rg`, `awk`, or a spreadsheet.
 
+For visual review, run `go run ./cmd/sprite-catalog` in the devcontainer. It extracts the indexed image resources and all frames from animated objects into `output/sprite-catalog/`, then creates a searchable HTML gallery and frame-level `catalog.tsv`. The gallery opens in the grouped `OBJECTS` view: one card per object, with its animation/directions available under “Explore frames.” The current installed resources produce 10,015 images. Each catalog row includes its resource name, entry ID, entry offset, exact compressed-frame offset, indexed byte count, decoded payload byte count, dimensions, and palette ID when applicable. Offsets are hexadecimal byte offsets from the start of the named resource file; `entry_offset` points to the index entry's containing block/header and `frame_offset` points to the compressed image data. Add semantic names and review notes to [konung_sprite_labels.tsv](data/konung_sprite_labels.tsv); use `*` in the `frame` column for an object-wide label or a zero-based frame number for one frame. Rerunning the command joins these durable labels into the gallery and generated TSV.
+
+For this hand-drawn, low-resolution art, human visual review is the dependable way to assign meanings such as “wolf,” “guard,” or “door.” Automated image matching can help find duplicate frames and related animation poses, but should suggest candidates rather than create names. The gallery exposes stable resource IDs and frame numbers to make that review traceable.
+
 ## Index namespaces
 
 | Namespace | IDs | Contents |
@@ -11,6 +15,12 @@ This is the searchable index for image resources in the installed Konung data. T
 | `OBJECTS` | 1-based, 512 table slots | Objects in `OBJECTS.RES`: 493 used entries and 19 unused slots. Type 2 entries include animation frame counts; other supported block types are inventoried by type and first image dimensions. |
 | `KONUNG.N` | 0–255 byte values | Map image references counted across the 43 installed `KONUNG.N` files. The packed-byte interpretation is still provisional. |
 | `TYPE5` | 0-based per file | Every sequential Type 5 frame found in the installed frame resources. |
+
+## Coverage gap: prince and warrior animations
+
+The 10,015 extracted images are not the complete set of game art. There are only 30 Type 2 animated entries in the `OBJECTS.RES` table, and the visible roster contains creatures, effects, and a few human-shaped figures rather than the expected lineup of armed warriors. This matches the CTPAX-X extractor author's [statement that prince and warrior animations were not extracted](https://www.extractor.ru/ipb/index.php?showtopic=202).
+
+This is not currently traced to a decoder bug. The known `GRAPH.RES` palette, leading Type 5 images, and first Type 1 table are decoded, but the bytes after that Type 1 block (offset `0x001ED8B6`) total 12,483,813 and have not been parsed. That tail is a candidate source for additional artwork, but its format and contents remain unverified. The gallery displays this coverage warning to avoid treating its current contents as a complete model roster.
 
 The index has 1,425 data rows: 11 GRAPH Type 5 sprites, 512 GRAPH table slots, 512 object table slots, 256 map byte values, and 134 sequential Type 5 frames.
 
@@ -32,6 +42,7 @@ awk -F '\t' '$1 == "TYPE5" && $2 == "FLAMES.RES" { print $3, $7 "x" $8 }' docs/d
 ## Inventory notes
 
 * The `OBJECTS.RES` visual notes for entries 1–30 are short descriptions of decoded first frames, not official character or creature names. The resource data does not provide those names. Entries 25–30 visually duplicate entry 1; the CTPAX-X extractor source also lists these entries as duplicates.
+* The CTPAX-X source identifies object 24 frames 49–240 as duplicates of object 9 frames 97–288. Direct RGBA comparison confirms all 192 pairs are pixel-exact. Object 25–30 frames 1–316 also match object 1 frames 1–316 pixel-for-pixel. These links are recorded in [konung_sprite_relations.tsv](data/konung_sprite_relations.tsv) and appear on the corresponding gallery frames.
 * `OBJECTS` width and height describe only the first decoded frame. Frame dimensions can change during an animation. `frame_count` comes from the even image offsets after correcting the stored image/shadow offset pairs.
 * `GRAPH.T1` palette IDs are `paletteByteOffset / 512`, using the 256-color palettes at the start of `GRAPH.RES`. See [the GRAPH sprite and terrain notes](konung_graph_sprites.md) and the external [CTPAX-X GRAPH extractor source](https://www.ctpax-x.org/index.php?goto=files&show=147&view=sources/kngrpres.c).
 * Map usage counts include all installed maps, not missing numbered files. The current directory has `KONUNG.1`–`.50` except `.9`, `.13`, `.18`, `.26`, `.31`, `.34`, and `.41`.

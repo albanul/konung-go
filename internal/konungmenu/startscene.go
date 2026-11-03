@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"konung1.5/internal/resource"
 )
 
 const (
@@ -172,46 +173,7 @@ func decodeGraphTiles(data []byte) ([]*ebiten.Image, error) {
 }
 
 func decodeIndexedTile(src []byte, palette *[256]color.RGBA) (*image.RGBA, error) {
-	if len(src) < 4 {
-		return nil, fmt.Errorf("tile header truncated")
-	}
-	w, h := int(binary.LittleEndian.Uint16(src)), int(binary.LittleEndian.Uint16(src[2:]))
-	if w < 1 || h < 1 || w > 512 || h > 512 || len(src) < 4+h*2 {
-		return nil, fmt.Errorf("invalid tile dimensions %dx%d", w, h)
-	}
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	pos := 4 + h*2
-	for y := 0; y < h; y++ {
-		rowSize := int(binary.LittleEndian.Uint16(src[4+y*2:]))
-		end := pos + rowSize
-		if end > len(src) {
-			return nil, fmt.Errorf("tile row %d truncated", y)
-		}
-		x := 0
-		for pos < end {
-			n := int(src[pos])
-			pos++
-			if n == 0 {
-				break
-			}
-			if n&0x80 != 0 {
-				x += n & 0x7f
-				continue
-			}
-			if pos+n > end {
-				return nil, fmt.Errorf("tile row %d pixel run truncated", y)
-			}
-			for _, index := range src[pos : pos+n] {
-				if x < w {
-					img.SetRGBA(x, y, palette[index])
-				}
-				x++
-			}
-			pos += n
-		}
-		pos = end
-	}
-	return img, nil
+	return resource.DecodeIndexedRLEFrame(src, palette)
 }
 
 func decodeObjectFrame(objects, graph []byte, objectIndex int) (*ebiten.Image, error) {
