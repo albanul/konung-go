@@ -23,6 +23,10 @@ Observed facts for `KONUNG.1`:
 
 Do not record `KONUNG.1 = Old Camp` as a confirmed game-data fact until the map is matched using executable references, a labeled in-game screenshot, or a known save.
 
+## Village-chief screenshot clue
+
+The supplied gameplay screenshot labels the selected speaker as a level-5 warrior and village elder (`староста`). In the image catalog, `OBJECTS.RES` entries 87 and 88 are wooden house images, while entry 89 is a dark shadow image; these are building art and cannot be the person. The chief is a separate character sprite. The newly decoded `GRAPH.T0` blocks 0–2 contain human-like animation sets (612 frames each) and are plausible candidates for this missing warrior art. Their current gallery colors use a provisional palette, and the screenshot has not yet been tied to a specific Type 0 block or a confirmed `KONUNG.N` map.
+
 ## `GRAPH.RES` terrain tile block
 
 The useful portions of `GRAPH.RES` for the scene are:

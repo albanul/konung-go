@@ -125,11 +125,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := extractGraphType0(graph, out); err != nil {
-		return err
-	}
 	var items []catalogItem
 	var failures []string
+	type0Items, type0Failures, err := extractGraphType0(graph, out, paletteData)
+	if err != nil {
+		return err
+	}
+	items = append(items, type0Items...)
+	failures = append(failures, type0Failures...)
 	for _, row := range rows {
 		if row.kind == "unused table slot" || row.kind == "unused" {
 			continue
@@ -306,35 +309,38 @@ func resourcePalette(graph []byte) ([][256]color.RGBA, error) {
 	return palettes, nil
 }
 
-// extractGraphType0 preserves the validated Type 0 blocks without guessing at
-// their packed payload format. The block size includes its 8-byte header.
-func extractGraphType0(graph []byte, out string) error {
+// extractGraphType0 preserves the validated Type 0 blocks and decodes their
+// indexed-RLE frames with a provisional preview palette. The block size
+// includes its 8-byte header; palette assignment still needs verification.
+func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA) ([]catalogItem, []string, error) {
 	const start = 0x1ee8b6
 	const type0MetadataBytes = 2960*2 + 1536*4 + 3840*2
 	if start+8 > len(graph) {
-		return fmt.Errorf("GRAPH Type 0 start is outside GRAPH.RES")
+		return nil, nil, fmt.Errorf("GRAPH Type 0 start is outside GRAPH.RES")
 	}
 	dir := filepath.Join(out, "raw", "GRAPH.T0")
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
+		return nil, nil, err
 	}
+	var items []catalogItem
+	var failures []string
 	var inventory bytes.Buffer
 	w := csv.NewWriter(&inventory)
 	w.Comma = '\t'
-	_ = w.Write([]string{"block_id", "file", "block_offset", "block_bytes", "payload_bytes", "type0_metadata_bytes", "remaining_payload_bytes", "offset_table_nonzero", "block_end"})
+	_ = w.Write([]string{"block_id", "file", "block_offset", "block_bytes", "payload_bytes", "type0_metadata_bytes", "remaining_payload_bytes", "offset_table_nonzero", "block_end", "decoded_frames", "decode_failures", "preview_palette"})
 	off := start
 	for id := 0; off < len(graph); id++ {
 		if len(graph)-off < 8 || binary.BigEndian.Uint32(graph[off:off+4]) != 0 {
-			return fmt.Errorf("GRAPH Type 0 block %d has invalid header at %#x", id, off)
+			return nil, nil, fmt.Errorf("GRAPH Type 0 block %d has invalid header at %#x", id, off)
 		}
 		size := uint64(binary.LittleEndian.Uint32(graph[off+4 : off+8]))
 		if size < 8 || size > uint64(len(graph)-off) {
-			return fmt.Errorf("GRAPH Type 0 block %d has invalid size %#x at %#x", id, size, off)
+			return nil, nil, fmt.Errorf("GRAPH Type 0 block %d has invalid size %#x at %#x", id, size, off)
 		}
 		end := off + int(size)
 		payloadBytes := int(size) - 8
 		if payloadBytes < type0MetadataBytes {
-			return fmt.Errorf("GRAPH Type 0 block %d payload is smaller than known metadata layout", id)
+			return nil, nil, fmt.Errorf("GRAPH Type 0 block %d payload is smaller than known metadata layout", id)
 		}
 		// CTPAX-X's source describes a 1,536-entry uint32 offset table at
 		// byte 5,920 in the payload. Count nonzero slots as a sanity signal,
@@ -347,23 +353,85 @@ func extractGraphType0(graph []byte, out string) error {
 		}
 		name := fmt.Sprintf("block_%03d.bin", id)
 		if err := os.WriteFile(filepath.Join(dir, name), graph[off:end], 0644); err != nil {
-			return err
+			return nil, nil, err
+		}
+		dataStart := off + 8 + type0MetadataBytes
+		dataBytes := payloadBytes - type0MetadataBytes
+		offsets := make([]uint32, 1536)
+		for i := range offsets {
+			offsets[i] = binary.LittleEndian.Uint32(graph[off+8+5920+i*4:])
+		}
+		for i := 0; i < len(offsets); i += 2 {
+			offsets[i], offsets[i+1] = offsets[i+1], offsets[i]
+		}
+		decodedFrames, decodeFailures := 0, 0
+		for i, frameIndex := 0, 0; i < len(offsets); i, frameIndex = i+2, frameIndex+1 {
+			frameStart := offsets[i]
+			if frameStart == ^uint32(0) {
+				break
+			}
+			frameEnd := uint32(dataBytes)
+			if i+2 < len(offsets) && offsets[i+2] != ^uint32(0) {
+				frameEnd = offsets[i+2]
+			}
+			if frameEnd <= frameStart || frameEnd > uint32(dataBytes) {
+				failures = append(failures, fmt.Sprintf("GRAPH.T0\t%d\tframe %d has invalid range %d..%d", id, frameIndex, frameStart, frameEnd))
+				decodeFailures++
+				continue
+			}
+			frameData := graph[dataStart+int(frameStart) : dataStart+int(frameEnd)]
+			img, err := resource.DecodeIndexedRLEFrame(frameData, &palettes[2])
+			if err != nil {
+				img, err = resource.DecodeIndexedRLELegacyFrame(frameData, &palettes[2])
+			}
+			if err != nil {
+				failures = append(failures, fmt.Sprintf("GRAPH.T0\t%d\tframe %d: %v", id, frameIndex, err))
+				decodeFailures++
+				continue
+			}
+			imageName := fmt.Sprintf("images/GRAPH.T0/%03d/frame_%03d.png", id, frameIndex)
+			fullImagePath := filepath.Join(out, filepath.FromSlash(imageName))
+			if err := os.MkdirAll(filepath.Dir(fullImagePath), 0755); err != nil {
+				return nil, nil, err
+			}
+			f, err := os.Create(fullImagePath)
+			if err != nil {
+				return nil, nil, err
+			}
+			err = png.Encode(f, img)
+			closeErr := f.Close()
+			if err != nil {
+				return nil, nil, err
+			}
+			if closeErr != nil {
+				return nil, nil, closeErr
+			}
+			items = append(items, catalogItem{
+				Namespace: "GRAPH.T0", Resource: "GRAPH.RES", ID: strconv.Itoa(id), Kind: "Type 0 animation", Frame: frameIndex,
+				Image: imageName, EntryOffset: hexOffset(uint64(off)), FrameOffset: hexOffset(uint64(dataStart + int(frameStart))),
+				IndexedBytes: size, PayloadBytes: uint64(frameEnd - frameStart), Width: img.Bounds().Dx(), Height: img.Bounds().Dy(),
+				Palette: "2 (preview; mapping unverified)", Note: "Type 0 indexed-RLE frame; preview palette is provisional",
+			})
+			decodedFrames++
 		}
 		_ = w.Write([]string{
 			strconv.Itoa(id), filepath.ToSlash(filepath.Join("raw", "GRAPH.T0", name)), hexOffset(uint64(off)),
 			strconv.FormatUint(size, 10), strconv.Itoa(payloadBytes), strconv.Itoa(type0MetadataBytes),
-			strconv.Itoa(payloadBytes - type0MetadataBytes), strconv.Itoa(nonzeroOffsets), hexOffset(uint64(end)),
+			strconv.Itoa(dataBytes), strconv.Itoa(nonzeroOffsets), hexOffset(uint64(end)), strconv.Itoa(decodedFrames), strconv.Itoa(decodeFailures), "2 (unverified)",
 		})
 		off = end
 	}
 	w.Flush()
 	if err := w.Error(); err != nil {
-		return err
+		return nil, nil, err
 	}
 	if off != len(graph) {
-		return fmt.Errorf("GRAPH Type 0 blocks end at %#x, file ends at %#x", off, len(graph))
+		return nil, nil, fmt.Errorf("GRAPH Type 0 blocks end at %#x, file ends at %#x", off, len(graph))
 	}
-	return os.WriteFile(filepath.Join(out, "type0.tsv"), inventory.Bytes(), 0644)
+	if err := os.WriteFile(filepath.Join(out, "type0.tsv"), inventory.Bytes(), 0644); err != nil {
+		return nil, nil, err
+	}
+	return items, failures, nil
 }
 
 func decodeImageRow(row sourceRow, root string, graph []byte, palettes [][256]color.RGBA) ([]decodedFrame, error) {
@@ -579,8 +647,8 @@ body{font:14px system-ui;margin:20px;background:#1d2024;color:#eee}input,select{
 .meta{overflow-wrap:anywhere}.muted{color:#bbc2ca}.notice{padding:12px;background:#513b22;border-left:4px solid #e4a84d;max-width:1100px}.frames{margin-top:8px}.framegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(105px,1fr));gap:8px;margin-top:8px}.framecard{background:#25292e;padding:5px;border-radius:4px;overflow-wrap:anywhere}.framecard img{height:90px}small{color:#c4c9cf}button{padding:8px;margin:8px}
 </style></head><body>
 <h1>Konung image catalog</h1>
-<p class="notice"><b>Coverage is incomplete.</b> The 27 GRAPH Type 0 blocks are exported as raw binary with an inventory in <a href="type0.tsv">type0.tsv</a>; their internal payload is not yet decoded into images. The preceding 64 KiB region is unidentified. Character animation coverage also remains incomplete.</p>
-<p>OBJECTS are grouped by model. Open “Explore frames” on a card to inspect its animation and directions.</p>
+<p class="notice"><b>Review note.</b> GRAPH Type 0 animation frames are decoded and grouped below. The shown palette is a visual preview only; the original palette assignment is not yet verified. Complete raw blocks and offsets are in <a href="type0.tsv">type0.tsv</a>. The preceding 64 KiB region is unidentified.</p>
+<p>Animated resources are grouped by model. Open “Explore frames” on a card to inspect the animation and directions.</p>
 <input id="q" placeholder="Search ID, note, label, or offset">
 <select id="ns"><option value="">All image entries</option></select><p id="count"></p>
 <div id="grid"></div><button id="more">Load more</button>
@@ -588,14 +656,14 @@ body{font:14px system-ui;margin:20px;background:#1d2024;color:#eee}input,select{
 const data=__DATA__;
 const ns=[...new Set(data.map(x=>x.namespace))];
 const sel=document.querySelector('#ns');
-for(const n of ns){const o=document.createElement('option');o.value=n;o.textContent=n==='OBJECTS'?'OBJECTS (grouped models)':n;sel.append(o)}
+for(const n of ns){const o=document.createElement('option');o.value=n;o.textContent=(n==='OBJECTS'||n==='GRAPH.T0')?n+' (grouped models)':n;sel.append(o)}
 sel.value='OBJECTS';
 let limit=300;
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function searchable(x){return [x.id,x.note,x.label,x.label_notes,x.relation,x.resource,x.namespace,x.entry_offset,x.frame_offset].join(' ').toLowerCase()}
 function imageCard(x, frameMode){const title=esc(x.label||x.note||x.resource);const frameLabel=frameMode?'<br>frame '+x.frame+' · '+esc(x.frame_offset):'';const relation=x.relation?'<br><span class="muted">'+esc(x.relation)+'</span>':'';return '<div class="'+(frameMode?'framecard':'card')+'"><a href="'+esc(x.image)+'"><img loading="lazy" src="'+esc(x.image)+'"></a><div class="meta"><b>'+esc(x.namespace)+' '+esc(x.id)+(frameMode?' / frame '+x.frame:'')+'</b><br>'+x.width+'×'+x.height+'<br><span class="muted">'+title+'</span>'+frameLabel+relation+(frameMode?'':'<br><small>'+esc(x.resource)+'<br>entry '+esc(x.entry_offset)+' · frame '+esc(x.frame_offset)+'</small>')+'</div></div>'}
-function renderObjects(q){const groups=new Map();for(const x of data){if(x.namespace!=='OBJECTS')continue;if(!groups.has(x.id))groups.set(x.id,[]);groups.get(x.id).push(x)}const matches=[...groups.values()].filter(g=>!q||g.some(x=>searchable(x).includes(q)));document.querySelector('#count').textContent=matches.length+' objects ('+matches.reduce((n,g)=>n+g.length,0)+' animation frames)';document.querySelector('#grid').innerHTML=matches.map(g=>{const first=g.find(x=>x.frame===0)||g[0];const allFrames=g.map(x=>imageCard(x,true)).join('');return '<div class="card">'+imageCard(first,false)+'<details class="frames"><summary>Explore '+g.length+' frames</summary><div class="framegrid">'+allFrames+'</div></details></div>'}).join('');document.querySelector('#more').hidden=true}
-function render(){const q=document.querySelector('#q').value.toLowerCase(),n=sel.value;if(n==='OBJECTS'){renderObjects(q);return}const rows=data.filter(x=>(!n||x.namespace===n)&&(!q||searchable(x).includes(q)));document.querySelector('#count').textContent=rows.length+' images ('+data.length+' extracted total)';document.querySelector('#grid').innerHTML=rows.slice(0,limit).map(x=>imageCard(x,false)).join('');document.querySelector('#more').hidden=rows.length<=limit}
+function renderGrouped(namespace,q){const groups=new Map();for(const x of data){if(x.namespace!==namespace)continue;if(!groups.has(x.id))groups.set(x.id,[]);groups.get(x.id).push(x)}const matches=[...groups.values()].filter(g=>!q||g.some(x=>searchable(x).includes(q)));document.querySelector('#count').textContent=matches.length+' models ('+matches.reduce((n,g)=>n+g.length,0)+' animation frames)';document.querySelector('#grid').innerHTML=matches.map(g=>{const first=g.find(x=>x.frame===0)||g[0];const allFrames=g.map(x=>imageCard(x,true)).join('');return '<div class="card">'+imageCard(first,false)+'<details class="frames"><summary>Explore '+g.length+' frames</summary><div class="framegrid">'+allFrames+'</div></details></div>'}).join('');document.querySelector('#more').hidden=true}
+function render(){const q=document.querySelector('#q').value.toLowerCase(),n=sel.value;if(n==='OBJECTS'||n==='GRAPH.T0'){renderGrouped(n,q);return}const rows=data.filter(x=>(!n||x.namespace===n)&&(!q||searchable(x).includes(q)));document.querySelector('#count').textContent=rows.length+' images ('+data.length+' extracted total)';document.querySelector('#grid').innerHTML=rows.slice(0,limit).map(x=>imageCard(x,false)).join('');document.querySelector('#more').hidden=rows.length<=limit}
 document.querySelector('#q').oninput=()=>{limit=300;render()};sel.onchange=()=>{limit=300;render()};document.querySelector('#more').onclick=()=>{limit+=300;render()};render();
 </script></body></html>`
 	page = strings.Replace(page, "__DATA__", string(data), 1)
