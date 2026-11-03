@@ -4,7 +4,7 @@
 
 The available [Konung walkthrough](https://shara-games.ru/knyaz/) identifies **Old Camp** as Dragomir's starting location. This supports the intended scene for the New Game menu action. The walkthrough does not connect Old Camp to a particular `KONUNG.N` filename.
 
-`OBJECTS.RES` contains indexed, animated game objects. The first image of object entry **4** decodes as a red-clothed, human-shaped figure. It is used as a temporary person in the New Game scene. Its identity has not been established, so it must not be called Dragomir in asset catalogs. Object entry 5, initially considered as a person, decodes as a leafy figure and is not used for the human placeholder.
+`OBJECTS.RES` contains indexed, animated game objects. Entry **16** decodes as a small human-shaped figure (27 × 48 pixels, palette 159); it is doubled in the temporary scene for visibility. It is a generic person placeholder, not an identified Dragomir sprite. Entry 4 is a plant-like monster, and entry 5 is the corpse-like humanoid that was mistakenly selected in an earlier build.
 
 ## Candidate map and uncertainty
 
@@ -19,6 +19,7 @@ Observed facts for `KONUNG.1`:
 * Values include `0xFFFF`; the file also has high-byte values that are not valid tile indices if a whole word is treated as one index.
 * The provisional renderer treats each word as two byte-sized tile references. This fits the observed byte range and the engine's 256-entry map addressing, but the packed-cell interpretation and ordering of the two references still need confirmation from executable code.
 * Byte `0x00` is treated as empty. `0xFF` occurs only in planes 4–6 in this file; `0xFFFF` fills plane 6, so the renderer treats `0xFF` as empty there as well.
+* A visual render at 8 × 4 pixels per cell produces a coherent isometric map extent. This is a rendering hypothesis; the executable's map-cell projection has not been traced. The scene centers the bounds of the referenced images in the 800 × 600 viewport.
 
 Do not record `KONUNG.1 = Old Camp` as a confirmed game-data fact until the map is matched using executable references, a labeled in-game screenshot, or a known save.
 
@@ -39,10 +40,12 @@ The nested block's recorded payload size is 1,880,262 bytes. These layout detail
 
 The external [CTPAX-X object extractor source](https://www.ctpax-x.org/index.php?goto=files&show=147&view=sources/knobjres.c) describes the Type 2 object block layout used here:
 
-* `OBJECTS.RES` has a 12-byte outer header followed by a 512-entry table. For an entry, the second `uint32` is the offset used with base `0x1008`.
-* Object entry 4 points to a Type 2 animation block. The block contains a 48 × 19 word header, 1,024 frame/shadow offsets at block offset `0x728`, and image bytes starting at block offset `0x3228`.
-* Adjacent frame/shadow offsets are XOR-swapped in the stored table; the first image is then decoded with the indexed RLE format and palette 59 (palette assignment for the first 24 object entries is listed in the extractor source).
+* The object table occupies offsets `0x8..0x1007`; each 8-byte entry stores an object offset and size/boundary value. The first object offset is zero, so its first dword overlaps the generic header's reserved word. For object entry 16, the first dword of its table entry is `0x00E320BE`; adding base `0x1008` gives Type 2 block offset `0x00E330C6`.
+* Type 2 blocks contain a 48 × 19 word header, 1,024 frame/shadow offsets at block offset `0x728`, and image bytes starting at block offset `0x3228`.
+* Adjacent frame/shadow offsets are XOR-swapped in the stored table; the first image is decoded with the indexed RLE format. Palette assignments for the first 24 object entries are listed in the extractor source.
 * Transparent object pixels use RGB555 magenta `0x7C1F`.
+
+For the current person placeholder, entry **16** uses palette **159**, matching the source extractor's palette map. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes selects a different object and produced the corpse-like character in the previous build.
 
 The specific palette assignment and offsets above describe the selected placeholder path, not a character identity. The live Ebitengine scene reads `GRAPH.RES`, `OBJECTS.RES`, and the candidate `KONUNG.1` directly; it does not depend on extracted image files.
 

@@ -38,21 +38,29 @@ func loadStartScene(graphPath, mapPath, objectsPath string) (*ebiten.Image, erro
 	if err != nil {
 		return nil, err
 	}
-	person, err := decodeObjectFrame(personData, graphData, 4)
+	person, err := decodeObjectFrame(personData, graphData, 16)
 	if err != nil {
 		return nil, err
 	}
 
 	scene := ebiten.NewImage(ScreenWidth, ScreenHeight)
 	scene.Fill(color.RGBA{R: 14, G: 24, B: 17, A: 255})
+	type tilePlacement struct {
+		image *ebiten.Image
+		x, y  int
+	}
+	var placements []tilePlacement
+	minX, minY := int(^uint(0)>>1), int(^uint(0)>>1)
+	maxX, maxY := -minX, -minY
 	// KONUNG.1 is used as the provisional Old Camp map. The layer values are
 	// drawn in file order; the original renderer's precise layer semantics are
-	// still being traced.
+	// still being traced. The 8x4 isometric cell step matches the full map's
+	// observed extent; centering the referenced tile bounds keeps it onscreen.
 	for plane := 0; plane < mapPlanes; plane++ {
 		for cell := 0; cell < mapColumns*mapRows; cell++ {
 			cx, cy := cell%mapColumns, cell/mapColumns
-			x := ScreenWidth/2 + (cx-cy)*16 - 57
-			y := 88 + (cx+cy-(mapColumns+mapRows)/2)*8 - 32
+			x := (cx-cy)*8 - 57
+			y := (cx+cy-(mapColumns+mapRows)/2)*4 - 32
 			// Map cells hold two byte-sized tile references. This interpretation
 			// matches the byte range and the engine's 256-entry tile addressing.
 			cellOffset := plane*mapStride + cell*2
@@ -60,11 +68,34 @@ func loadStartScene(graphPath, mapPath, objectsPath string) (*ebiten.Image, erro
 				if id == 0 || id == 0xff || int(id) >= len(tiles) || tiles[id] == nil {
 					continue
 				}
-				drawAt(scene, tiles[id], x, y)
+				img := tiles[id]
+				w, h := img.Bounds().Dx(), img.Bounds().Dy()
+				placements = append(placements, tilePlacement{img, x, y})
+				if x < minX {
+					minX = x
+				}
+				if y < minY {
+					minY = y
+				}
+				if x+w > maxX {
+					maxX = x + w
+				}
+				if y+h > maxY {
+					maxY = y + h
+				}
 			}
 		}
 	}
-	drawAt(scene, person, ScreenWidth/2-50, ScreenHeight/2-70)
+	shiftX := ScreenWidth/2 - (minX+maxX)/2
+	shiftY := ScreenHeight/2 - (minY+maxY)/2
+	for _, p := range placements {
+		drawAt(scene, p.image, p.x+shiftX, p.y+shiftY)
+	}
+	// Use a nearby 2x nearest-neighbor size for visibility in the 800x600 view.
+	personOp := &ebiten.DrawImageOptions{}
+	personOp.GeoM.Scale(2, 2)
+	personOp.GeoM.Translate(float64(ScreenWidth/2-person.Bounds().Dx()), float64(ScreenHeight/2-person.Bounds().Dy()))
+	scene.DrawImage(person, personOp)
 	return scene, nil
 }
 
@@ -167,12 +198,12 @@ func decodeIndexedTile(src []byte, palette *[256]color.RGBA) (*image.RGBA, error
 }
 
 func decodeObjectFrame(objects, graph []byte, objectIndex int) (*ebiten.Image, error) {
-	const table = 12
+	const table = 8 // Type 1 header is followed by the 512-entry list at offset 8.
 	if objectIndex < 1 || objectIndex > 512 || len(objects) < table+512*8 {
 		return nil, fmt.Errorf("OBJECTS.RES index table truncated")
 	}
 	i := (objectIndex - 1) * 8
-	blockOffset := binary.LittleEndian.Uint32(objects[table+i+4:])
+	blockOffset := binary.LittleEndian.Uint32(objects[table+i:])
 	base := int(0x1008 + blockOffset)
 	if base < 0 || base+0x3228 > len(objects) {
 		return nil, fmt.Errorf("OBJECTS.RES object %d is out of range", objectIndex)
@@ -198,8 +229,9 @@ func decodeObjectFrame(objects, graph []byte, objectIndex int) (*ebiten.Image, e
 		return nil, fmt.Errorf("OBJECTS.RES object %d frame is out of range", objectIndex)
 	}
 	paletteIndex := 56
-	if objectIndex <= 24 {
-		paletteIndex += objectIndex - 1
+	objectPalettes := [...]int{56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 152, 159, 108, 107, 108, 106, 221, 105, 222, 64}
+	if objectIndex <= len(objectPalettes) {
+		paletteIndex = objectPalettes[objectIndex-1]
 	}
 	var palette [256]color.RGBA
 	for i := range palette {
