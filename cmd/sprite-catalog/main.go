@@ -125,6 +125,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if err := extractGraphType0(graph, out); err != nil {
+		return err
+	}
 	var items []catalogItem
 	var failures []string
 	for _, row := range rows {
@@ -301,6 +304,66 @@ func resourcePalette(graph []byte) ([][256]color.RGBA, error) {
 		palettes[i] = p
 	}
 	return palettes, nil
+}
+
+// extractGraphType0 preserves the validated Type 0 blocks without guessing at
+// their packed payload format. The block size includes its 8-byte header.
+func extractGraphType0(graph []byte, out string) error {
+	const start = 0x1ee8b6
+	const type0MetadataBytes = 2960*2 + 1536*4 + 3840*2
+	if start+8 > len(graph) {
+		return fmt.Errorf("GRAPH Type 0 start is outside GRAPH.RES")
+	}
+	dir := filepath.Join(out, "raw", "GRAPH.T0")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	var inventory bytes.Buffer
+	w := csv.NewWriter(&inventory)
+	w.Comma = '\t'
+	_ = w.Write([]string{"block_id", "file", "block_offset", "block_bytes", "payload_bytes", "type0_metadata_bytes", "remaining_payload_bytes", "offset_table_nonzero", "block_end"})
+	off := start
+	for id := 0; off < len(graph); id++ {
+		if len(graph)-off < 8 || binary.BigEndian.Uint32(graph[off:off+4]) != 0 {
+			return fmt.Errorf("GRAPH Type 0 block %d has invalid header at %#x", id, off)
+		}
+		size := uint64(binary.LittleEndian.Uint32(graph[off+4 : off+8]))
+		if size < 8 || size > uint64(len(graph)-off) {
+			return fmt.Errorf("GRAPH Type 0 block %d has invalid size %#x at %#x", id, size, off)
+		}
+		end := off + int(size)
+		payloadBytes := int(size) - 8
+		if payloadBytes < type0MetadataBytes {
+			return fmt.Errorf("GRAPH Type 0 block %d payload is smaller than known metadata layout", id)
+		}
+		// CTPAX-X's source describes a 1,536-entry uint32 offset table at
+		// byte 5,920 in the payload. Count nonzero slots as a sanity signal,
+		// while keeping the format hypothesis explicit in the inventory.
+		nonzeroOffsets := 0
+		for i := 0; i < 1536; i++ {
+			if binary.LittleEndian.Uint32(graph[off+8+5920+i*4:]) != 0 {
+				nonzeroOffsets++
+			}
+		}
+		name := fmt.Sprintf("block_%03d.bin", id)
+		if err := os.WriteFile(filepath.Join(dir, name), graph[off:end], 0644); err != nil {
+			return err
+		}
+		_ = w.Write([]string{
+			strconv.Itoa(id), filepath.ToSlash(filepath.Join("raw", "GRAPH.T0", name)), hexOffset(uint64(off)),
+			strconv.FormatUint(size, 10), strconv.Itoa(payloadBytes), strconv.Itoa(type0MetadataBytes),
+			strconv.Itoa(payloadBytes - type0MetadataBytes), strconv.Itoa(nonzeroOffsets), hexOffset(uint64(end)),
+		})
+		off = end
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return err
+	}
+	if off != len(graph) {
+		return fmt.Errorf("GRAPH Type 0 blocks end at %#x, file ends at %#x", off, len(graph))
+	}
+	return os.WriteFile(filepath.Join(out, "type0.tsv"), inventory.Bytes(), 0644)
 }
 
 func decodeImageRow(row sourceRow, root string, graph []byte, palettes [][256]color.RGBA) ([]decodedFrame, error) {
@@ -516,7 +579,7 @@ body{font:14px system-ui;margin:20px;background:#1d2024;color:#eee}input,select{
 .meta{overflow-wrap:anywhere}.muted{color:#bbc2ca}.notice{padding:12px;background:#513b22;border-left:4px solid #e4a84d;max-width:1100px}.frames{margin-top:8px}.framegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(105px,1fr));gap:8px;margin-top:8px}.framecard{background:#25292e;padding:5px;border-radius:4px;overflow-wrap:anywhere}.framecard img{height:90px}small{color:#c4c9cf}button{padding:8px;margin:8px}
 </style></head><body>
 <h1>Konung image catalog</h1>
-<p class="notice"><b>Coverage is incomplete.</b> The current parser finds 30 animated OBJECTS entries, but the original extractor author reported prince/warrior animations were not extracted. The first GRAPH block is indexed; 12,483,813 bytes after offset 0x001ED8B6 remain unparsed and may contain additional graphics.</p>
+<p class="notice"><b>Coverage is incomplete.</b> The 27 GRAPH Type 0 blocks are exported as raw binary with an inventory in <a href="type0.tsv">type0.tsv</a>; their internal payload is not yet decoded into images. The preceding 64 KiB region is unidentified. Character animation coverage also remains incomplete.</p>
 <p>OBJECTS are grouped by model. Open “Explore frames” on a card to inspect its animation and directions.</p>
 <input id="q" placeholder="Search ID, note, label, or offset">
 <select id="ns"><option value="">All image entries</option></select><p id="count"></p>

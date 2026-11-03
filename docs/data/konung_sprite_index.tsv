@@ -546,12 +546,12 @@ OBJECTS	OBJECTS.RES	21	animated object	0x011ABBAA	1445856	363	385	221	39			large
 OBJECTS	OBJECTS.RES	22	animated object	0x0130CB8A	741611	245	59	105	287			unclear yellow figure	Type 2 animation offsets decoded
 OBJECTS	OBJECTS.RES	23	animated object	0x013C1C75	1548158	78	85	222	476			large humanoid creature	Type 2 animation offsets decoded
 OBJECTS	OBJECTS.RES	24	animated object	0x0153BBF3	1126946	113	85	64	240			winged creature	Type 2 animation offsets decoded
-OBJECTS	OBJECTS.RES	25	animated object	0x0164EE15	520336	191	71	56	316			visual duplicate of entry 1	Type 2 animation offsets decoded
-OBJECTS	OBJECTS.RES	26	animated object	0x016CDEA5	520336	191	71	56	316			visual duplicate of entry 1	Type 2 animation offsets decoded
-OBJECTS	OBJECTS.RES	27	animated object	0x0174CF35	520336	191	71	56	316			visual duplicate of entry 1	Type 2 animation offsets decoded
-OBJECTS	OBJECTS.RES	28	animated object	0x017CBFC5	520336	191	71	56	316			visual duplicate of entry 1	Type 2 animation offsets decoded
-OBJECTS	OBJECTS.RES	29	animated object	0x0184B055	520336	191	71	56	316			visual duplicate of entry 1	Type 2 animation offsets decoded
-OBJECTS	OBJECTS.RES	30	animated object	0x018CA0E5	520336	191	71	56	316			visual duplicate of entry 1	Type 2 animation offsets decoded
+OBJECTS	OBJECTS.RES	25	animated object	0x0164EE15	520336	191	71	56	316			byte-identical Type 2 block to entry 1	Type 2 animation offsets decoded; raw block verified
+OBJECTS	OBJECTS.RES	26	animated object	0x016CDEA5	520336	191	71	56	316			byte-identical Type 2 block to entry 1	Type 2 animation offsets decoded; raw block verified
+OBJECTS	OBJECTS.RES	27	animated object	0x0174CF35	520336	191	71	56	316			byte-identical Type 2 block to entry 1	Type 2 animation offsets decoded; raw block verified
+OBJECTS	OBJECTS.RES	28	animated object	0x017CBFC5	520336	191	71	56	316			byte-identical Type 2 block to entry 1	Type 2 animation offsets decoded; raw block verified
+OBJECTS	OBJECTS.RES	29	animated object	0x0184B055	520336	191	71	56	316			byte-identical Type 2 block to entry 1	Type 2 animation offsets decoded; raw block verified
+OBJECTS	OBJECTS.RES	30	animated object	0x018CA0E5	520336	191	71	56	316			byte-identical Type 2 block to entry 1	Type 2 animation offsets decoded; raw block verified
 OBJECTS	OBJECTS.RES	31	block type 8	0x01949175	64568	8	8		1				single indexed image; palette field sentinel
 OBJECTS	OBJECTS.RES	32	block type 8	0x01958DAD	73393	11	19		1				single indexed image; palette field sentinel
 OBJECTS	OBJECTS.RES	33	block type 9	0x0196AC5E	78840	11	11		1				single indexed image; palette field sentinel

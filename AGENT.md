@@ -9,6 +9,7 @@ Use the existing findings as a starting point. Before reverse engineering a reso
 ## Legacy game data references
 
 * [Resource formats, Type 5 frame/RLE details, FLAMES frame catalog, and parser usage](docs/konung_res_format.md)
+* [Executable resource-loader analysis and PE offsets](docs/konung_exe_resource_loaders.md)
 * [GRAPH.RES sprite and cursor catalog](docs/konung_graph_sprites.md)
 * [Original 640/800 menu RES frame catalog](docs/konung_menu_res.md)
 * [Dragomir's starting location, candidate map, and person sprite findings](docs/konung_start_location.md)

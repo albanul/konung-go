@@ -1,8 +1,8 @@
 namespace	sprite_id	frame_start	frame_end	relation	related_namespace	related_sprite_id	related_frame_start	related_frame_end	evidence
-OBJECTS	24	48	239	exact_duplicate_animation_frames	OBJECTS	9	96	287	pixel-exact comparison; corresponds to CTPAX-X extractor's numbered frame range
-OBJECTS	25	0	315	exact_duplicate_animation	OBJECTS	1	0	315	pixel-exact comparison
-OBJECTS	26	0	315	exact_duplicate_animation	OBJECTS	1	0	315	pixel-exact comparison
-OBJECTS	27	0	315	exact_duplicate_animation	OBJECTS	1	0	315	pixel-exact comparison
-OBJECTS	28	0	315	exact_duplicate_animation	OBJECTS	1	0	315	pixel-exact comparison
-OBJECTS	29	0	315	exact_duplicate_animation	OBJECTS	1	0	315	pixel-exact comparison
-OBJECTS	30	0	315	exact_duplicate_animation	OBJECTS	1	0	315	pixel-exact comparison
+OBJECTS	24	48	239	exact_duplicate_animation_frames	OBJECTS	9	96	287	192 indexed payload byte matches and dimensions; monotonic frame offsets; zero-based ranges
+OBJECTS	25	0	315	exact_duplicate_animation	OBJECTS	1	0	315	complete Type 2 blocks byte-identical; 316 frame payloads match
+OBJECTS	26	0	315	exact_duplicate_animation	OBJECTS	1	0	315	complete Type 2 blocks byte-identical; 316 frame payloads match
+OBJECTS	27	0	315	exact_duplicate_animation	OBJECTS	1	0	315	complete Type 2 blocks byte-identical; 316 frame payloads match
+OBJECTS	28	0	315	exact_duplicate_animation	OBJECTS	1	0	315	complete Type 2 blocks byte-identical; 316 frame payloads match
+OBJECTS	29	0	315	exact_duplicate_animation	OBJECTS	1	0	315	complete Type 2 blocks byte-identical; 316 frame payloads match
+OBJECTS	30	0	315	exact_duplicate_animation	OBJECTS	1	0	315	complete Type 2 blocks byte-identical; 316 frame payloads match
