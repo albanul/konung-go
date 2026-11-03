@@ -5,33 +5,31 @@ import (
 	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
-)
-
-const (
-	screenWidth  = 800
-	screenHeight = 600
-	menuItems    = 6
+	"konung1.5/internal/konungmenu"
 )
 
 func main() {
-	resourcePath, err := findGameResource("assets/Konung/MENU800R.RES")
-	if err != nil {
-		log.Fatal(err)
-	}
+	var resourcePath string
 	if len(os.Args) > 1 {
 		resourcePath = os.Args[1]
+	} else {
+		var err error
+		resourcePath, err = konungmenu.FindGameResource("assets/Konung/MENU800R.RES")
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-	graphPath, err := findGameResource("assets/Konung/GRAPH.RES")
+	graphPath, err := konungmenu.FindGameResource("assets/Konung/GRAPH.RES")
 	if err != nil {
 		log.Fatal(err)
 	}
-	g, err := loadMenu(resourcePath, graphPath)
+	g, err := konungmenu.New(resourcePath, graphPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	ebiten.SetFullscreen(true)
-	ebiten.SetWindowSize(screenWidth, screenHeight)
+	ebiten.SetWindowSize(konungmenu.ScreenWidth, konungmenu.ScreenHeight)
 	ebiten.SetWindowTitle("Князь: Легенды лесной страны")
 	ebiten.SetCursorMode(ebiten.CursorModeHidden)
 	if err := ebiten.RunGame(g); err != nil && err != ebiten.Termination {
