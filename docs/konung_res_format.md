@@ -94,6 +94,12 @@
 
 ---
 
+## 3.1 `GRAPH.RES`
+
+`GRAPH.RES` contains terrain graphics and mixed resource blocks; it is not a flat Type 5 stream. The confirmed palette layout and leading sprite inventory, including the sword cursor, are documented in the [GRAPH.RES sprite catalog](konung_graph_sprites.md).
+
+---
+
 ## 4. Спецификация формата Type 5 (на примере `FLAMES.RES`)
 
 ### Структура файла
