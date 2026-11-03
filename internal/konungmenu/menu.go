@@ -21,13 +21,14 @@ type Menu struct {
 	buttons     [menuItems][2]*ebiten.Image
 	selected    int
 	buttonRects [menuItems]rect
-	world       *ebiten.Image
+	world       *startScene
 	inWorld     bool
 }
 
 type rect struct{ x, y, w, h int }
 
 func New(resourcePath, graphPath string) (*Menu, error) {
+	ebiten.SetCursorMode(ebiten.CursorModeHidden)
 	frames, err := resource.LoadType5File(resourcePath)
 	if err != nil {
 		return nil, fmt.Errorf("load menu resource %q: %w", resourcePath, err)
@@ -39,17 +40,13 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, err
 	}
-	mapPath, err := FindGameResource("assets/Konung/KONUNG.1")
-	if err != nil {
-		return nil, err
-	}
 	objectsPath, err := FindGameResource("assets/Konung/OBJECTS.RES")
 	if err != nil {
 		return nil, err
 	}
-	world, err := loadStartScene(graphPath, mapPath, objectsPath)
+	world, err := loadStartScene(graphPath, objectsPath)
 	if err != nil {
-		return nil, fmt.Errorf("load provisional Old Camp scene: %w", err)
+		return nil, fmt.Errorf("load house and warrior scene: %w", err)
 	}
 
 	m := &Menu{
@@ -90,6 +87,7 @@ func (m *Menu) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
 			m.inWorld = false
 		}
+		m.world.Update()
 		return nil
 	}
 
@@ -110,7 +108,9 @@ func (m *Menu) Update() error {
 
 func (m *Menu) Draw(screen *ebiten.Image) {
 	if m.inWorld && m.world != nil {
-		screen.DrawImage(m.world, nil)
+		m.world.Draw(screen)
+		mx, my := ebiten.CursorPosition()
+		drawAt(screen, m.sword, mx-1, my-1)
 		return
 	}
 	screen.DrawImage(m.background, nil)

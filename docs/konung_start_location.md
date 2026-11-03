@@ -4,11 +4,11 @@
 
 The available [Konung walkthrough](https://shara-games.ru/knyaz/) identifies **Old Camp** as Dragomir's starting location. This supports the intended scene for the New Game menu action. The walkthrough does not connect Old Camp to a particular `KONUNG.N` filename.
 
-`OBJECTS.RES` entry **15** decodes as a robed human-shaped figure (30 × 74 pixels, palette 152). The current scene pairs it with `GRAPH.RES` Type 5 sprite **10**, a standalone sword, as a temporary sword-bearing fighter. This is a visual approximation; the character's identity and warrior role are not established by the resource data. Entry 16 is a child-sized person, entry 4 is a plant-like monster, and entry 5 is the corpse-like humanoid that was mistakenly selected in an earlier build.
+The earlier placeholder scene used `OBJECTS.RES` entry **15** (a robed human-shaped figure, 30 × 74 pixels, palette 152) with `GRAPH.RES` Type 5 sprite **10**, a standalone sword. It has been replaced by a Type 0 warrior preview. Entry 16 is a child-sized person, entry 4 is a plant-like monster, and entry 5 is the corpse-like humanoid that was mistakenly selected in an earlier build.
 
 ## Candidate map and uncertainty
 
-The scene currently loads `assets/Konung/KONUNG.1` as a **provisional Old Camp map**. That filename-to-location mapping is unverified. A visual preview shows terrain and repeated diagonal structures, but no direct map label or executable reference has tied that file to Old Camp yet.
+`KONUNG.1` remains a **provisional Old Camp map** candidate, but the current Go scene no longer renders it: the executable's map record layout and projection are not yet ported. The scene now provides a controlled asset preview using `OBJECTS.RES` 88/89 and a Type 0 warrior.
 
 Observed facts for `KONUNG.1`:
 
@@ -46,10 +46,10 @@ The external [CTPAX-X object extractor source](https://www.ctpax-x.org/index.php
 * Adjacent frame/shadow offsets are XOR-swapped in the stored table; the first image is decoded with the indexed RLE format. Palette assignments for the first 24 object entries are listed in the extractor source.
 * Transparent object pixels use RGB555 magenta `0x7C1F`.
 
-The current scene uses entry **15**, palette **152**, and sword sprite `GRAPH.T5:10`. Object entry **16** uses palette **159** and is a child-sized figure; object entry **5** is the corpse-like sprite. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes changes which object is selected.
+The former placeholder scene used entry **15**, palette **152**, and sword sprite `GRAPH.T5:10`. Object entry **16** uses palette **159** and is a child-sized figure; object entry **5** is the corpse-like sprite. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes changes which object is selected.
 
-The specific palette assignment and offsets above describe the selected placeholder path, not a character identity. The live Ebitengine scene reads `GRAPH.RES`, `OBJECTS.RES`, and the candidate `KONUNG.1` directly; it does not depend on extracted image files.
+The palette assignment and offsets above describe the former placeholder path, not a character identity. The live Ebitengine scene reads `GRAPH.RES` and `OBJECTS.RES` directly; it does not depend on extracted image files.
 
 ## Remaining map and runtime work
 
-The Go start scene still needs the executable's record parser, coordinate projection, object draw order, and Type 0 palette selection before it can reproduce a real location. The data loader and Type 0 model-selection path are documented in [the executable loader notes](konung_exe_resource_loaders.md). Keep `KONUNG.1 = Old Camp` provisional until the numbered map is tied to a labeled screenshot, save, or game location reference.
+The Go preview draws house 88 with shadow 89 and cycles through the first six frames of Type 0 block 0 as a warrior standing in front. It uses palette 2 as a visual placeholder; the engine's dye/palette selection and these frames' exact game animation role remain unverified. The scene uses explicit preview coordinates, not coordinates decoded from a map. Porting the executable's record parser, projection, and draw order remains necessary to reproduce an actual location. Keep `KONUNG.1 = Old Camp` provisional until it is tied to a labeled screenshot, save, or game location reference.

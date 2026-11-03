@@ -36,13 +36,15 @@ Ebitengine's system cursor is hidden. The menu draws the game sprite at the curr
 
 The nearby cursor variants include a red barred-circle marker, parchment/speech marker, flame marker, and hand marker. Their appearances are catalogued, but their exact in-game meanings have not been confirmed by tracing the executable's cursor-selection logic.
 
+Selecting menu item 4 opens a controlled scene preview. It draws `OBJECTS.RES` house 88 over its matching shadow 89, then displays the first six decoded frames from `GRAPH.RES` Type 0 block 0 as a warrior in front. The preview uses palette 2 and hand-set screen coordinates because the original dye selection and map entity coordinates have not been verified. The sword cursor continues to track the pointer in this view.
+
 ## Input behavior currently implemented
 
 * `Escape` exits the prototype.
 * Up/down arrows move the selected menu item and wrap around at either end.
 * Moving the mouse over a button selects it.
 * `Enter` exits only when the last item is selected. Clicking exits only when the last item is under the pointer.
-* The other menu actions currently have visual states only; they do not launch game flows.
+* Menu item 4 opens the house and warrior preview; the other non-exit items still have visual states only.
 
 ## Asset path behavior
 

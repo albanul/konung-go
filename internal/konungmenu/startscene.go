@@ -12,18 +12,21 @@ import (
 )
 
 const (
-	mapColumns       = 80
-	mapRows          = 115
-	mapPlanes        = 7
-	mapStride        = 18400
 	terrainTileCount = 304
-	grassMapPlane    = 1
 	grassFillTile    = 15
-	fighterObjectID  = 15
-	fighterSwordID   = 10
+	houseObjectID    = 88
+	shadowObjectID   = 89
+	warriorModelID   = 0
+	warriorFrames    = 6
 )
 
-func loadStartScene(graphPath, mapPath, objectsPath string) (*ebiten.Image, error) {
+type startScene struct {
+	background *ebiten.Image
+	warrior    []*ebiten.Image
+	tick       int
+}
+
+func loadStartScene(graphPath, objectsPath string) (*startScene, error) {
 	graphData, err := os.ReadFile(graphPath)
 	if err != nil {
 		return nil, err
@@ -32,89 +35,56 @@ func loadStartScene(graphPath, mapPath, objectsPath string) (*ebiten.Image, erro
 	if err != nil {
 		return nil, err
 	}
-	mapData, err := os.ReadFile(mapPath)
+	objectsData, err := os.ReadFile(objectsPath)
 	if err != nil {
 		return nil, err
 	}
-	if len(mapData) != mapStride*mapPlanes {
-		return nil, fmt.Errorf("%s has unexpected map size %d", mapPath, len(mapData))
-	}
-	personData, err := os.ReadFile(objectsPath)
+	house, err := decodeStaticObjectFrame(objectsData, graphData, houseObjectID)
 	if err != nil {
 		return nil, err
 	}
-	fighter, err := decodeObjectFrame(personData, graphData, fighterObjectID)
+	shadow, err := decodeStaticObjectFrame(objectsData, graphData, shadowObjectID)
 	if err != nil {
 		return nil, err
 	}
-	swordFrame, err := loadGraphSprite(graphPath, fighterSwordID)
+	warrior, err := decodeType0Frames(graphData, warriorModelID, warriorFrames)
 	if err != nil {
 		return nil, err
 	}
-	sword := ebiten.NewImageFromImage(swordFrame)
 
-	scene := ebiten.NewImage(ScreenWidth, ScreenHeight)
-	// Fill the viewport with the game's grass tile so map transparency reads as
-	// open ground instead of the dark outside-map color.
+	background := ebiten.NewImage(ScreenWidth, ScreenHeight)
 	grass := tiles[grassFillTile]
 	for y := -64; y < ScreenHeight+64; y += 32 {
 		for x := -114; x < ScreenWidth+114; x += 56 {
-			drawAt(scene, grass, x, y)
+			drawAt(background, grass, x, y)
 		}
 	}
-	type tilePlacement struct {
-		image *ebiten.Image
-		x, y  int
+	// The selected map's raw 88/89 references have no verified coordinates yet.
+	// Use the actual house and matching shadow art in a deliberate preview setup.
+	drawScaledAt(background, shadow, 140, 28, 1, 1)
+	drawScaledAt(background, house, 140, 28, 1, 1)
+	return &startScene{background: background, warrior: warrior}, nil
+}
+
+func (s *startScene) Update() { s.tick++ }
+
+func (s *startScene) Draw(screen *ebiten.Image) {
+	screen.DrawImage(s.background, nil)
+	if len(s.warrior) == 0 {
+		return
 	}
-	var placements []tilePlacement
-	minX, minY := int(^uint(0)>>1), int(^uint(0)>>1)
-	maxX, maxY := -minX, -minY
-	// KONUNG.1 is still a provisional Old Camp candidate. Render its grass
-	// plane only; the other planes' meaning and draw order are not yet verified.
-	for cell := 0; cell < mapColumns*mapRows; cell++ {
-		cx, cy := cell%mapColumns, cell/mapColumns
-		x := (cx-cy)*8 - 57
-		y := (cx+cy-(mapColumns+mapRows)/2)*4 - 32
-		cellOffset := grassMapPlane*mapStride + cell*2
-		value := binary.LittleEndian.Uint16(mapData[cellOffset : cellOffset+2])
-		ids := []byte{byte(value), byte(value >> 8)}
-		for _, id := range ids {
-			if id == 0 || id == 0xff || int(id) >= len(tiles) || tiles[id] == nil {
-				continue
-			}
-			img := tiles[id]
-			w, h := img.Bounds().Dx(), img.Bounds().Dy()
-			placements = append(placements, tilePlacement{img, x, y})
-			if x < minX {
-				minX = x
-			}
-			if y < minY {
-				minY = y
-			}
-			if x+w > maxX {
-				maxX = x + w
-			}
-			if y+h > maxY {
-				maxY = y + h
-			}
-		}
-	}
-	shiftX := ScreenWidth/2 - (minX+maxX)/2
-	shiftY := ScreenHeight/2 - (minY+maxY)/2
-	for _, p := range placements {
-		drawAt(scene, p.image, p.x+shiftX, p.y+shiftY)
-	}
-	// Enlarge the human sprite and place the game's standalone sword beside its
-	// outstretched hand as a provisional fighter silhouette.
-	fighterOp := &ebiten.DrawImageOptions{}
-	fighterOp.GeoM.Scale(2, 2)
-	fighterOp.GeoM.Translate(float64(ScreenWidth/2-fighter.Bounds().Dx()), float64(ScreenHeight/2-fighter.Bounds().Dy()))
-	scene.DrawImage(fighter, fighterOp)
-	swordOp := &ebiten.DrawImageOptions{}
-	swordOp.GeoM.Scale(1.5, 1.5)
-	swordOp.GeoM.Translate(370, 300)
-	scene.DrawImage(sword, swordOp)
-	return scene, nil
+	frame := s.warrior[(s.tick/8)%len(s.warrior)]
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(1.65, 1.65)
+	op.GeoM.Translate(492, 344)
+	screen.DrawImage(frame, op)
+}
+
+func drawScaledAt(dst, src *ebiten.Image, x, y int, scaleX, scaleY float64) {
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(scaleX, scaleY)
+	op.GeoM.Translate(float64(x), float64(y))
+	dst.DrawImage(src, op)
 }
 
 func decodeGraphTiles(data []byte) ([]*ebiten.Image, error) {
@@ -176,53 +146,105 @@ func decodeIndexedTile(src []byte, palette *[256]color.RGBA) (*image.RGBA, error
 	return resource.DecodeIndexedRLEFrame(src, palette)
 }
 
-func decodeObjectFrame(objects, graph []byte, objectIndex int) (*ebiten.Image, error) {
-	const table = 8 // Type 1 header is followed by the 512-entry list at offset 8.
-	if objectIndex < 1 || objectIndex > 512 || len(objects) < table+512*8 {
+func decodeStaticObjectFrame(objects, graph []byte, objectIndex int) (*ebiten.Image, error) {
+	const tableOffset, dataOffset, headerBytes = 8, 0x1008, 0x100
+	if objectIndex < 1 || objectIndex > 512 || len(objects) < tableOffset+512*8 {
 		return nil, fmt.Errorf("OBJECTS.RES index table truncated")
 	}
-	i := (objectIndex - 1) * 8
-	blockOffset := binary.LittleEndian.Uint32(objects[table+i:])
-	base := int(0x1008 + blockOffset)
-	if base < 0 || base+0x3228 > len(objects) {
-		return nil, fmt.Errorf("OBJECTS.RES object %d is out of range", objectIndex)
+	i := tableOffset + (objectIndex-1)*8
+	blockOffset := binary.LittleEndian.Uint32(objects[i:])
+	blockSize := binary.LittleEndian.Uint32(objects[i+4:])
+	base := dataOffset + int(blockOffset)
+	if base < dataOffset || blockSize < headerBytes || uint64(base)+uint64(blockSize) > uint64(len(objects)) {
+		return nil, fmt.Errorf("OBJECTS.RES object %d has invalid range", objectIndex)
 	}
-	if binary.BigEndian.Uint32(objects[base:]) != 2 {
-		return nil, fmt.Errorf("OBJECTS.RES object %d is not a Type 2 animated object", objectIndex)
+	if binary.BigEndian.Uint32(objects[base:]) == 2 {
+		return nil, fmt.Errorf("OBJECTS.RES object %d is animated, want a static image", objectIndex)
 	}
-	frameOffsets := make([]uint32, 1024)
-	for i := range frameOffsets {
-		frameOffsets[i] = binary.LittleEndian.Uint32(objects[base+0x728+i*4:])
+	paletteOffset := binary.LittleEndian.Uint32(objects[base+20:])
+	paletteIndex := paletteOffset / 512
+	if paletteIndex >= 256 || len(graph) < int(paletteIndex+1)*512 {
+		return nil, fmt.Errorf("OBJECTS.RES object %d has invalid palette offset %#x", objectIndex, paletteOffset)
 	}
-	for i := 0; i+1 < len(frameOffsets)-1; i += 2 {
-		frameOffsets[i], frameOffsets[i+1] = frameOffsets[i+1], frameOffsets[i]
-	}
-	start := frameOffsets[0]
-	end := frameOffsets[2]
-	if end <= start || end == 0xffffffff {
-		return nil, fmt.Errorf("OBJECTS.RES object %d has no first frame", objectIndex)
-	}
-	frameStart := base + 0x3228 + int(start)
-	frameEnd := base + 0x3228 + int(end)
-	if frameStart < 0 || frameEnd > len(objects) {
-		return nil, fmt.Errorf("OBJECTS.RES object %d frame is out of range", objectIndex)
-	}
-	paletteIndex := 56
-	objectPalettes := [...]int{56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 152, 159, 108, 107, 108, 106, 221, 105, 222, 64}
-	if objectIndex <= len(objectPalettes) {
-		paletteIndex = objectPalettes[objectIndex-1]
-	}
-	var palette [256]color.RGBA
-	for i := range palette {
-		v := binary.LittleEndian.Uint16(graph[(paletteIndex*256+i)*2:])
-		palette[i] = color.RGBA{uint8(((v >> 10) & 31) * 255 / 31), uint8(((v >> 5) & 31) * 255 / 31), uint8((v & 31) * 255 / 31), 255}
-		if v == 0x7c1f {
-			palette[i].A = 0
-		}
-	}
-	img, err := decodeIndexedTile(objects[frameStart:frameEnd], &palette)
+	palette, err := resource.RGB555Palette(graph[int(paletteIndex)*512 : int(paletteIndex+1)*512])
 	if err != nil {
-		return nil, fmt.Errorf("decode OBJECTS.RES person candidate: %w", err)
+		return nil, err
+	}
+	img, err := decodeIndexedTile(objects[base+headerBytes:base+int(blockSize)], &palette)
+	if err != nil {
+		return nil, fmt.Errorf("decode OBJECTS.RES object %d: %w", objectIndex, err)
 	}
 	return ebiten.NewImageFromImage(img), nil
+}
+
+func decodeType0Frames(graph []byte, modelID, count int) ([]*ebiten.Image, error) {
+	const (
+		blockStart          = 0x1ee8b6
+		metadataBytes       = 2960*2 + 1536*4 + 3840*2
+		metadataOffsetTable = 2960 * 2
+		paletteID           = 2 // Preview palette only; runtime assignment has not been traced.
+	)
+	if modelID < 0 || count < 1 || blockStart+8 > len(graph) {
+		return nil, fmt.Errorf("invalid Type 0 model request")
+	}
+	off := blockStart
+	for id := 0; id < modelID; id++ {
+		if off+8 > len(graph) || binary.BigEndian.Uint32(graph[off:]) != 0 {
+			return nil, fmt.Errorf("GRAPH.RES Type 0 block %d has invalid header", id)
+		}
+		size := int(binary.LittleEndian.Uint32(graph[off+4:]))
+		if size < 8 || off+size > len(graph) {
+			return nil, fmt.Errorf("GRAPH.RES Type 0 block %d has invalid size", id)
+		}
+		off += size
+	}
+	if off+8 > len(graph) || binary.BigEndian.Uint32(graph[off:]) != 0 {
+		return nil, fmt.Errorf("GRAPH.RES Type 0 model %d not found", modelID)
+	}
+	blockSize := int(binary.LittleEndian.Uint32(graph[off+4:]))
+	if blockSize < 8+metadataBytes || off+blockSize > len(graph) {
+		return nil, fmt.Errorf("GRAPH.RES Type 0 model %d has invalid size", modelID)
+	}
+	if len(graph) < (paletteID+1)*512 {
+		return nil, fmt.Errorf("GRAPH.RES palettes are truncated")
+	}
+	palette, err := resource.RGB555Palette(graph[paletteID*512 : (paletteID+1)*512])
+	if err != nil {
+		return nil, err
+	}
+	dataStart := off + 8 + metadataBytes
+	dataBytes := blockSize - 8 - metadataBytes
+	offsetsAt := off + 8 + metadataOffsetTable
+	offsets := make([]uint32, count*2+2)
+	for i := range offsets {
+		at := offsetsAt + i*4
+		if at+4 > off+8+metadataBytes {
+			return nil, fmt.Errorf("GRAPH.RES Type 0 offset table truncated")
+		}
+		offsets[i] = binary.LittleEndian.Uint32(graph[at:])
+	}
+	for i := 0; i+1 < len(offsets); i += 2 {
+		offsets[i], offsets[i+1] = offsets[i+1], offsets[i]
+	}
+	frames := make([]*ebiten.Image, 0, count)
+	for i := 0; i < count; i++ {
+		start := offsets[i*2]
+		end := uint32(dataBytes)
+		if i+1 < count {
+			end = offsets[(i+1)*2]
+		}
+		if end <= start || uint64(end) > uint64(dataBytes) {
+			return nil, fmt.Errorf("GRAPH.RES Type 0 model %d frame %d has invalid range", modelID, i)
+		}
+		frameData := graph[dataStart+int(start) : dataStart+int(end)]
+		img, decodeErr := resource.DecodeIndexedRLEFrame(frameData, &palette)
+		if decodeErr != nil {
+			img, decodeErr = resource.DecodeIndexedRLELegacyFrame(frameData, &palette)
+		}
+		if decodeErr != nil {
+			return nil, fmt.Errorf("decode GRAPH.RES Type 0 model %d frame %d: %w", modelID, i, decodeErr)
+		}
+		frames = append(frames, ebiten.NewImageFromImage(img))
+	}
+	return frames, nil
 }
