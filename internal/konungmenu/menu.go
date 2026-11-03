@@ -21,6 +21,8 @@ type Menu struct {
 	buttons     [menuItems][2]*ebiten.Image
 	selected    int
 	buttonRects [menuItems]rect
+	world       *ebiten.Image
+	inWorld     bool
 }
 
 type rect struct{ x, y, w, h int }
@@ -37,10 +39,23 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, err
 	}
+	mapPath, err := FindGameResource("assets/Konung/KONUNG.1")
+	if err != nil {
+		return nil, err
+	}
+	objectsPath, err := FindGameResource("assets/Konung/OBJECTS.RES")
+	if err != nil {
+		return nil, err
+	}
+	world, err := loadStartScene(graphPath, mapPath, objectsPath)
+	if err != nil {
+		return nil, fmt.Errorf("load provisional Old Camp scene: %w", err)
+	}
 
 	m := &Menu{
 		background: ebiten.NewImageFromImage(frames[0]),
 		sword:      ebiten.NewImageFromImage(swordFrame),
+		world:      world,
 	}
 	for i := 0; i < menuItems; i++ {
 		m.buttons[i][0] = ebiten.NewImageFromImage(frames[3+i*2])
@@ -52,7 +67,11 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 }
 
 func (m *Menu) Update() error {
-	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if m.inWorld {
+			m.inWorld = false
+			return nil
+		}
 		return ebiten.Termination
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
@@ -64,6 +83,15 @@ func (m *Menu) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && m.selected == menuItems-1 {
 		return ebiten.Termination
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && m.selected == 3 {
+		m.inWorld = true
+	}
+	if m.inWorld {
+		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
+			m.inWorld = false
+		}
+		return nil
+	}
 
 	mx, my := ebiten.CursorPosition()
 	for i, r := range m.buttonRects {
@@ -72,12 +100,19 @@ func (m *Menu) Update() error {
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && i == menuItems-1 {
 				return ebiten.Termination
 			}
+			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && i == 3 {
+				m.inWorld = true
+			}
 		}
 	}
 	return nil
 }
 
 func (m *Menu) Draw(screen *ebiten.Image) {
+	if m.inWorld && m.world != nil {
+		screen.DrawImage(m.world, nil)
+		return
+	}
 	screen.DrawImage(m.background, nil)
 	for i, r := range m.buttonRects {
 		button := m.buttons[i][0]
