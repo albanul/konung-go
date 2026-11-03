@@ -181,3 +181,18 @@ go run cmd/res-parser/main.go assets/Konung/SAVE640R.RES output_save640
 ```
 
 Кадры сохраняются в формате PNG с прозрачным фоном (`frame_000.png`, `frame_001.png`, ...).
+
+## 7. Набор парсеров для дальнейшей работы
+
+Архив [CTPAX-X Konung tools](https://www.ctpax-x.org/index.php?goto=files&lang=en&show=147) содержит четыре исходных экстрактора: меню/Type 5, `GRAPH.RES`, `OBJECTS.RES` и `SOUNDS.RES` / `Sounds_.res`. В проекте покрытие сейчас такое:
+
+| Данные | Реализация | Примечание |
+|---|---|---|
+| Type 5 (меню, FLAMES, отдельные GRAPH кадры) | `internal/resource/rle.go` | Общий декодер кадров и последовательных Type 5 файлов. |
+| Ведущие GRAPH Type 5 спрайты | `internal/konungmenu/graph.go` | Читает смешанный GRAPH после 128 KiB палитр. Каталог проверенных кадров — [здесь](konung_graph_sprites.md). |
+| Indexed RLE, GRAPH terrain, первый кадр OBJECTS | `internal/konungmenu/startscene.go` | Рабочие scene helpers; привязаны к `ebiten` и выборке данных текущей сцены, не являются общим API для пакетной распаковки. Полный индекс ресурсов — [здесь](konung_sprite_index.md). |
+| Звуковой каталог и WAV заголовки | `internal/resource/sound.go` | Читает 1000 записей и собирает PCM WAV (mono, 16-bit, 22050 Hz), как CTPAX-X `knsfxres.c`. |
+
+Таким образом, основные форматы для последующего чтения обнаружены и покрыты помощниками, включая отсутствовавший ранее sound archive reader. Полного CLI экстрактора всех `OBJECTS.RES` кадров и всех mixed-блоков `GRAPH.RES` в проекте пока нет: текущий код умеет разбирать нужные для сцены записи, а TSV индекс уже содержит инвентаризацию файлов. Источники CTPAX-X являются независимой сверкой структуры; при расширении общего экстрактора нужно валидировать блоки по установленным игровым данным.
+
+Для звукового ресурса заголовок занимает 8 байт: tag `uint32 BE` (1), размер секции данных `uint32 LE`. За ним идут ровно 1000 пар `(offset,size)` в `uint32 LE`; offset относителен к началу данных после каталога (байтовое смещение 8008). Неиспользуемая запись имеет `FFFFFFFF FFFFFFFF`. Полученный payload можно передать `SoundEntry.WriteWAV`.
