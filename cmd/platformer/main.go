@@ -89,7 +89,6 @@ func mainSceneStart(ctx *scene.Context) {
 }
 
 func onGopherEnter(entity *entities.Entity, eventPayload event.EnterPayload) event.Response {
-
 	// moving left and right
 	if oak.IsDown(key.RightArrow) {
 		entity.Delta[0] = entity.Speed.X()

@@ -1,0 +1,20 @@
+{
+  "name": "Go Dev Container (Fedora)",
+  "build": {
+    "dockerfile": "Podmanfile"
+  },
+  "customizations": {
+    "zed": {
+      "settings": {
+        "lsp": {
+          "gopls": {
+            "binary": {
+              "path": "/root/go/bin/gopls"
+            }
+          }
+        }
+      }
+    }
+  },
+  "remoteUser": "root"
+}
