@@ -13,19 +13,16 @@ The scene currently loads `assets/Konung/KONUNG.1` as a **provisional Old Camp m
 Observed facts for `KONUNG.1`:
 
 * File size is 128,800 bytes.
-* It divides evenly into seven 18,400-byte planes.
-* Each plane contains 9,200 little-endian `uint16` values.
-* `9,200 = 80 × 115`, so an 80-by-115 cell grid is a useful rendering hypothesis; the grid dimensions and each plane's meaning still need confirmation.
-* Values include `0xFFFF`; the file also has high-byte values that are not valid tile indices if a whole word is treated as one index.
-* The provisional renderer treats each word as two byte-sized tile references. This fits the observed byte range and the engine's 256-entry map addressing, but the packed-cell interpretation and ordering of the two references still need confirmation from executable code.
-* Byte `0x00` is treated as empty. `0xFF` occurs only in planes 4–6 in this file; `0xFFFF` fills plane 6, so the renderer treats `0xFF` as empty there as well.
-* A visual render at 8 × 4 pixels per cell produces a coherent isometric map extent. This is a rendering hypothesis; the executable's map-cell projection has not been traced. The scene centers the bounds of the referenced images in the 800 × 600 viewport.
+* File size is 128,800 bytes (`0x1F6A0`).
+* The executable loader at VA `0x0043C0FC` skips `0x200` bytes and reads sections of `0x6400`, `0xC800`, `0x3E80`, and `0x8CA0` bytes. These sections sum to the map file's full size. It processes 160 records of `0xA0` bytes from the first section and later initializes a 200-entry array of `0x20`-byte runtime records.
+* The earlier seven-plane / 80-by-115 interpretation used by the Go preview is provisional and does not match the executable's read layout. Its tile placement and projection should not be treated as the game's map renderer.
+* Scanning the file as little-endian words finds values 87 twice, 88 once, and no 89 in `KONUNG.1`; the 88 reference is at file offset `0x16D4C` (87 references at `0x17EBC` and `0x18414`). These are raw references only: their record and coordinate interpretation is not established, so they cannot yet be positioned faithfully in the Go scene.
 
 Do not record `KONUNG.1 = Old Camp` as a confirmed game-data fact until the map is matched using executable references, a labeled in-game screenshot, or a known save.
 
 ## Village-chief screenshot clue
 
-The supplied gameplay screenshot labels the selected speaker as a level-5 warrior and village elder (`староста`). In the image catalog, `OBJECTS.RES` entries 87 and 88 are wooden house images, while entry 89 is a dark shadow image; these are building art and cannot be the person. The chief is a separate character sprite. The newly decoded `GRAPH.T0` blocks 0–2 contain human-like animation sets (612 frames each) and are plausible candidates for this missing warrior art. Their current gallery colors use a provisional palette, and the screenshot has not yet been tied to a specific Type 0 block or a confirmed `KONUNG.N` map.
+The supplied gameplay screenshot labels the selected speaker as a level-5 warrior and village elder (`староста`). In the image catalog, `OBJECTS.RES` entries 87 and 88 are wooden house images, while entry 89 is a dark shadow image; these are building art and cannot be the person. The executable's initializer at VA `0x00414078` confirms an in-game Type 0 model path based at `0x007145B4`, with `0x4D28` bytes per model block. Entity fields choose the model, variant, and direction/animation slot. The palette/dye operation remains untraced, and the screenshot has not been tied to a specific Type 0 block or confirmed `KONUNG.N` map.
 
 ## `GRAPH.RES` terrain tile block
 
@@ -53,6 +50,6 @@ The current scene uses entry **15**, palette **152**, and sword sprite `GRAPH.T5
 
 The specific palette assignment and offsets above describe the selected placeholder path, not a character identity. The live Ebitengine scene reads `GRAPH.RES`, `OBJECTS.RES`, and the candidate `KONUNG.1` directly; it does not depend on extracted image files.
 
-## Follow-up to confirm the map
+## Remaining map and runtime work
 
-The next useful evidence is a direct file-to-location reference: find how `konung.exe` chooses the `KONUNG.N` filename for Dragomir's start, or compare a labeled Old Camp screenshot/save against renders of the numbered map files. Until then, keep the map assignment provisional.
+The Go start scene still needs the executable's record parser, coordinate projection, object draw order, and Type 0 palette selection before it can reproduce a real location. The data loader and Type 0 model-selection path are documented in [the executable loader notes](konung_exe_resource_loaders.md). Keep `KONUNG.1 = Old Camp` provisional until the numbered map is tied to a labeled screenshot, save, or game location reference.

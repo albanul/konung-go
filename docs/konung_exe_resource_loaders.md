@@ -42,9 +42,19 @@ The 64 KiB gap between `0x1ED8B6` and `0x1EE8B6` remains unexplained. CTPAX-X's 
 
 The catalog extractor exports each complete Type 0 block, including its header, to `output/sprite-catalog/raw/GRAPH.T0/block_NNN.bin` and its decoded frames to the grouped `GRAPH.T0` gallery. The `type0.tsv` inventory records source offset, total and payload sizes, metadata size, remaining image-data bytes, populated offset count, block end, decoded frame count, and decode failures. Palette 2 is used only as a visual preview because the game's palette assignment for these blocks is not verified. Blocks 0–2 show adult human-like animated figures and are candidates for the warrior art, but no particular block has yet been matched to the village chief in the provided screenshot.
 
+## Map entity and warrior model initialization
+
+The map scene loader at VA `0x0043C0FC` opens `LIGHTS.N`, then `KONUNG.N`. For `KONUNG.N`, it seeks past a `0x200`-byte header, reads `0x6400` bytes to `0x627FD8`, and then reads sections of `0xC800`, `0x3E80`, and `0x8CA0` bytes. The latter three sizes plus the first section total `0x1F6A0`, matching the map files' 128,800-byte size; the `0x200` seek is additional. The loader processes a 160 × 160-byte table from the first section and later a 200-entry array of `0x20`-byte runtime records. This disproves the earlier seven-equal-plane interpretation as the executable's read layout.
+
+At VA `0x004143DC`, an entity initializer assigns its map coordinates from the entity's words at `+0x08` and `+0x0A`, initializes state, and links it into the runtime grid. The loader calls this initializer from `0x0043C858` for one entity path and calls the model initializer at `0x00414078` from `0x0043C866` for the other.
+
+The model initializer at `0x00414078` selects either a Type 2 animated object or a Type 0 model. The Type 0 path uses the signed entity byte at `+0xD3` as the model-block index into a table based at `0x007145B4`, with a `0x4D28` stride per model. Entity fields at `+0`, `+1`, and `+0x10` select the actor subtype, variant, and direction/animation slot. It stores pointers to selected records at entity offsets `+0xDC` and `+0xE0`; a Type0 metadata value is copied into entity state at `+0xF4`. The selected record's fixed-point offsets are combined with entity offsets `+0xE8/+0xF0` and global screen/map offsets to produce render coordinates at `+0xE4/+0xEC`.
+
+This confirms that Type 0 is an in-game animated-model path and that model choice and frame/direction lookup are entity-driven. The palette/dye operation has not yet been traced, so gallery palette 2 must not be treated as a runtime assignment. The inspected code also does not establish that `OBJECTS.RES` object IDs 87–89 identify the same kind of map entity as the Type 0 characters.
+
 ## Implication for the missing character animations
 
-The CTPAX-X extractor author independently reported that prince and warrior animations were not extracted. The executable trace now confirms that the ordinary `OBJECTS.RES` table only exposes 30 animated entries. This makes a missing resource path or a separate character-animation format more likely than a bug in the current frame loop. The next trace should follow the code that maps map/game character IDs to renderable frames and inspect references to `GAME.*`, `KONUNG.*`, and the newly identified Type 0 blocks in `GRAPH.RES`.
+The CTPAX-X extractor author independently reported that prince and warrior animations were not extracted. The executable trace now identifies a separate Type 0 animated-model path in `GRAPH.RES`, alongside the 30 animated `OBJECTS.RES` entries. The missing warriors therefore were not a bad frame loop in the Type 2 object decoder; they use another resource family and entity initialization path. The remaining work is to map Type 0 model IDs to visible character variants and trace the palette/dye and equipment overlay logic.
 
 ## External reference
 
