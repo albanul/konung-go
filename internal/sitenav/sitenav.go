@@ -56,12 +56,25 @@ func Nav(current string) template.HTML {
 }
 
 // SectionRoot returns the site root for a section written to dir when dir is
-// a known section directory (e.g. output/site/maps), and false otherwise.
+// a known section directory directly under DefaultRoot (e.g. output/site/maps),
+// and false otherwise. Other locations get a standalone page and no hub, so a
+// stray "maps" directory elsewhere does not spawn a second, incomplete site.
 func SectionRoot(dir string) (string, bool) {
-	base := filepath.Base(filepath.Clean(dir))
+	return sectionRoot(dir, DefaultRoot)
+}
+
+func sectionRoot(dir, siteRoot string) (string, bool) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	root, err := filepath.Abs(siteRoot)
+	if err != nil || filepath.Dir(abs) != root {
+		return "", false
+	}
 	for _, s := range Sections {
-		if s.Dir == base {
-			return filepath.Dir(filepath.Clean(dir)), true
+		if s.Dir == filepath.Base(abs) {
+			return siteRoot, true
 		}
 	}
 	return "", false

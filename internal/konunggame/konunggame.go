@@ -13,6 +13,8 @@ import (
 const (
 	FileSize = 709822 // sum of the six sections the loader reads
 
+	itemOffset   = 0x00000 // 0x20000 bytes -> VA 0x0067AC34: 8192 x 16-byte items
+	itemStride   = 0x10
 	groupOffset  = 0x20000 // 0x1900 bytes -> VA 0x0069D1B4
 	groupCount   = 200
 	groupStride  = 0x20
@@ -44,12 +46,23 @@ type Entity struct {
 	Model         int    // +0xD6 (signed): OBJECTS slot or GRAPH Type 0 block
 	PaletteOffset uint32 // +0xD8
 	Group         int    // owning group index
+	Slots         [8]int // +0x66: item indices per equipment slot (0 = empty); slots 0..5 are drawn
 }
 
 // Game holds the decoded groups (index 0..199) and entities.
 type Game struct {
 	Groups   []Group
 	Entities []Entity
+	items    []byte
+}
+
+// ItemType returns byte +3 of item record i, the item type that selects the
+// overlay graphic (VA 0x004282AC).
+func (g *Game) ItemType(i int) int {
+	if i <= 0 || (i+1)*itemStride > len(g.items) {
+		return -1
+	}
+	return int(g.items[i*itemStride+3])
 }
 
 // Parse decodes a GAME.N file.
@@ -57,7 +70,7 @@ func Parse(data []byte) (*Game, error) {
 	if len(data) != FileSize {
 		return nil, fmt.Errorf("GAME file has size %d, want %d", len(data), FileSize)
 	}
-	g := &Game{}
+	g := &Game{items: data[itemOffset : itemOffset+0x20000]}
 	owner := map[int]int{}
 	for i := 0; i < groupCount; i++ {
 		r := data[groupOffset+i*groupStride:][:groupStride]
@@ -96,6 +109,7 @@ func Parse(data []byte) (*Game, error) {
 			Model:         int(int8(e[0xD6])),
 			PaletteOffset: binary.LittleEndian.Uint32(e[0xD8:]),
 			Group:         grp,
+			Slots:         slots(e[0x66:]),
 		})
 	}
 	return g, nil
@@ -201,8 +215,12 @@ func (e Entity) ModelSpec() resource.EntityModel {
 
 // LoadSprite decodes the entity's current frame and returns it positioned in
 // world pixels, with its depth key (image bottom edge).
-func (p Placed) LoadSprite(objects, graph []byte) (img *resource.EntitySprite, x, y, sx, sy, depth int, err error) {
+// t may be nil to skip equipment overlays.
+func (g *Game) LoadSprite(p Placed, objects, graph []byte, t *resource.ExeTables) (img *resource.EntitySprite, x, y, sx, sy, depth int, err error) {
 	img, err = resource.LoadEntitySprite(objects, graph, p.ModelSpec())
+	if err == nil {
+		img, err = resource.ComposeEquipment(graph, img, p.ModelSpec(), g.Overlays(p.Entity, t), t)
+	}
 	if err != nil {
 		return nil, 0, 0, 0, 0, 0, fmt.Errorf("entity %d: %w", p.Index, err)
 	}
@@ -217,11 +235,29 @@ type Frame struct {
 	X, Y, SX, SY int
 }
 
-// LoadAnimation decodes every step of the entity's current sequence.
-func (p Placed) LoadAnimation(objects, graph []byte) ([]Frame, error) {
+// LoadAnimation decodes every step of the entity's current sequence, with
+// equipment overlays composed onto Type 0 bodies (t may be nil to skip them).
+func (g *Game) LoadAnimation(p Placed, objects, graph []byte, t *resource.ExeTables) ([]Frame, error) {
 	steps, err := resource.LoadEntityAnimation(objects, graph, p.ModelSpec())
 	if err != nil {
 		return nil, fmt.Errorf("entity %d: %w", p.Index, err)
+	}
+	if overlays := g.Overlays(p.Entity, t); len(overlays) > 0 {
+		var prevBody *resource.EntitySprite
+		var prevOut *resource.EntitySprite
+		for i, body := range steps {
+			if prevBody != nil && body.Image == prevBody.Image && body.ImageDX == prevBody.ImageDX && body.ImageDY == prevBody.ImageDY {
+				steps[i] = prevOut // repeated step: reuse the composite
+				continue
+			}
+			m := p.ModelSpec()
+			m.Step = i
+			out, err := resource.ComposeEquipment(graph, body, m, overlays, t)
+			if err != nil {
+				return nil, fmt.Errorf("entity %d: %w", p.Index, err)
+			}
+			prevBody, prevOut, steps[i] = body, out, out
+		}
 	}
 	wx, wy := WorldPos(p.Row, p.Col)
 	out := make([]Frame, len(steps))
@@ -256,4 +292,30 @@ func (g *Game) HeroModelFromGame(n int, paletteOffset uint32) {
 			g.Entities[i].PaletteOffset = paletteOffset
 		}
 	}
+}
+
+func slots(b []byte) (out [8]int) {
+	for i := range out {
+		out[i] = int(binary.LittleEndian.Uint16(b[i*2:]))
+	}
+	return out
+}
+
+// Overlays returns the equipment overlay blocks to draw over a Type 0 body,
+// in the game's order for the entity's facing (VA 0x00428484: the path for
+// entity +3 bit 0x04 clear; the combat path with drawn weapons is not ported).
+func (g *Game) Overlays(e Entity, t *resource.ExeTables) []int {
+	if t == nil || e.Animated() {
+		return nil
+	}
+	var out []int
+	for _, slot := range t.DrawOrder(e.Variant) {
+		if slot < 0 || slot >= len(e.Slots) || e.Slots[slot] == 0 {
+			continue
+		}
+		if k := t.ItemOverlay(g.ItemType(e.Slots[slot])); k >= 0 {
+			out = append(out, k)
+		}
+	}
+	return out
 }

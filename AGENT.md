@@ -42,7 +42,7 @@ One line per file family. Details live in the linked documents; "verified" means
 | File | Layout summary | Status | Doc |
 |---|---|---|---|
 | `FLAMES.RES`, `MENU*R.RES`, `NEWH*R.RES`, `SAVE*R.RES` | Sequential Type 5 frames (BE tag 5, LE size), RGB555 row-RLE | verified | [res format](docs/konung_res_format.md), [menu RES](docs/konung_menu_res.md) |
-| `GRAPH.RES` | 256 palettes → 11 Type 5 cursors → Type 1 terrain tile block (512-slot table) → 64 KiB gap → 27 Type 0 character-model blocks | verified except gap and Type 0 palette/dye | [GRAPH layout](docs/konung_graph_sprites.md) |
+| `GRAPH.RES` | 256 palettes → 11 Type 5 cursors → Type 1 terrain tile block (512-slot table) → 64 KiB gap → 27 Type 0 blocks (3 bodies + 24 equipment overlays) | verified except gap and Type 0 palette/dye | [GRAPH layout](docs/konung_graph_sprites.md) |
 | `OBJECTS.RES` | 512-slot table; slots 0–29 animated (Type 2), others static | verified | [start location](docs/konung_start_location.md), [exe loaders](docs/konung_exe_resource_loaders.md) |
 | `KONUNG.N` | 4 sections: terrain (160×80×2 tile bytes), 320×160 flag grid, flat decorations (16-byte records), static object placements (36-byte records) | verified except the flag grid | [map format](docs/konung_map_format.md) |
 | `GAME.N` | Start state: 6 sections incl. 200 entity groups (group 0 = player) and 2000 × 256-byte entities | groups/entities/sprites verified; spawn placement approximate; 4 sections open | [GAME.N](docs/konung_game_format.md) |
@@ -53,12 +53,12 @@ One line per file family. Details live in the linked documents; "verified" means
 
 | Package / command | Responsibility |
 |---|---|
-| `internal/resource` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, static OBJECTS entries and map objects with shadows (`LoadMapObject`), entity frames (`LoadEntitySprite`), `GRAPH.RES` Type 0 frames, sound entries |
+| `internal/resource` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, static OBJECTS entries and map objects with shadows (`LoadMapObject`), entity frames (`LoadEntitySprite`), equipment overlays (`ComposeEquipment`, exe tables via `ExeTables`), `GRAPH.RES` Type 0 frames, sound entries |
 | `internal/konungmap` | Engine-independent `KONUNG.N` parsing (terrain, decorations, object placements), `GRAPH.RES` terrain tiles, projection, depth order, full-scene render |
 | `internal/konunggame` | Engine-independent `GAME.N` parsing: groups, entities, world positions, spawn placement, entity sprites |
 | `internal/konungmenu` | Ebitengine menu and New Game scene (camera, drawing); converts decoded `image.RGBA` to `ebiten.Image` |
 | `cmd/konung` | Game entry point |
-| `cmd/map-render` | `KONUNG.N` → PNG (terrain, decorations, shadows, objects, `GAME.N` characters; `-game` to choose/disable, `-terrain` for terrain only, `-all` for every map + `index.html`) |
+| `cmd/map-render` | `KONUNG.N` → PNG (terrain, decorations, shadows, objects, optional `GAME.N` characters via `-game assets/Konung/GAME.0`, `-terrain` for terrain only, `-all` for every map + `index.html`) |
 | `cmd/sprite-catalog` | Extract all indexed images into an HTML gallery under `output/site/sprites/` |
 | `internal/sitenav` | Shared nav bar and landing page (`output/site/index.html`) that join the tools' HTML outputs into one site |
 | `cmd/res-parser` | Extract Type 5 frames from a RES file to PNG |
@@ -115,7 +115,7 @@ $C sed -n '53935,54260p' /tmp/kn/text.asm | awk -F'\t' '{print $1, $3}'   # addr
 
 Highest-value unknowns, roughly in priority order:
 
-1. Character-creation screen: hero palette (`0x00A3E65C`) and template fields; walking/fighting animations; exact runtime spawn positions. See [GAME.N](docs/konung_game_format.md#open-questions).
+1. Character-creation screen: hero palette (`0x00A3E65C`) and template fields; walking/fighting animations and the combat overlay path; exact runtime spawn positions. See [GAME.N](docs/konung_game_format.md#open-questions).
 2. Type 0 model palette/dye selection and the model ID → character mapping. See [exe notes](docs/konung_exe_resource_loaders.md).
 3. `KONUNG.N` section 1 (320×160 flag grid): is it walkability?
 4. `LIGHTS.N` format and the lit terrain draw path at VA `0x004257A9`.

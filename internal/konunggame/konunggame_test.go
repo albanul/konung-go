@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"konung1.5/internal/konungmap"
+	"konung1.5/internal/resource"
 )
 
 func load(t *testing.T, name string) []byte {
@@ -43,21 +44,28 @@ func TestGame0Konung1(t *testing.T) {
 		t.Fatalf("entities on map 1 = %d, want 50 (player + 49)", len(placed))
 	}
 	objects, graph := load(t, "OBJECTS.RES"), load(t, "GRAPH.RES")
+	tables, err := resource.NewExeTables(load(t, "konung.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := g.Overlays(g.Entities[355], tables); len(got) != 4 {
+		t.Errorf("villager 355 overlays = %v, want 4 layers", got)
+	}
 	g.HeroModelFromGame(0, PlaceholderHeroPalette)
 	if g.Entities[0].Model != 0 {
 		t.Fatalf("hero model = %d, want 0 (Volk)", g.Entities[0].Model)
 	}
 	seen := map[[2]int]bool{}
 	for _, e := range placed {
-		if _, _, _, _, _, _, err := e.LoadSprite(objects, graph); err != nil {
+		if _, _, _, _, _, _, err := g.LoadSprite(e, objects, graph, tables); err != nil {
 			t.Error(err)
 		}
-		anim, err := e.LoadAnimation(objects, graph)
+		anim, err := g.LoadAnimation(e, objects, graph, tables)
 		if err != nil {
 			t.Error(err)
 		} else if len(anim) != 12 {
 			t.Errorf("entity %d idle loop has %d steps, want 12", e.Index, len(anim))
-		} else if anim[0].Sprite.Image == anim[2].Sprite.Image {
+		} else if anim[0].Sprite.Image == anim[2].Sprite.Image && !e.Animated() && len(g.Overlays(e.Entity, tables)) == 0 {
 			t.Errorf("entity %d idle steps 0 and 2 share an image; expected different frames", e.Index)
 		}
 		k := [2]int{e.Row, e.Col}

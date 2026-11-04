@@ -11,6 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/konunggame"
 	"konung1.5/internal/konungmap"
+	"konung1.5/internal/resource"
 )
 
 const (
@@ -60,7 +61,7 @@ type startScene struct {
 // loadStartScene builds the scene for map mapNumber: terrain, decorations
 // and static objects from the KONUNG.N file, characters and creatures from
 // the GAME.N start state.
-func loadStartScene(graphPath, objectsPath, mapPath, gamePath string, gameNumber, mapNumber int) (*startScene, error) {
+func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, gameNumber, mapNumber int) (*startScene, error) {
 	graphData, err := os.ReadFile(graphPath)
 	if err != nil {
 		return nil, err
@@ -86,6 +87,14 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath string, gameNumber
 		return nil, err
 	}
 	walk, err := konungmap.ParseWalkGrid(mapData)
+	if err != nil {
+		return nil, err
+	}
+	exeData, err := os.ReadFile(exePath)
+	if err != nil {
+		return nil, err
+	}
+	tables, err := resource.NewExeTables(exeData)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +176,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath string, gameNumber
 	camX, camY := s.worldW/2, s.worldH/2
 	game.HeroModelFromGame(gameNumber, konunggame.PlaceholderHeroPalette)
 	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
-		anim, err := p.LoadAnimation(objectsData, graphData)
+		anim, err := game.LoadAnimation(p, objectsData, graphData, tables)
 		if err != nil {
 			log.Printf("%s: %v", gamePath, err)
 			continue

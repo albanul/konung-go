@@ -8,11 +8,15 @@ import (
 )
 
 func TestSectionRoot(t *testing.T) {
-	if root, ok := SectionRoot("output/site/maps"); !ok || root != "output/site" {
-		t.Fatalf("SectionRoot(maps) = %q, %v", root, ok)
+	for _, dir := range []string{"output/site/maps", "output/site/sprites/", "./output/site/maps"} {
+		if root, ok := SectionRoot(dir); !ok || root != DefaultRoot {
+			t.Errorf("SectionRoot(%q) = %q, %v; want %q, true", dir, root, ok, DefaultRoot)
+		}
 	}
-	if _, ok := SectionRoot("output/other"); ok {
-		t.Fatal("SectionRoot accepted an unknown directory")
+	for _, dir := range []string{"output/maps", "output/site/other", "output/site", "/tmp/maps"} {
+		if _, ok := SectionRoot(dir); ok {
+			t.Errorf("SectionRoot(%q) accepted a directory outside the site", dir)
+		}
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 
 	"konung1.5/internal/konunggame"
 	"konung1.5/internal/konungmap"
+	"konung1.5/internal/resource"
 	"konung1.5/internal/sitenav"
 )
 
@@ -26,9 +27,10 @@ func main() {
 	all := flag.String("all", "", "render every KONUNG.N in -dir into this output directory")
 	dir := flag.String("dir", "assets/Konung", "directory containing KONUNG.N files (with -all)")
 	graphPath := flag.String("graph", "assets/Konung/GRAPH.RES", "path to GRAPH.RES")
+	exePath := flag.String("exe", "assets/Konung/konung.exe", "path to konung.exe (equipment overlay tables, with -game)")
 	objectsPath := flag.String("objects", "assets/Konung/OBJECTS.RES", "path to OBJECTS.RES")
 	terrainOnly := flag.Bool("terrain", false, "render the terrain layer only")
-	gamePath := flag.String("game", "assets/Konung/GAME.0", "GAME.N start state for characters and creatures (empty = none)")
+	gamePath := flag.String("game", "", "GAME.N start state to also draw characters and creatures, e.g. assets/Konung/GAME.0 (Volk); default: map content only")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: map-render [-graph GRAPH.RES] <KONUNG.N> <out.png>\n       map-render [-graph GRAPH.RES] [-dir assets/Konung] -all <outdir>")
 		flag.PrintDefaults()
@@ -54,6 +56,13 @@ func main() {
 				fail(err)
 			}
 			if r.game, err = konunggame.Parse(data); err != nil {
+				fail(err)
+			}
+			exe, err := os.ReadFile(*exePath)
+			if err != nil {
+				fail(err)
+			}
+			if r.tables, err = resource.NewExeTables(exe); err != nil {
 				fail(err)
 			}
 			// The game opens GAME.<hero model>, so the player shows model N.
@@ -86,6 +95,7 @@ type renderer struct {
 	tiles          []*image.RGBA
 	terrainOnly    bool
 	game           *konunggame.Game
+	tables         *resource.ExeTables
 }
 
 type mapInfo struct {
@@ -136,7 +146,7 @@ func (r *renderer) renderOne(mapPath, outPath string) (mapInfo, error) {
 				return mapInfo{}, err
 			}
 			for _, p := range r.game.OnMap(n, grid.Blocked) {
-				es, x, y, sx, sy, depth, err := p.LoadSprite(r.objects, r.graph)
+				es, x, y, sx, sy, depth, err := r.game.LoadSprite(p, r.objects, r.graph, r.tables)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "%s: %v\n", mapPath, err)
 					info.EntityErrors++
@@ -230,6 +240,6 @@ figcaption{margin-top:6px}
 <p>Terrain, flat decorations, shadows and static objects (no characters, animation, or lighting). Click a map for the full-size PNG.</p>
 <div class="grid">{{range .Maps}}
 <figure><a href="{{.File}}"><img src="{{.File}}" loading="lazy" alt="{{.Name}}"></a>
-<figcaption><b>{{.Name}}</b> — {{.Width}}×{{.Height}} px, rows 0–{{.LastRow}}, cols 0–{{.LastCol}}, {{.Decorations}} decorations, {{.Objects}} objects{{if .ObjectErrors}}, {{.ObjectErrors}} undecodable{{end}}, {{.Entities}} characters/creatures{{if .EntityErrors}}, {{.EntityErrors}} undecodable{{end}}</figcaption></figure>{{end}}
+<figcaption><b>{{.Name}}</b> — {{.Width}}×{{.Height}} px, rows 0–{{.LastRow}}, cols 0–{{.LastCol}}, {{.Decorations}} decorations, {{.Objects}} objects{{if .ObjectErrors}}, {{.ObjectErrors}} undecodable{{end}}{{if or .Entities .EntityErrors}}, {{.Entities}} characters/creatures{{if .EntityErrors}}, {{.EntityErrors}} undecodable{{end}}{{end}}</figcaption></figure>{{end}}
 </div>
 `))

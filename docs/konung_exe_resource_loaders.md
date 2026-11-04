@@ -40,7 +40,7 @@ At `0x1ED8B6`, the bytes do not form a valid block header. At `0x1EE8B6`, there 
 
 The 64 KiB gap between `0x1ED8B6` and `0x1EE8B6` remains unexplained. CTPAX-X's source describes Type 0 metadata with 2,960 16-bit values, 1,536 32-bit offsets, and 3,840 more 16-bit values. The corresponding 19,744-byte metadata layout fits all 27 blocks, and each block has populated entries in the offset table. Swapping adjacent image/shadow offsets yields monotonic image-frame starts; frame payloads begin after the metadata and decode with the existing indexed-RLE helper. All 14,067 frames across these blocks decode successfully.
 
-The catalog extractor exports each complete Type 0 block, including its header, to `output/site/sprites/raw/GRAPH.T0/block_NNN.bin` and its decoded frames to the grouped `GRAPH.T0` gallery. The `type0.tsv` inventory records source offset, total and payload sizes, metadata size, remaining image-data bytes, populated offset count, block end, decoded frame count, and decode failures. Palette 2 is used only as a visual preview because the game's palette assignment for these blocks is not verified. Blocks 0–2 show adult human-like animated figures and are candidates for the warrior art, but no particular block has yet been matched to the village chief in the provided screenshot.
+The catalog extractor exports each complete Type 0 block, including its header, to `output/site/sprites/raw/GRAPH.T0/block_NNN.bin` and its decoded frames to the grouped `GRAPH.T0` gallery. The `type0.tsv` inventory records source offset, total and payload sizes, metadata size, remaining image-data bytes, populated offset count, block end, decoded frame count, and decode failures. Palette 2 is used only as a visual preview because the game's palette assignment for these blocks is not verified. The loader puts blocks 0–2 (the three character **bodies**, models 0–2) at `0x007145B4` and blocks 3–26 (24 **equipment overlays**) at `0x006A09F4`; see [the equipment notes](konung_game_format.md#equipment-overlays-verified).
 
 ## Map entity and warrior model initialization
 
@@ -94,6 +94,10 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00A3E684`, `0x00A3E694` | globals | Player group pointer, hero entity pointer | [GAME.N](konung_game_format.md) |
 | `0x00A3E657` | global | Selected `GAME.N` number | [GAME.N](konung_game_format.md) |
 | `0x00439BA0` | routine | Fine-grid row/col → world pixel (cell centre) | [GAME.N](konung_game_format.md) |
+| `0x004281A4` | routine | Equipment overlay draw for Type 0 bodies | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
+| `0x006A09F4` | buffer | 24 equipment overlay blocks (`GRAPH.RES` Type 0 blocks 3–26), `0x4D28` each | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
+| `0x0067AC34` | buffer | `GAME.N` items, 8192 × 16 bytes | [GAME.N](konung_game_format.md) |
+| `0x00459BEC`, `0x00462E1C`, `0x00465DCC` | data | Item type → overlay (64 B/type); slot draw order per facing; overlay palettes | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
 | `0x00722D2C`, `0x007145B4` | buffers | Animated `OBJECTS.RES` metadata (`0x3228` per slot); Type 0 model metadata (`0x4D28` per block) | [GAME.N](konung_game_format.md) |
 | `0x00671440`, `0x00664C40` | buffers | `LIGHTS.N` data: `0x3200` bytes then `0xC800` bytes; both zero-filled if the file is missing | map loader `0x0043C23C`–`0x0043C2BC` |
 | `0x00A3E6F8`, `0x00A3E6FC` | globals | Screen origin X/Y used by the terrain pass | terrain draw pass |
