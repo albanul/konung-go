@@ -24,7 +24,19 @@ The executable uses `MENU800R.RES` and `GRAPH.RES` from `assets/Konung/`. It dec
 * Frame 0 is drawn as the full-screen background.
 * Frame 2 is a small blue UI marker. It is not the mouse pointer, and the current menu does not draw it separately.
 * The six menu button pairs begin at frame 3. For menu item `i` from 0 through 5, frame `3 + 2*i` is the normal state and frame `4 + 2*i` is the selected state. Thus the pairs are 3/4, 5/6, 7/8, 9/10, 11/12, and 13/14.
-* Button hitboxes use the normal frame's dimensions. Their left edge is `408 - width/2`; their top edge is `185 + 46*i`.
+* Button positions come from the executable's layout table at DGROUP VA `0x0045B314`, verified by tracing the draw routine at VA `0x0042F8D8`. Each button has 32 bytes: the 640×480 rectangle `(x1, y1, x2, y2)`, then the 800×600 rectangle. The routine blits frame `3+2i` (normal) or `4+2i` (selected) with its top-left at `(x1, y1)`. The 800×600 rectangles' sizes match the button frames, except "Return to game", which is 300 px wide against a 245 px frame. The Go menu uses each rectangle as the hitbox; that the game hit-tests with the same rectangle is inferred, not traced.
+
+| Button | 640×480 rect | 800×600 rect |
+|---|---|---|
+| 0 Вернуться в игру | 233,130–425,161 | 290,161–590,210 |
+| 1 Сохранить игру | 231,164–404,199 | 288,205–504,250 |
+| 2 Загрузить игру | 212,200–390,240 | 265,250–488,303 |
+| 3 Новая игра | 224,241–352,281 | 280,303–440,354 |
+| 4 Установки | 215,282–333,321 | 268,353–416,402 |
+| 5 Выход | 222,327–300,371 | 276,409–366,464 |
+
+* The original draws buttons 0 and 1 (Return to game, Save game) only while a game is running (`[0x00A3E728] != 0`); otherwise the loop starts at button 2. The Go menu currently still shows all six.
+* `MENU<width>R.RES` is loaded by `0x0043BEF8`: frame 0 is drawn as the background, and frames 1–14 go to the frame-pointer table `0x006304B8`, slots `0x1F2`–`0x1FF`. These slots are reused by other screens.
 
 The menu code checks for at least 15 frames. Frame 1 is currently unused. These observations apply to the current 800×600 menu layout; no 640×480 layout adaptation has been implemented here.
 

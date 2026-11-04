@@ -27,6 +27,19 @@ type Menu struct {
 
 type rect struct{ x, y, w, h int }
 
+// menuButtons800 is the 800x600 half of the main-menu layout table in
+// konung.exe (DGROUP VA 0x0045B314, 32 bytes per button: 640x480 x1,y1,x2,y2
+// then 800x600 x1,y1,x2,y2). The draw routine at VA 0x0042F8D8 blits each
+// button frame with its top-left at (x1, y1).
+var menuButtons800 = [menuItems][4]int{
+	{290, 161, 590, 210}, // Вернуться в игру
+	{288, 205, 504, 250}, // Сохранить игру
+	{265, 250, 488, 303}, // Загрузить игру
+	{280, 303, 440, 354}, // Новая игра
+	{268, 353, 416, 402}, // Установки
+	{276, 409, 366, 464}, // Выход
+}
+
 func New(resourcePath, graphPath string) (*Menu, error) {
 	ebiten.SetCursorMode(ebiten.CursorModeHidden)
 	frames, err := resource.LoadType5File(resourcePath)
@@ -61,8 +74,8 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	for i := 0; i < menuItems; i++ {
 		m.buttons[i][0] = ebiten.NewImageFromImage(frames[3+i*2])
 		m.buttons[i][1] = ebiten.NewImageFromImage(frames[4+i*2])
-		w, h := frames[3+i*2].Bounds().Dx(), frames[3+i*2].Bounds().Dy()
-		m.buttonRects[i] = rect{x: 408 - w/2, y: 185 + i*46, w: w, h: h}
+		b := menuButtons800[i]
+		m.buttonRects[i] = rect{x: b[0], y: b[1], w: b[2] - b[0], h: b[3] - b[1]}
 	}
 	return m, nil
 }
