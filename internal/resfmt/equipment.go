@@ -17,7 +17,10 @@ const (
 	dgroupSize = 0x0015F000
 
 	itemTypeTableVA = 0x00459BEC // 64 bytes per item type; int16 at +2 = overlay index
+	itemTypeNameVA  = 0x00459BB0 // the same records from their start: +0 CP866 name, +0x3E overlay
 	drawOrderVA     = 0x00462E1C // 8 facings x 6 int32 slot numbers (peaceful path)
+	combatOrderVA   = 0x0046281C // 4 actions x 8 facings x 6 int32 (combat stance)
+	bowOrderVA      = 0x00462B1C // same layout, combat stance with the bow drawn
 	overlayPalVA    = 0x00465DCC // 24 int32 palette byte offsets, one per overlay block
 	overlayCount    = 24
 	bodyBlocks      = 3 // GRAPH.RES Type 0 blocks 0..2 are bodies, 3..26 overlays
@@ -51,6 +54,32 @@ func (t *ExeTables) ItemOverlay(itemType int) int {
 func (t *ExeTables) DrawOrder(variant int) [6]int {
 	var out [6]int
 	b := t.at(drawOrderVA + (variant&7)*0x18)
+	for i := range out {
+		out[i] = int(int32(binary.LittleEndian.Uint32(b[i*4:])))
+	}
+	return out
+}
+
+// ItemTypeName returns the CP866 name of an item type (record start
+// 0x00459BB0 + type*64, the same records whose +0x3E word ItemOverlay reads).
+func (t *ExeTables) ItemTypeName(itemType int) []byte {
+	if itemType < 0 || itemType > 255 {
+		return nil
+	}
+	return t.CString(itemTypeNameVA + itemType*64)
+}
+
+// CombatDrawOrder returns the equipment slot draw order used while the
+// combat-stance bit (entity +3 bit 0x04) is set (VA 0x004281B3): action is
+// 3 for type 1 (walk), 2 for type 5, 1 for type 4, else 0; bow selects the
+// table for a drawn bow (0x00462B1C) instead of 0x0046281C.
+func (t *ExeTables) CombatDrawOrder(action, variant int, bow bool) [6]int {
+	va := combatOrderVA
+	if bow {
+		va = bowOrderVA
+	}
+	var out [6]int
+	b := t.at(va + (action&3)*0xC0 + (variant&7)*0x18)
 	for i := range out {
 		out[i] = int(int32(binary.LittleEndian.Uint32(b[i*4:])))
 	}

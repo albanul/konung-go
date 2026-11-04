@@ -98,6 +98,15 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x006A09F4` | buffer | 24 equipment overlay blocks (`GRAPH.RES` Type 0 blocks 3–26), `0x4D28` each | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
 | `0x0067AC34` | buffer | `GAME.N` items, 8192 × 16 bytes | [GAME.N](konung_game_format.md) |
 | `0x00459BEC`, `0x00462E1C`, `0x00465DCC` | data | Item type → overlay (64 B/type); slot draw order per facing; overlay palettes | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
+| `0x00459BB0` | data | Item type table, 64 B/type: CP866 name, 9 `int16` stats, overlay at `+0x3E` | [GAME.N](konung_game_format.md#inventory-and-items-verified) |
+| `0x0046281C`, `0x00462B1C` | data | Combat-stance equipment draw order: 4 actions × 8 facings × 6 `int32` (bow-drawn variant) | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
+| `0x0042179C` | routine | Toggle combat stance of the selection `0x0083B93C` (Space, HUD hotspot 2) | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |
+| `0x00421698` | routine | Whole party into combat stance (key A, HUD hotspot 5) | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |
+| `0x0042192C` | routine | Select weapon mode `+0x12` (keys 1/2/3 → 2/0/1; HUD hotspot 1 → cycle) | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |
+| `0x004227A0` | routine | Release an entity's items (equipment `+0x66`, bag `+0x72`, `+0xB2`) | [GAME.N](konung_game_format.md#inventory-and-items-verified) |
+| `0x00437301` | code | Keyboard switch of the in-game key handler | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |
+| `0x004392F4`, `0x00439A28` | routines | HUD hotspot id under the cursor; RLE hotspot-map lookup (maps `0x004577A0`/`0x004543DC` for 800×600) | [interface](konung_interface_res.md#hud-hotspots-verified) |
+| `0x00422864` | routine | HUD click handler: switch on the hotspot id | [interface](konung_interface_res.md#hud-hotspots-verified) |
 | `0x0042D21A` (in loader) | routine | `INTR<width>R.RES` loader: table → `0x006304B8`, data → `[0x00A3E6B8]` | [interface](konung_interface_res.md) |
 | `0x0042D574` | routine | Party portrait + HP bar draw for one entity (cells `0x0045AF70`) | [interface](konung_interface_res.md#party-hud-portrait-routine-0x0042d574-verified-against-code-and-data) |
 | `0x0042DA30`, `0x004290D8` | routines | HUD panel buttons: draw (positions `0x0045AF00`) / set slot bytes `0x00A3E090..96` | [interface](konung_interface_res.md) |

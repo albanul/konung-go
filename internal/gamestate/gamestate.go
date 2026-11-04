@@ -38,25 +38,28 @@ type Group struct {
 // Entity is a 256-byte entity record (fields that are understood).
 type Entity struct {
 	Index         int
-	Type          int    // +0x00 (signed): action / animation set
-	Variant       int    // +0x01 (signed): facing direction
-	Flags3        byte   // +0x03; bit 0x80 = not drawn
-	Flags4        byte   // +0x04; bit 0x40 = animated OBJECTS.RES model
-	Row, Col      int    // +0x08, +0x0A; 0,0 = placed at runtime around the group
-	Step          int    // +0x10: animation step (the variant +0x01 is the facing direction)
-	WeaponMode    int    // +0x12: HUD weapon button (VA 0x0042911A)
-	Poison        int    // +0x50 int16: non-zero while poisoned (HP bar colour, VA 0x0042D977)
-	HP            int    // +0x5C int16: health; HPFull (1600) = 100 %
-	Model         int    // +0xD6 (signed): OBJECTS slot or GRAPH Type 0 block
-	PaletteOffset uint32 // +0xD8
-	NameIndex     int    // +0xD4: first name (resfmt.FirstNamesVA); set by hero selection for the hero
-	Nickname      int    // +0xD5: second name part (resfmt.NicknamesVA), 0 = none
-	Level         int    // +0x33: level shown in the status line
-	Stats         [4]int // words +0x58, +0x5E, +0x54, +0x62: Хар, Сил, Лов, Вын (status line, 0x00431A94)
-	Skills        [5]int // words +0x48, +0x4C, +0x42, +0x46, +0x4A: healing, smithing, trade, building, curios
-	Dialogue      int    // +0xD0: dialogue opened on click (VA 0x004364F0); NoDialogue = none
-	Group         int    // owning group index
-	Slots         [8]int // +0x66: item indices per equipment slot (0 = empty); slots 0..5 are drawn
+	Type          int     // +0x00 (signed): action / animation set
+	Variant       int     // +0x01 (signed): facing direction
+	Flags2        byte    // +0x02: action state bits (0x40 idle, 0x48 walking to +0x0C/+0x0E); see stance.go
+	Flags3        byte    // +0x03; bit 0x80 = not drawn, bit 0x04 = combat stance (InStance)
+	Flags4        byte    // +0x04; bit 0x40 = animated OBJECTS.RES model
+	Row, Col      int     // +0x08, +0x0A; 0,0 = placed at runtime around the group
+	Step          int     // +0x10: animation step (the variant +0x01 is the facing direction)
+	WeaponMode    int     // +0x12: active weapon = equipment slot WeaponAxe/WeaponBow/WeaponBlade (SelectWeapon)
+	Poison        int     // +0x50 int16: non-zero while poisoned (HP bar colour, VA 0x0042D977)
+	HP            int     // +0x5C int16: health; HPFull (1600) = 100 %
+	Model         int     // +0xD6 (signed): OBJECTS slot or GRAPH Type 0 block
+	PaletteOffset uint32  // +0xD8
+	NameIndex     int     // +0xD4: first name (resfmt.FirstNamesVA); set by hero selection for the hero
+	Nickname      int     // +0xD5: second name part (resfmt.NicknamesVA), 0 = none
+	Level         int     // +0x33: level shown in the status line
+	Stats         [4]int  // words +0x58, +0x5E, +0x54, +0x62: Хар, Сил, Лов, Вын (status line, 0x00431A94)
+	Skills        [5]int  // words +0x48, +0x4C, +0x42, +0x46, +0x4A: healing, smithing, trade, building, curios
+	Dialogue      int     // +0xD0: dialogue opened on click (VA 0x004364F0); NoDialogue = none
+	Group         int     // owning group index
+	Equipment     [6]int  // +0x66 words: worn items (0 = empty), drawn as overlays; see EquipAxe..EquipShield
+	Bag           [32]int // +0x72 words: carried items (0 = empty)
+	Extra         [5]int  // +0xB2 words: five more item slots, meaning not traced (0 = empty)
 }
 
 // Game holds the decoded groups (index 0..199) and entities.
@@ -112,6 +115,7 @@ func Parse(data []byte) (*Game, error) {
 			Index:         i,
 			Type:          int(int8(e[0])),
 			Variant:       int(int8(e[1])),
+			Flags2:        e[2],
 			Flags3:        e[3],
 			Flags4:        e[4],
 			Row:           int(binary.LittleEndian.Uint16(e[0x08:])),
@@ -129,7 +133,9 @@ func Parse(data []byte) (*Game, error) {
 			Stats:         [4]int{u16(e, 0x58), u16(e, 0x5E), u16(e, 0x54), u16(e, 0x62)},
 			Skills:        [5]int{u16(e, 0x48), u16(e, 0x4C), u16(e, 0x42), u16(e, 0x46), u16(e, 0x4A)},
 			Group:         grp,
-			Slots:         slots(e[0x66:]),
+			Equipment:     [6]int(words(e[0x66:], 6)),
+			Bag:           [32]int(words(e[0x72:], 32)),
+			Extra:         [5]int(words(e[0xB2:], 5)),
 		})
 	}
 	g.Settlements = parseSettlements(data)
@@ -320,7 +326,8 @@ func (g *Game) HeroModelFromGame(n int, paletteOffset uint32) {
 	}
 }
 
-func slots(b []byte) (out [8]int) {
+func words(b []byte, n int) []int {
+	out := make([]int, n)
 	for i := range out {
 		out[i] = int(binary.LittleEndian.Uint16(b[i*2:]))
 	}
@@ -328,20 +335,43 @@ func slots(b []byte) (out [8]int) {
 }
 
 // Overlays returns the equipment overlay blocks to draw over a Type 0 body,
-// in the game's order for the entity's facing (VA 0x00428484: the path for
-// entity +3 bit 0x04 clear; the combat path with drawn weapons is not ported).
+// in draw order, as 0x004281A4 picks them. Out of the combat stance the
+// order is the facing's peaceful table (0x00428484). In the stance
+// (0x004281B3) the order depends on the action (CombatAction) and on whether
+// the bow is drawn; the active weapon's slot and, unless the bow is drawn, the
+// shield slot use overlay k+1, the drawn version of the item.
 func (g *Game) Overlays(e Entity, t *resfmt.ExeTables) []int {
 	if t == nil || e.Animated() {
 		return nil
 	}
+	order := t.DrawOrder(e.Variant)
+	drawn, shield := -1, -1
+	if e.InStance() {
+		action := CombatAction(e.Type)
+		bow := e.WeaponMode == WeaponBow && action != 2
+		order = t.CombatDrawOrder(action, e.Variant, bow)
+		if !bow {
+			shield = EquipShield
+			if e.WeaponMode != WeaponBow {
+				drawn = e.WeaponMode
+			}
+		} else {
+			drawn = WeaponBow
+		}
+	}
 	var out []int
-	for _, slot := range t.DrawOrder(e.Variant) {
-		if slot < 0 || slot >= len(e.Slots) || e.Slots[slot] == 0 {
+	for _, slot := range order {
+		if slot < 0 || slot >= len(e.Equipment) || e.Equipment[slot] == 0 {
 			continue
 		}
-		if k := t.ItemOverlay(g.ItemType(e.Slots[slot])); k >= 0 {
-			out = append(out, k)
+		k := t.ItemOverlay(g.ItemType(e.Equipment[slot]))
+		if k < 0 {
+			continue
 		}
+		if slot == drawn || slot == shield {
+			k++
+		}
+		out = append(out, k)
 	}
 	return out
 }

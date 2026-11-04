@@ -19,7 +19,7 @@ const (
 	// pathSearchLimit caps A* exploration so a click on an unreachable spot
 	// can't stall a frame.
 	pathSearchLimit = 30000
-	walkTypeOffset  = 1 // walk = idle type + 1 (type 6 idle, 7 walk), seen in the body records
+	walkTypeOffset  = 1 // walk = idle type + 1 (6 idle, 7 walk; 0/1 in the combat stance), seen in the body records
 )
 
 // walker is a character that walks the fine grid like the original: one cell
@@ -36,9 +36,12 @@ type walker struct {
 	stepT   int // ticks into the current cell step
 	phase   int // idle animation offset
 
-	// anims[0] = idle, anims[1] = walk; frames hold offsets from the cell
-	// centre. load fills missing entries on first use (nil = all preloaded).
-	anims [2][8][]sceneFrame
+	// Frames per look (stance, weapon), kind (0 idle, 1 walk) and facing,
+	// as offsets from the cell centre. load fills missing entries on first
+	// use for the current look; change look when the entity's appearance
+	// changes (combat stance, weapon).
+	look  look
+	anims map[animKey][]sceneFrame
 	load  func(kind, dir int) []sceneFrame
 
 	blocked   func(mapdata.Cell) bool // cells this walker may not path through
@@ -47,13 +50,35 @@ type walker struct {
 	searchCap int
 }
 
+// look is what selects an entity's frames besides kind and facing: its
+// animation set (+0, combat 0–5 or peaceful 6–11), stance and weapon.
+type look struct {
+	typ, weapon int
+	stance      bool
+}
+
+func lookOf(e gamestate.Entity) look {
+	return look{typ: e.Type, weapon: e.WeaponMode, stance: e.InStance()}
+}
+
+type animKey struct {
+	look      look
+	kind, dir int
+}
+
 // framesFor returns the frames for kind (0 idle, 1 walk) in the current
-// facing, loading them on first use.
+// look and facing, loading them on first use.
 func (w *walker) framesFor(kind int) []sceneFrame {
-	if w.anims[kind][w.dir] == nil && w.load != nil {
-		w.anims[kind][w.dir] = w.load(kind, int(w.dir))
+	k := animKey{w.look, kind, int(w.dir)}
+	f, ok := w.anims[k]
+	if !ok && w.load != nil {
+		if w.anims == nil {
+			w.anims = map[animKey][]sceneFrame{}
+		}
+		f = w.load(kind, int(w.dir))
+		w.anims[k] = f
 	}
-	return w.anims[kind][w.dir]
+	return f
 }
 
 // walkTo plans a path to the free cell nearest to goal. A walker already
@@ -160,12 +185,15 @@ func (w *walker) frame(tick int) (sceneFrame, bool) {
 }
 
 // entityLoader returns a lazy loader of idle/walk frames for an entity, with
-// equipment, as offsets from its cell centre. Errors leave the entry empty.
-func entityLoader(game *gamestate.Game, p gamestate.Placed, objects, graph []byte, t *resfmt.ExeTables,
+// equipment, as offsets from its cell centre. cur returns the entity's
+// current state (stance, weapon); its type is the idle type of the current
+// animation set. Errors leave the entry empty.
+func entityLoader(game *gamestate.Game, p gamestate.Placed, cur func() gamestate.Entity, objects, graph []byte, t *resfmt.ExeTables,
 	upload func(*resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image), onErr func(error)) func(kind, dir int) []sceneFrame {
 	return func(kind, dir int) []sceneFrame {
 		q := p
-		q.Type, q.Variant, q.Step = p.Type+kind*walkTypeOffset, dir, 0
+		q.Entity = cur()
+		q.Type, q.Variant, q.Step = q.Type+kind*walkTypeOffset, dir, 0
 		anim, err := game.LoadAnimation(q, objects, graph, t)
 		if err != nil {
 			onErr(fmt.Errorf("entity %d type %d dir %d: %w", p.Index, q.Type, dir, err))

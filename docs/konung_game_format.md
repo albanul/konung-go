@@ -50,15 +50,19 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 |---|---|---|
 | `+0x00` | `int8` | type = action / animation set (animated models use `type − 6` when ≥ 6, `0x0041409A`) |
 | `+0x01` | `int8` | variant = **facing direction** (8 per type) |
-| `+0x03` | byte | bit `0x80`: not drawn (shadow and draw passes skip it) |
+| `+0x02` | byte | action state bits: `0x40` idle, `0x48` walking to `+0x0C`/`+0x0E` (village AI); bit `0x04` cleared when leaving the bow ([weapons](#weapons-and-combat-stance-verified)) |
+| `+0x03` | byte | bit `0x80`: not drawn (shadow and draw passes skip it); bit `0x04`: **combat stance** |
 | `+0x04` | byte | bit `0x40`: animated `OBJECTS.RES` model, otherwise `GRAPH.RES` Type 0; bit `0x80`: dead (HUD); bits `0x07`: portrait face; `0x51`/`0x52` = child/woman (village AI) |
 | `+0x08` | `uint16` | fine-grid row; `0` together with `+0x0A` = `0` means placed at runtime |
 | `+0x0A` | `uint16` | fine-grid column |
 | `+0x10` | byte | **animation step**, advanced by `0x00413DE4` until it reaches the count in `+0xD7` |
 | `+0x33` | byte | level (status line «Уров:») |
 | `+0x42`, `+0x46`, `+0x48`, `+0x4A`, `+0x4C` | `uint16` | skills: trade, building, healing, curios, smithing (status-line phrases above 30 / 4 / 100 / 10 / 4) |
-| `+0x12` | byte | weapon mode; selects HUD button 0 (`0x0042911A`); Volk = 2 |
+| `+0x12` | byte | **weapon mode** = active weapon slot: 0 axe/club, 1 bow, 2 blade; selects HUD button 0's image (`0x0042911A`); Volk = 2 |
 | `+0x50` | `int16` | non-zero while poisoned (HP bar colour) |
+| `+0x66` | 6 × `uint16` | **equipment**: item indices for slots 0–5 (0 = empty), drawn as overlays |
+| `+0x72` | 32 × `uint16` | **bag**: carried item indices (0 = empty) |
+| `+0xB2` | 5 × `uint16` | five more item indices, meaning not traced |
 | `+0x5C` | `int16` | **HP**; 1600 = full (HUD bar divides by `0x640`); portrait state thresholds 1200/800/400 ([HUD](konung_interface_res.md)) |
 | `+0x54`, `+0x58`, `+0x5E`, `+0x62` | `uint16` | stats Лов, Хар, Сил, Вын (status line of party members) |
 | `+0xD0` | byte | **dialogue ID** opened when the player clicks the entity (`0x004364F0`); `0xFF` = no dialogue |
@@ -95,19 +99,60 @@ Each (type, variant) has a record of `int16` words: `[count, frame index for ste
 
 `meta` is the block as stored in the file, including its 8-byte tag/size header (the runtime replaces `+4` with the data pointer). Image position = world position + image dx/dy (`0x00414277`). The shadow (pair dword 0, skipped when −1) goes into the same merged 50% shadow pass as static objects, at world position + shadow dx/dy (`0x004267BD`). Entities are depth-sorted with static objects.
 
+## Inventory and items (verified)
+
+Each entity owns its items directly: **6 equipment slots** at `+0x66`, a **32-item bag** at `+0x72` and **5 more slots** at `+0xB2` (all `uint16` item indices, 0 = empty). The item-release loop at `0x004227A0` walks exactly these three ranges and marks each item free (`item +0 = 0xFF`). No party-wide inventory has been seen.
+
+| Equipment slot | Content | Evidence |
+|---|---|---|
+| 0 | axe / club (weapon mode 0) | «Дубина», «Бердициум» in `GAME.0` |
+| 1 | bow (weapon mode 1) | «Пехотный лук» |
+| 2 | knife / sword (weapon mode 2) | «Нож» (Volk), «Спата» |
+| 3, 4, 5 | armour, helmet, shield | «Доспех кожаный», «Шлем кожаный», «Деревянный щит» |
+
+The slot meaning of 0–2 is verified by `0x0042192C` (mode *m* requires slot *m*); 3–5 by the item names and by the stance draw (slot 5 is drawn as a raised shield).
+
+**Item record (16 bytes, `GAME.N` section 1).** Only `+3` is confirmed by code.
+
+| Offset | Type | Meaning |
+|---|---|---|
+| `+0x00` | byte | **hypothesis:** item category. Equals the slot index for equipped items; bag items show 9 («Палица»), 11 (bows), 12 (arrows «медные стрелы»). `0xFF` = free (`0x004227A0`). |
+| `+0x03` | byte | item type (index into the type table below), verified by `0x004281A4` |
+| `+0x04`, `+0x08` | `float32` | **hypothesis:** current / maximum condition (e.g. 16.0 / 16.0) |
+
+**Item type table `0x00459BB0 + type*64`.** `+0x00`: CP866 name (NUL-terminated); `+0x2C..+0x3D`: nine `int16` stats (not traced); `+0x3E`: overlay `k` (−1 = invisible), read by `0x004281A4` as `int16[0x00459BEE + type*64]`. Examples: 0x12 «Нож» (overlay 4), 0x15 «Дубина», 0x1A «Клееный лук», 0x22 «Доспех кожаный», 0x30 «Деревянный щит», 0x34 «Шлем кожаный». Code: `resfmt.ExeTables.ItemTypeName`, `ItemOverlay`.
+
+`GAME.0`: Volk has only the knife equipped (slot 2) and carries a glued bow and five «Палица» in the bag. So keys 2 and 3 do nothing for him until a bow or axe is equipped; equipping needs the (not yet ported) inventory screen.
+
+## Weapons and combat stance (verified)
+
+**Controls.** The keyboard switch (compare chain `0x00437301`–`0x00437368`): Space (`0x20`) → `0x0042179C`; `1` → `0x0042192C(2)`; `2` → `(0)`; `3` → `(1)`; `A` (`0x41`, when `0x00A3E754` = 0, `0x00436DB0`) → `0x00421698`. HUD hotspots ([interface](konung_interface_res.md#hud-hotspots-verified)): 1 (button 0, weapon) → `0x0042192C(−1)`; 2 (button 1, stance) → `0x0042179C`; 5 → `0x00421698`.
+
+**Stance toggle `0x0042179C`.** Works on the selection list `0x0083B93C` (up to 10 entity pointers, ends at the first null). The **first** selected entity decides: bit `0x04` of its `+3` clear → everyone enters, else everyone leaves. Entities that are dead (`+4` bit `0x80`, type 3/9) are skipped.
+
+* Enter (if not in stance): `type −= 6` (peaceful set 6–11 → combat set 0–5), `+3 |= 0x04`.
+* Leave (if in stance): `type = 6` when `type > 3` (an attack ends in idle), else `type += 6`; `+2 &= 0xFA`, becoming `0x40` if 0; clear the bit.
+* Walking entities (type 7/1) re-init their model (`0x00414078`), others restart their action (`0x004143DC(e, type)`). Then the HUD stance button image becomes 10 (stance) or 15.
+
+**Whole party `0x00421698`.** For every living party member: `+6 = 0`, `+2 = 0x44` (bow) or `0x41`, `+0x14 = 0xFF`, and enter the stance as above. Not ported (the port's `A` scrolls the camera).
+
+**Weapon select `0x0042192C(mode)`.** For the selection (10 entries if `0x00A3E754` ≠ 0, else the first only; `0x00A3E754` not traced): modes 0–2 set `+0x12 = mode` only if equipment slot *mode* is non-empty. Any other mode cycles 0 → 1 → 2 → 0, skipping empty slots (nothing happens with all three empty). Afterwards, if `+0x12` ≠ 1 and `+2` bit `0x04` is set, the bit is cleared and `0x00414AB4` (not traced) is called.
+
+**Combat animation types.** 0 idle, 1 walk, 3 dead (combat set; +6 for peaceful). From the action sounds in `0x004143DC` (jump table `0x00414768`): 2/8 play the model's cry `model*8+0x24` (hypothesis: hit), 3/9 `model*8+0x22` (death), 4 sound 3, 5 sound 8 with the blade else 2 (hypothesis: 4/5 are attacks). Not verified visually.
+
 ## Equipment overlays (verified)
 
 Type 0 bodies wear equipment drawn as overlay layers by `0x004281A4`, called right after the body blit (`0x0042739B` / `0x004273DD`).
 
 * **Blocks.** `GRAPH.RES` Type 0 blocks 0–2 are the three **bodies** (loaded to `0x007145B4`); blocks 3–26 are 24 **equipment overlays** (loaded to `0x006A09F4`). Each overlay gets a fixed palette from the exe table `0x00465DCC[k]` (loader `0x0043B797`): `2,2,2,2,4,4,3,3,3,4,4,4,4,4,4,4,4,4,2,2,5,5,5,5`.
-* **Slots.** Entity words `+0x66 + 2*slot` (slots 0–7) hold item indices into the items section; 0 = empty. Only slots 0–5 are drawn.
-* **Item → overlay.** `type = items[i*16 + 3]`; overlay `k = int16[0x00459BEE + type*64]` (−1 = invisible).
-* **Order.** With entity `+3` bit `0x04` clear, the slots are drawn in the order of `0x00462E1C + variant*0x18` (6 `int32`, e.g. facing 5: `3,2,5,4,1,0`). With the bit set (`0x004281B3`), action-dependent tables `0x0046281C`/`0x00462B1C` are used and the slot equal to entity byte `+0x12` (or 5) uses overlay `k+1`, apparently a drawn weapon. That path is not ported.
+* **Slots.** Equipment slots 0–5 (`+0x66`); empty slots and items with overlay −1 are skipped.
+* **Peaceful order** (`+3` bit `0x04` clear, `0x00428484`): `0x00462E1C + variant*0x18` (6 `int32`, e.g. facing 5: `3,2,5,4,1,0`).
+* **Stance order** (`0x004281B3`): action *a* = 3 for type 1, 2 for type 5, 1 for type 4, else 0. With weapon mode 1 (bow) and *a* ≠ 2 the table is `0x00462B1C + a*0xC0 + variant*0x18` and only the bow slot (1) is drawn with overlay **`k+1`**. Otherwise the table is `0x0046281C + …` (same layout) and the weapon slot (`+0x12`, unless it is 1) and the shield slot 5 use `k+1`. Overlay `k+1` is the drawn version of the item (raised club, shield on the arm, drawn knife), confirmed by rendering.
 * **Frame and position.** The overlay frame comes from the overlay block's own `(type, variant, step)` sequence. The position is world position + the body's per-step attachment point (`int16 x, y` at `body + 0x828 + type*0x180 + variant*0x30 + step*4`) + the overlay anchor's image dx/dy (`overlay + 0x2F28 + type*0x300 + variant*0x60 + step*8`, words `+4`/`+6`).
 
-Code: `resfmt.ExeTables` (reads the three exe tables from `konung.exe`), `resfmt.ComposeEquipment`, `Game.Overlays`. The port composites body and overlays into one image per step.
+Code: `resfmt.ExeTables` (`ItemOverlay`, `DrawOrder`, `CombatDrawOrder`, `OverlayPalette`), `resfmt.ComposeEquipment`, `Game.Overlays`; stance and weapons in `gamestate/stance.go` (`ToggleStance`, `SelectWeapon`, `CombatAction`). The port composites body and overlays into one image per step. The scene's selection is the hero alone: Space and the HUD stance button toggle, `1`/`2`/`3` and the HUD weapon button select.
 
-`KONUNG.1` in `GAME.0`: villagers wear helmets, armour, axes and shields (e.g. villager 355: overlays 17, 9, 20, 0 by facing order). Volk's starting entity has items in slots 2, 6, 7. Only slot 2 is drawn (overlay 4); slots 6–7 are carried items. The new-game code does not overwrite the slots, so this is Volk's starting kit.
+`KONUNG.1` in `GAME.0`: villagers wear helmets, armour, axes and shields (e.g. villager 355: overlays 17, 9, 20, 0 by facing order). The new-game code does not overwrite the hero's items, so `GAME.0`'s entity 0 is Volk's starting kit.
 
 ## NPC AI (village AI traced)
 
@@ -173,7 +218,7 @@ Validation: `go test ./internal/gamestate` checks the player group, the 50 drawa
 * The game's animation tick rate. The scene uses 10 steps/s and offsets each entity's phase so neighbours don't move in lockstep; both are presentation choices.
 * Exact runtime spawn positions for groups whose entities have no coordinates.
 * Group fields `+0x0A`, `+0x0E`, `+0x12`, `+0x16`, `+0x1D` (calm/alarm), `+0x1E` beyond bits `0x40` (creature AI) / `0x80` (village AI); the conditional spawn check at `0x00411DE4`.
-* The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation. Actions other than idle/walk, and the combat overlay path (`+3` bit `0x04`, drawn weapons), are not ported.
-* Item record fields other than the type byte.
+* The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation. Actions other than idle/walk (attacks, hits, death) are not ported; the combat stance and drawn weapons are.
+* Item record fields other than the type byte (`+0` category and `+4`/`+8` condition are hypotheses); the nine `int16` stats in the item type table (damage, weight, price?); the five slots at `+0xB2`; combat animation types 2, 4, 5; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
 * The other three `GAME.N` sections (items, groups, entities and settlements are decoded); settlement bytes outside the posts.
 * Creature AI `0x004123BC` (idle roaming, aggro, return home); the port uses a rectangle stand-in. Village alarm state (group `+0x1D` ≠ 0, `0x00416DA6`) and the `+4` bits `0x38` post path.

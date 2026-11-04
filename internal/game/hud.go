@@ -31,6 +31,23 @@ var portraitCells = [10][2]int{
 // buttonPos are the 7 panel buttons (0x0045AF00, same layout).
 var buttonPos = [7][2]int{{3, 340}, {1, 374}, {72, 372}, {1, 455}, {78, 457}, {1, 514}, {70, 514}}
 
+// Panel buttons with a ported action. The HUD click handler (0x00422864)
+// sends hotspot 1 (button 0) to the weapon routine 0x0042192C(-1) and
+// hotspot 2 (button 1) to the stance toggle 0x0042179C.
+const (
+	hudWeaponButton = 0
+	hudStanceButton = 1
+)
+
+// buttonAt returns the panel button under screen point (x, y), or -1, from
+// the game's hotspot map (ids 1..7 = buttons 0..6).
+func buttonAt(t *resfmt.ExeTables, x, y int) int {
+	if id := t.HUDHotspot800(x, y); id >= 1 && id <= len(buttonPos) {
+		return id - 1
+	}
+	return -1
+}
+
 type hud struct {
 	res      *resfmt.InterfaceRes
 	palettes [][256]color.RGBA

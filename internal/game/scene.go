@@ -235,12 +235,18 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
 		cell := mapdata.Cell{Row: p.Row, Col: p.Col}
 		s.occ[cell] = true
+		cur := func() gamestate.Entity { return p.Entity }
+		hero := p.Group == 0 && p.Index == game.Groups[0].First && len(s.party) > 0 && s.party[0].Index == p.Index
+		if hero {
+			cur = func() gamestate.Entity { return s.party[0] } // stance and weapon change at runtime
+		}
 		w := walker{
 			entity: p.Index, cell: cell, dir: mapdata.Direction(p.Variant & 7), phase: p.Index * 5,
-			load:    entityLoader(game, p, objectsData, graphData, tables, uploadSprite, logErr),
+			look:    lookOf(p.Entity),
+			load:    entityLoader(game, p, cur, objectsData, graphData, tables, uploadSprite, logErr),
 			reserve: reserve, release: release,
 		}
-		if p.Group == 0 && p.Index == game.Groups[0].First {
+		if hero {
 			w.blocked, w.searchCap = s.blocked, pathSearchLimit
 			s.hero = &w
 			camX, camY = gamestate.WorldPos(p.Row, p.Col)
@@ -296,6 +302,37 @@ func (s *startScene) updateNPCs() {
 	}
 }
 
+// updateStance handles the combat-stance and weapon controls for the
+// selection, which in the port is the hero alone (the game's selection list
+// 0x0083B93C holds up to 10 party members): Space and the HUD stance button
+// call gamestate.ToggleStance (0x0042179C); keys 1/2/3 select the blade, the
+// axe/club and the bow, and the HUD weapon button cycles weapons
+// (gamestate.SelectWeapon, 0x0042192C).
+func (s *startScene) updateStance(mx, my int) {
+	if len(s.party) == 0 || s.party[0].Index != s.hero.entity {
+		return
+	}
+	hero := &s.party[0]
+	button := -1
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && !inView(mx, my) {
+		button = buttonAt(s.tables, mx, my)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
+		gamestate.ToggleStance([]*gamestate.Entity{hero})
+	}
+	for key, mode := range map[ebiten.Key]int{
+		ebiten.Key1: gamestate.WeaponBlade, ebiten.Key2: gamestate.WeaponAxe, ebiten.Key3: gamestate.WeaponBow,
+	} {
+		if inpututil.IsKeyJustPressed(key) {
+			gamestate.SelectWeapon(hero, mode)
+		}
+	}
+	if button == hudWeaponButton {
+		gamestate.SelectWeapon(hero, gamestate.WeaponCycle)
+	}
+	s.hero.look = lookOf(*hero)
+}
+
 // centerOn puts world point (x, y) at the centre of the game view (the part
 // of the screen the HUD frame leaves open).
 func (s *startScene) centerOn(x, y int) {
@@ -334,6 +371,7 @@ func (s *startScene) Update() {
 		if inpututil.IsKeyJustPressed(ebiten.KeyH) && len(s.party) > 0 {
 			s.party[0] = debugDamage(s.party[0])
 		}
+		s.updateStance(mx, my)
 		s.hero.update()
 	}
 	s.updateNPCs()
@@ -456,7 +494,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		if s.follow {
 			state = "on"
 		}
-		ebitenutil.DebugPrintAt(screen, "Click: move   F: camera follow "+state+"   H: test damage   Esc: menu", viewLeft+8, viewBottom-20)
+		ebitenutil.DebugPrintAt(screen, "Click: move   Space: battle stance   1/2/3: blade/axe/bow   F: camera follow "+state+"   H: test damage   Esc: menu", viewLeft+8, viewBottom-20)
 	}
 	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
 	if s.hovered >= 0 {
