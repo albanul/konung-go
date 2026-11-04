@@ -58,7 +58,9 @@ type startScene struct {
 	objects        []sceneObject // objects and entities, in depth order
 	shadowLayer    *ebiten.Image
 	camX, camY     int
-	tick           int
+	tick           int // game ticks (one per step)
+	frame          int // drawn frames (Update calls)
+	speed          int // 0x00A3E764
 
 	hero   *walker // nil when the player does not start on this map
 	npcs   []*npc  // every other character (see npcMode)
@@ -319,27 +321,39 @@ func (s *startScene) updateNPCs() {
 	}
 }
 
-// updateControls handles the hero's HUD buttons and keys. The selection is
-// the hero alone (the game's selection list 0x0083B93C holds up to 10 party
-// members). Space and the HUD stance button call gamestate.ToggleStance
-// (0x0042179C); keys 1/2/3 select the blade, the axe/club and the bow, and
-// the HUD weapon button cycles weapons (gamestate.SelectWeapon, 0x0042192C);
-// I and the HUD bag button toggle the character window (0x00424610), whose
-// bag strip scrolls with hotspots 120/121. Each action presses its button
-// like the game (0x004290AC). It reports whether a click was used.
-func (s *startScene) updateControls(mx, my int) (clicked bool) {
+// updateControls handles the hero's keys and clicks. The selection is the
+// hero alone (the game's selection list 0x0083B93C holds up to 10 party
+// members).
+//
+//   - Space / HUD stance button: gamestate.ToggleStance (0x0042179C); 1/2/3 and
+//     the HUD weapon button: gamestate.SelectWeapon (0x0042192C).
+//   - I / HUD bag button: character window (0x00424610); ~: the bag strip
+//     alone (0x004371D2). The bag arrows are hotspots 120/121.
+//   - Left click (0x00422933): HUD hotspots, window boxes and bag cells move
+//     items; on the map it walks there without picking up (0x004229F7,
+//     +3 &= 0xBF), or drops a held item on the ground at the hero's cell
+//     (0x004229BC → 0x004138C8).
+//   - Right click (0x004238EE): returns a held item; on a bag cell uses the
+//     item (gamestate.UseBagItem); on the map walks there and picks up on
+//     arrival (0x004239E3).
+//
+// The stance, weapon and window routines first return a held item
+// (0x00429194(1) at 0x004217BA, 0x00421948, 0x00424635); any click ends the
+// shovel's dig mode first.
+func (s *startScene) updateControls(mx, my int) {
 	if len(s.party) == 0 || s.party[0].Index != s.hero.entity {
-		return false
+		return
 	}
 	hero := &s.party[0]
+	left := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
+	right := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight)
 	button, spot := -1, 0
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+	if left || right {
 		spot = s.tables.HUDHotspot800(mx, my)
-		button = buttonAt(s.tables, mx, my)
-		clicked = !inView(mx, my) || (s.inv.open && (spot == hotspotBagLeft || spot == hotspotBagRight))
 	}
-	// The stance, weapon and window routines first return a held item
-	// (0x00429194(1) at 0x004217BA, 0x00421948, 0x00424635).
+	if left {
+		button = buttonAt(s.tables, mx, my)
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
 		s.hand.Return(hero)
 		gamestate.ToggleStance([]*gamestate.Entity{hero})
@@ -366,49 +380,98 @@ func (s *startScene) updateControls(mx, my int) (clicked bool) {
 		s.inv.toggle()
 		s.hud.press(hudBagButton, hudBagImage)
 	}
-	if s.inv.open && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		switch spot {
-		case hotspotBagLeft:
-			s.inv.scrollBy(*hero, -1, s.tick)
-		case hotspotBagRight:
-			s.inv.scrollBy(*hero, +1, s.tick)
-		default:
-			if s.windowClick(hero, mx, my, spot) {
-				clicked = true
-			}
-		}
+	if inpututil.IsKeyJustPressed(ebiten.KeyBackquote) && !s.inv.open {
+		s.inv.toggleQuick()
+	}
+	if left || right {
+		s.click(hero, mx, my, spot, right)
 	}
 	s.hero.look = lookOf(*hero)
-	return clicked
 }
 
-// windowClick routes a click in the open character window like the
-// hotspot routine (0x004395E6) and the click handler (0x00422864): a bag
-// cell (below the strip top, right of the first cell), the doll boxes
-// 8–18 (hotspot 19, the in-hand box, is not ported). It reports whether the
-// click hit the window's controls.
-func (s *startScene) windowClick(hero *gamestate.Entity, mx, my, spot int) bool {
-	st := &s.inv.strip
+// click routes one mouse click (button already handled above for the HUD).
+func (s *startScene) click(hero *gamestate.Entity, mx, my, spot int, right bool) {
+	if s.hand.Digging() {
+		s.hand.Cursor = gamestate.CursorPointer
+		if s.inv.strip.hit(mx, my) && s.inv.showStrip() && !right {
+			return // 0x00423412: a bag click only ends dig mode
+		}
+	}
+	if right && s.hand.Holding() {
+		s.hand.Return(hero) // 0x00423919
+		return
+	}
 	msg := 0
 	switch {
-	case mx > st.x0 && my > st.y && my < viewBottom:
-		msg = s.game.ClickBag(&s.hand, hero, s.tables, (mx-st.x0)/st.cellW+s.inv.scroll)
+	case !inView(mx, my):
+		return // HUD: buttons were handled by updateControls
+	case s.inv.showStrip() && (spot == hotspotBagLeft || spot == hotspotBagRight):
+		if !right {
+			dir := -1
+			if spot == hotspotBagRight {
+				dir = 1
+			}
+			s.inv.scrollBy(*hero, dir, s.frame)
+		}
+	case s.inv.showStrip() && s.inv.strip.hit(mx, my):
+		i := (mx-s.inv.strip.x0)/s.inv.strip.cellW + s.inv.scroll
+		if right {
+			msg = s.game.UseBagItem(&s.hand, hero, s.tables, i)
+			if s.hand.Digging() && s.inv.open {
+				s.inv.open = false // 0x00415504 closes the window; the strip stays
+				s.inv.quick = true
+			}
+		} else {
+			msg = s.game.ClickBag(&s.hand, hero, s.tables, i)
+		}
+	case s.inv.open:
+		if !right {
+			msg = s.windowClick(hero, spot)
+		}
+	case !right && s.hand.Holding():
+		s.dropHeld(hero)
+	default:
+		s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY))
+		s.pickIntent = right
+	}
+	if msg != 0 {
+		s.showMessage(s.tables.CString(msg))
+	}
+}
+
+// dropHeld puts the held item on the ground at the hero's cell (0x004138C8).
+// The game ignores a failure (full pile, 200 active piles): the item is lost.
+func (s *startScene) dropHeld(hero *gamestate.Entity) {
+	item := s.hand.Item
+	s.hand.Cursor = gamestate.CursorPointer
+	at, on := s.pileAt[s.hero.cell]
+	if !on {
+		if len(s.pileAt) >= gamestate.MaxActivePiles {
+			return
+		}
+		at = -1
+	}
+	if i, ok := s.game.DropItem(at, s.mapNumber, s.hero.cell.Row, s.hero.cell.Col, item); ok {
+		s.pileAt[s.hero.cell] = i
+	}
+}
+
+// windowClick handles a left click on the character window's doll boxes
+// (hotspots 8–18, click handler 0x00422864; 19, the in-hand box, is not
+// ported) and returns a message VA or 0.
+func (s *startScene) windowClick(hero *gamestate.Entity, spot int) int {
+	switch {
 	case spot >= 8 && spot <= 13:
 		slot := [6]int{gamestate.EquipHelmet, -1, gamestate.EquipShield, gamestate.EquipArmour,
 			gamestate.WeaponBow, gamestate.EquipAmmo}[spot-8]
 		if slot < 0 {
 			slot = gamestate.HandSlot(&s.hand, *hero, s.game)
 		}
-		msg = s.game.ClickEquipment(&s.hand, hero, s.tables, slot)
+		return s.game.ClickEquipment(&s.hand, hero, s.tables, slot)
 	case spot >= 14 && spot <= 18:
-		msg = s.game.ClickJewellery(&s.hand, hero, s.tables, spot-14)
-	default:
-		return false
+		return s.game.ClickJewellery(&s.hand, hero, s.tables, spot-14)
 	}
-	if msg != 0 {
-		s.showMessage(s.tables.CString(msg))
-	}
-	return true
+	return 0
 }
 
 // messageTicks is how long a status-line message stays: 0x0042FA0C sets the
@@ -416,13 +479,15 @@ func (s *startScene) windowClick(hero *gamestate.Entity, mx, my, spot int) bool 
 // the port counts animation steps.
 const messageTicks = 12 * ticksPerStep
 
-func (s *startScene) showMessage(m []byte) { s.msg, s.msgEnd = m, s.tick+messageTicks }
+func (s *startScene) showMessage(m []byte) { s.msg, s.msgEnd = m, s.frame+messageTicks }
 
-// cursorSprite is the GRAPH.RES Type 5 cursor to draw: over the HUD and the
-// character window the game shows the hand's sprite (0x00A3E790, 0x00428AC0);
-// the pointer otherwise (the map cursor rules are not ported).
+// cursorSprite is the GRAPH.RES Type 5 cursor to draw: the hand's sprite
+// (0x00A3E790, 0x00428AC0) over the HUD, the window and the bag strip, while
+// holding an item or digging; the pointer otherwise (the map cursor rules
+// are not ported beyond piles).
 func (s *startScene) cursorSprite() int {
-	if s.inv.open || s.hand.Holding() {
+	mx, my := ebiten.CursorPosition()
+	if !inView(mx, my) || s.inv.open || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
 		return s.hand.Cursor
 	}
 	if c, ok := s.pileUnderCursor(); ok && !s.occ[c] {
@@ -457,32 +522,27 @@ func (s *startScene) blocked(c mapdata.Cell) bool {
 }
 
 func (s *startScene) Update() {
-	s.tick++
-	s.hud.now = s.tick
+	s.frame++
+	s.hud.now = s.frame
 	mx, my := ebiten.CursorPosition()
 	if s.hero != nil {
 		if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 			s.follow = !s.follow
 		}
-		clicked := s.updateControls(mx, my)
-		// While the character window covers the view, clicks don't move the hero.
-		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && inView(mx, my) && !clicked && !s.inv.open {
-			s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY))
-			s.pickIntent = true // every plain map click (0x004239E3)
-		}
+		s.updateSpeed()
+		s.updateControls(mx, my)
 		if inpututil.IsKeyJustPressed(ebiten.KeyH) && len(s.party) > 0 {
 			s.party[0] = debugDamage(s.party[0])
 		}
-		s.hero.update()
-		if s.pickIntent && !s.hero.walking && len(s.hero.path) == 0 {
-			s.pickIntent = false
-			s.arrive()
+	}
+	// One drawn frame runs 1 + speed game ticks (0x00437849–0x004378CC);
+	// the extra ticks stop when the hero is dead.
+	for k := 0; k <= s.speed; k++ {
+		if k > 0 && len(s.party) > 0 && s.party[0].Dead() {
+			break
 		}
+		s.step()
 	}
-	if s.tick%walkTicksPerStep == 0 {
-		s.activatePiles()
-	}
-	s.updateNPCs()
 	if s.hero != nil {
 		if s.follow {
 			x, y := s.hero.position()
@@ -503,6 +563,37 @@ func (s *startScene) Update() {
 		s.camY += scrollSpeed
 	}
 	s.clampCamera()
+}
+
+// step advances the world by one game tick at the port's 60 Hz rate:
+// characters, the pick-up on arrival, pile respawn and the NPC AI.
+func (s *startScene) step() {
+	s.tick++
+	if s.hero != nil {
+		s.hero.update()
+		if s.pickIntent && !s.hero.walking && len(s.hero.path) == 0 {
+			s.pickIntent = false
+			s.arrive()
+		}
+	}
+	if s.tick%walkTicksPerStep == 0 {
+		s.activatePiles()
+	}
+	s.updateNPCs()
+}
+
+// Game speed 0x00A3E764: 0 normal, 1 double, 2 triple. Numpad + / −
+// (VK_ADD 0x6B at 0x00436FD2, VK_SUBTRACT 0x6D at 0x00436FF0); the port
+// also accepts = and − on the main keyboard.
+const maxSpeed = 2
+
+func (s *startScene) updateSpeed() {
+	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadAdd) || inpututil.IsKeyJustPressed(ebiten.KeyEqual) {
+		s.speed = min(maxSpeed, s.speed+1)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadSubtract) || inpututil.IsKeyJustPressed(ebiten.KeyMinus) {
+		s.speed = max(0, s.speed-1)
+	}
 }
 
 // visible reports whether a w*h image at world (x, y) intersects the viewport.
@@ -601,18 +692,21 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	if s.inv.open {
 		s.hovered = -1 // the window covers the characters
 	}
-	if s.hero != nil && !s.inv.open {
+	if s.hero != nil && !s.inv.showStrip() {
 		state := "off"
 		if s.follow {
 			state = "on"
 		}
-		ebitenutil.DebugPrintAt(screen, "Click: move   Space: stance   1/2/3: blade/axe/bow   I: inventory   F: follow "+state+"   H: test damage   Esc: menu", viewLeft+8, viewBottom-20)
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("L/R click: move/take   Space: stance   1/2/3: weapon   I, ~: bag   +/-: speed x%d   F: follow %s   Esc: menu", s.speed+1, state), viewLeft+8, viewBottom-20)
 	}
 	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
 	if s.inv.open && len(s.party) > 0 {
 		s.inv.draw(screen, s.hud, s.game, s.tables, s.party[0])
 	}
-	if s.tick < s.msgEnd {
+	if len(s.party) > 0 {
+		s.inv.drawQuick(screen, s.hud, s.game, s.tables, s.party[0])
+	}
+	if s.frame < s.msgEnd {
 		s.font.drawLine(screen, s.msg, viewLeft+10, viewBottom+5)
 	} else if _, ok := s.pileUnderCursor(); ok {
 		s.font.drawLine(screen, s.tables.CString(gamestate.MsgSomethingOnGround), viewLeft+10, viewBottom+5)

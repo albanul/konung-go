@@ -26,6 +26,10 @@ const (
 // Cursor sprites (GRAPH.RES Type 5) by hand state, 0x00A3E790.
 const (
 	CursorPointer = 4 // empty hand: the plain blade
+	// CursorDig is the shovel's mode (0x00415504 sets 0x00A3E790 = 7): the
+	// hand is empty; the next left or right click resets it (0x0042296C,
+	// 0x004238FB, 0x00423412) and continues as a normal click.
+	CursorDig = 7
 )
 
 // EquipAmmo is the slot argument of the ammunition box (entity +0xCC) in
@@ -47,8 +51,11 @@ type Hand struct {
 // NewHand returns an empty hand.
 func NewHand() Hand { return Hand{Cursor: CursorPointer} }
 
-// Holding reports whether an item is in the hand (cursor mode ≠ 4).
-func (h *Hand) Holding() bool { return h.Cursor != CursorPointer }
+// Holding reports whether an item is in the hand (cursor mode ≠ 4, 7).
+func (h *Hand) Holding() bool { return h.Cursor != CursorPointer && h.Cursor != CursorDig }
+
+// Digging reports the shovel's dig mode.
+func (h *Hand) Digging() bool { return h.Cursor == CursorDig }
 
 // cursorFor is 0x00425104: the cursor sprite for an item category.
 func cursorFor(category int) int {
@@ -115,8 +122,12 @@ func (g *Game) lift(h *Hand, e *Entity, from, item int) {
 
 // Return is 0x00429194: put the held item back where it came from. A bag
 // item goes to the front of the bag.
+//
+// In dig mode the game's routine would restore the stale source of the last
+// lifted item; the port only resets the cursor.
 func (h *Hand) Return(e *Entity) {
 	if !h.Holding() {
+		h.Cursor = CursorPointer
 		return
 	}
 	h.Cursor = CursorPointer
@@ -285,5 +296,31 @@ func (g *Game) ClickBag(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 		return MsgBagFull
 	}
 	h.Cursor = CursorPointer
+	return 0
+}
+
+// UseBagItem is the right click on bag slot i (0x00423E26, jump table
+// 0x00423F28 by category): gear (0–5) and arrows (12) are equipped at once
+// (lift, then ClickEquipment with the category as slot); a necklace (6) goes
+// to jewellery box 0; the shovel (misc type 0x18, 0x00415504) switches the
+// hand to CursorDig and the caller closes the window. Herbs (9,
+// 0x0041DB64) and other misc items (0x00414E64) are not ported; bracelets,
+// rings and category 10 do nothing. It returns a message VA or 0.
+func (g *Game) UseBagItem(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
+	item := e.Bag[i&31]
+	it, ok := g.Item(item)
+	if !ok {
+		return 0
+	}
+	switch c := it.Category; {
+	case c <= 5 || c == 12:
+		g.lift(h, e, fromBag, item)
+		return g.ClickEquipment(h, e, t, c)
+	case c == 6:
+		g.lift(h, e, fromBag, item)
+		return g.ClickJewellery(h, e, t, 0)
+	case c == 11 && it.Type == shovelType:
+		h.Cursor = CursorDig
+	}
 	return 0
 }

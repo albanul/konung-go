@@ -62,6 +62,20 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 
 **Messages** (`0x0042F9B8`): small font at (view left + 10, view bottom + 5), the status-line position; counter `0x00A3E84C` = 12 main-loop passes. The port shows them for 12 animation steps. Sounds (`0x0042A664`) are not ported.
 
+## Right click and the quick bag
+
+**Right click on a bag cell** (`0x00423E26`, jump table `0x00423F28` by category; `gamestate.Game.UseBagItem`). A held item is returned first (`0x00423919`).
+
+| Category | Action |
+|---|---|
+| 0–5, 12 | equip at once: lift from the bag, then `0x0041E500(category)` (with all its checks) |
+| 6 | lift, then jewellery box 0 (`0x0041E778(14)`) |
+| 7, 8, 10 | nothing |
+| 9 | use the herb, `0x0041DB64(e, 0, item)` (not ported) |
+| 11 | use the misc item, `0x00414E64(e, 0, item)` (jump table `0x00415ADC` by type; only the shovel, type 24, is ported: [dig mode](konung_ground_items.md#hover-and-pick-up)) |
+
+**Quick bag (`` ` ``/`~`, VK 0xC0, `0x004371D2`).** Only with no window open (`0x00A3E740` = 0). It toggles the bag strip (`0x0042F50C`) for the first selected member: if the strip already shows that member (`0x00A3E730`) it is hidden, otherwise the scroll resets and the strip is drawn. The strip covers the bottom of the game view, just above the status bar. Its cells and arrows work as in the window (hotspot routine `0x004395E6` tests `0x00A3E730`, not the window). The window toggle saves and restores the strip state (`0x00A3E760`), and the shovel leaves the strip open. While an item is held, a left click on the map drops it ([ground items](konung_ground_items.md#hover-and-pick-up)). Port: `charWindow.quick`.
+
 ## Derived values
 
 | Routine | Port | Rule |

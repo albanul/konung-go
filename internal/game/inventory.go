@@ -18,9 +18,10 @@ import (
 // port draws the map, then the HUD, then the window every frame.
 type charWindow struct {
 	open   bool
-	scroll int // first visible bag index (0x00A3E840), reset on open
-	arrow  int // arrow drawn pressed: -1 left, +1 right (0x0042F50C's argument)
-	until  int // tick until which the arrow stays pressed
+	quick  bool // ~: the bag strip alone (0x004371D2); restored when the window closes
+	scroll int  // first visible bag index (0x00A3E840), reset on open
+	arrow  int  // arrow drawn pressed: -1 left, +1 right (0x0042F50C's argument)
+	until  int  // tick until which the arrow stays pressed
 
 	layout resfmt.CharWindow
 	strip  bagStrip
@@ -65,11 +66,26 @@ func newCharWindow(h *hud, t *resfmt.ExeTables, large, small *gameFont) *charWin
 	return w
 }
 
-// toggle opens or closes the window, as 0x00424610 does.
+// toggle opens or closes the window, as 0x00424610 does. Closing restores
+// the strip's state from before the window (0x00A3E730 = 0x00A3E760).
 func (w *charWindow) toggle() {
 	w.open = !w.open
 	w.scroll, w.arrow = 0, 0
 }
+
+// toggleQuick shows or hides the bag strip alone (~, 0x004371D2: only with
+// no window open; showing resets the scroll).
+func (w *charWindow) toggleQuick() {
+	w.quick = !w.quick
+	w.scroll, w.arrow = 0, 0
+}
+
+// showStrip reports whether the bag strip is on screen.
+func (w *charWindow) showStrip() bool { return w.open || w.quick }
+
+// hit reports a point in the bag cells area as the hotspot routine tests it
+// (0x00439600: right of the first cell, between strip top and view bottom).
+func (b *bagStrip) hit(x, y int) bool { return x > b.x0 && y > b.y && y < viewBottom }
 
 // scrollBy moves the bag strip one cell (hotspots 120/121, 0x004235E4 and
 // 0x0042367F): left stops at 0; right only while the bag slot just past the
@@ -82,6 +98,13 @@ func (w *charWindow) scrollBy(e gamestate.Entity, dir, now int) {
 		w.scroll++
 	}
 	w.arrow, w.until = dir, now+pressTicks
+}
+
+// drawQuick draws the strip alone, when the window is closed.
+func (w *charWindow) drawQuick(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfmt.ExeTables, e gamestate.Entity) {
+	if w.quick && !w.open {
+		w.drawBag(dst, h, g, t, e)
+	}
 }
 
 // itemIcon returns the INTR slot of item i's icon by its category (0x0042C870).

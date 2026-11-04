@@ -74,3 +74,41 @@ func TestHandSlot(t *testing.T) {
 		t.Fatal("axe mode: want axe")
 	}
 }
+
+func TestRightClickUseGame0(t *testing.T) {
+	g, err := Parse(load(t, "GAME.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, err := resfmt.NewExeTables(load(t, "konung.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	volk := g.Entities[0]
+	h := NewHand()
+	// Take the shovel (pile 101) and the shield (pile 106) off the ground.
+	g.PickUp(&volk, tb, 101, 0)
+	g.PickUp(&volk, tb, 106, 0)
+	shield := volk.Bag[0]
+	// Right click on the shield: worn at once.
+	if msg := g.UseBagItem(&h, &volk, tb, 0); msg != 0 || volk.Equipment[EquipShield] != shield || h.Holding() {
+		t.Fatalf("equip shield: msg %#x equipment %v hand %+v", msg, volk.Equipment, h)
+	}
+	// Right click on the shovel (now first in the bag): dig mode, nothing lifted.
+	if g.UseBagItem(&h, &volk, tb, 0); !h.Digging() || h.Holding() || volk.Bag[0] == 0 {
+		t.Fatalf("shovel: hand %+v bag %v", h, volk.Bag[:4])
+	}
+	h.Return(&volk)
+	if h.Digging() || h.Cursor != CursorPointer {
+		t.Fatalf("dig mode not ended: %+v", h)
+	}
+	// Drop a balm on the ground: a runtime pile that never respawns.
+	balm := volk.Bag[2]
+	at, ok := g.DropItem(-1, 1, 86, 33, balm)
+	if !ok || g.Piles[at].Index != -1 || g.Piles[at].Items[0] != balm || !g.Piles[at].Active(1, 0) {
+		t.Fatalf("drop: %+v", g.Piles[at])
+	}
+	if _, removed := g.PickUp(&volk, tb, at, 10); !removed || g.Piles[at].Active(1, 1<<20) {
+		t.Fatal("runtime pile must vanish after pick-up")
+	}
+}

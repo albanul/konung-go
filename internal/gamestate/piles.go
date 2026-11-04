@@ -31,7 +31,7 @@ const (
 
 // Pile is a section 3 record.
 type Pile struct {
-	Index    int
+	Index    int // record index; -1 for a pile created at runtime by dropping (0x004139A5)
 	Taken    int // +0x00 int32: −(game time) when a respawning herb was picked
 	TakenRef int // +0x04 int32: same value; the pair marks a respawn timer
 	Row, Col int // +0x08, +0x0A: fine-grid cell
@@ -155,7 +155,7 @@ func (g *Game) PickUp(e *Entity, t *resfmt.ExeTables, pile, now int) (msg int, r
 		p.Items[pileMaxItems-1] = 0
 	}
 	// 0x00410973: the record still holds what the map loader copied.
-	if it, ok := g.Item(orig.Items[0]); ok && orig.Items[1] == 0 && it.Category == 9 && (it.Type == 1 || it.Type == 2) {
+	if it, ok := g.Item(orig.Items[0]); ok && orig.Index >= 0 && orig.Items[1] == 0 && it.Category == 9 && (it.Type == 1 || it.Type == 2) {
 		if fresh := g.allocItem(orig.Items[0]); fresh != 0 {
 			p.Taken, p.TakenRef = -now, -now
 			p.Items[0] = fresh
@@ -176,4 +176,29 @@ func (g *Game) allocItem(src int) int {
 		}
 	}
 	return 0
+}
+
+// MaxActivePiles is the size of the active pile list 0x007A6CDC (0x00413945).
+const MaxActivePiles = 200
+
+// DropItem is 0x004138C8: put item on the ground at (row, col) of map m.
+// With a pile there (index at ≥ 0) the item goes into its first free slot;
+// otherwise a new runtime pile (Index −1) is created and its index
+// returned. It fails when the pile is full (22 items); the caller checks
+// the active-list limit. The game ignores failure, so the item is lost.
+func (g *Game) DropItem(at, m, row, col, item int) (int, bool) {
+	if at >= 0 {
+		p := &g.Piles[at]
+		for k, v := range p.Items {
+			if v == 0 {
+				p.Items[k] = item
+				return at, true
+			}
+		}
+		return at, false
+	}
+	p := Pile{Index: -1, Map: m, Row: row, Col: col}
+	p.Items[0] = item
+	g.Piles = append(g.Piles, p)
+	return len(g.Piles) - 1, true
 }

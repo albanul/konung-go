@@ -63,7 +63,7 @@ func (s *startScene) drawPiles(dst *ebiten.Image) {
 // pileUnderCursor returns the visible pile on the cell under the mouse.
 func (s *startScene) pileUnderCursor() (cell mapdata.Cell, ok bool) {
 	mx, my := ebiten.CursorPosition()
-	if !inView(mx, my) || s.inv.open {
+	if !inView(mx, my) || s.inv.open || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
 		return cell, false
 	}
 	cell = mapdata.CellAt(mx+s.camX, my+s.camY)
