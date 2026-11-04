@@ -71,7 +71,11 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, err
 	}
-	world, err := loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, 0, 1)
+	intrPath, err := FindGameResource("assets/Konung/Intr800r.res")
+	if err != nil {
+		return nil, err
+	}
+	world, err := loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath, 0, 1)
 	if err != nil {
 		return nil, fmt.Errorf("load KONUNG.1 scene: %w", err)
 	}

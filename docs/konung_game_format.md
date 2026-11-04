@@ -51,10 +51,13 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 | `+0x00` | `int8` | type = action / animation set (animated models use `type − 6` when ≥ 6, `0x0041409A`) |
 | `+0x01` | `int8` | variant = **facing direction** (8 per type) |
 | `+0x03` | byte | bit `0x80`: not drawn (shadow and draw passes skip it) |
-| `+0x04` | byte | bit `0x40`: animated `OBJECTS.RES` model, otherwise `GRAPH.RES` Type 0 |
+| `+0x04` | byte | bit `0x40`: animated `OBJECTS.RES` model, otherwise `GRAPH.RES` Type 0; bit `0x80`: dead (HUD); bits `0x07`: portrait face; `0x51`/`0x52` = child/woman (village AI) |
 | `+0x08` | `uint16` | fine-grid row; `0` together with `+0x0A` = `0` means placed at runtime |
 | `+0x0A` | `uint16` | fine-grid column |
 | `+0x10` | byte | **animation step**, advanced by `0x00413DE4` until it reaches the count in `+0xD7` |
+| `+0x12` | byte | weapon mode; selects HUD button 0 (`0x0042911A`); Volk = 2 |
+| `+0x50` | `int16` | non-zero while poisoned (HP bar colour) |
+| `+0x5C` | `int16` | **HP**; 1600 = full (HUD bar divides by `0x640`); portrait state thresholds 1200/800/400 ([HUD](konung_interface_res.md)) |
 | `+0xD0` | byte | **dialogue ID** opened when the player clicks the entity (`0x004364F0`); `0xFF` = no dialogue |
 | `+0xD6` | `int8` | model: `OBJECTS.RES` slot 0–29, or `GRAPH.RES` Type 0 block. **Earlier notes said `+0xD3`**; the code reads `dword[+0xD3] >> 24`, i.e. byte `+0xD6`. |
 | `+0xD8` | `uint32` | palette byte offset (per-entity dye), passed to `0x0043ED09` by the draw at `0x004272CB` |

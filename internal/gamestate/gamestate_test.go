@@ -193,3 +193,42 @@ func TestVillagePosts(t *testing.T) {
 		}
 	}
 }
+
+func TestPartyHUD(t *testing.T) {
+	g, err := Parse(load(t, "GAME.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.HeroModelFromGame(0, 0)
+	hero := g.Entities[g.Groups[0].First]
+	if hero.HP != HPFull {
+		t.Fatalf("Volk starts with HP %d", hero.HP)
+	}
+	// Volk (body model 0): slots 215 (healthy) .. 219 (dead).
+	for _, c := range []struct{ hp, slot, bar, rows int }{
+		{1600, 215, 0xAE, 40}, {1201, 215, 0xAE, 30}, {1200, 216, 0xAE, 30},
+		{800, 217, 0xB1, 20}, {400, 218, 0xB0, 10}, {10, 218, 0xB0, 1},
+	} {
+		e := hero
+		e.HP = c.hp
+		slot, rows, ok := HPBar(e, 40)
+		if PortraitSlot(e, true) != c.slot || !ok || slot != c.bar || rows != c.rows {
+			t.Errorf("HP %d: portrait %d bar %#x/%d", c.hp, PortraitSlot(e, true), slot, rows)
+		}
+	}
+	dead := hero
+	dead.HP, dead.Flags4 = 0, dead.Flags4|0x80
+	if _, _, ok := HPBar(dead, 40); PortraitSlot(dead, true) != 219 || ok {
+		t.Error("dead hero")
+	}
+	// A companion uses its face (+4 & 7): villager 355 has face 2 -> 205.
+	if s := PortraitSlot(g.Entities[355], false); s != 205 {
+		t.Errorf("villager 355 portrait %d", s)
+	}
+	if PortraitSlot(g.Entities[367], false) != -1 {
+		t.Error("animated models have no portrait")
+	}
+	if b := HUDButtonSlots(hero); b != [7]int{16, 15, 14, 11, 7, 12, 13} {
+		t.Errorf("buttons %v", b)
+	}
+}

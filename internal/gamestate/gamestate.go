@@ -44,6 +44,9 @@ type Entity struct {
 	Flags4        byte   // +0x04; bit 0x40 = animated OBJECTS.RES model
 	Row, Col      int    // +0x08, +0x0A; 0,0 = placed at runtime around the group
 	Step          int    // +0x10: animation step (the variant +0x01 is the facing direction)
+	WeaponMode    int    // +0x12: HUD weapon button (VA 0x0042911A)
+	Poison        int    // +0x50 int16: non-zero while poisoned (HP bar colour, VA 0x0042D977)
+	HP            int    // +0x5C int16: health; HPFull (1600) = 100 %
 	Model         int    // +0xD6 (signed): OBJECTS slot or GRAPH Type 0 block
 	PaletteOffset uint32 // +0xD8
 	Dialogue      int    // +0xD0: dialogue opened on click (VA 0x004364F0); NoDialogue = none
@@ -109,6 +112,9 @@ func Parse(data []byte) (*Game, error) {
 			Row:           int(binary.LittleEndian.Uint16(e[0x08:])),
 			Col:           int(binary.LittleEndian.Uint16(e[0x0A:])),
 			Step:          int(e[0x10]),
+			WeaponMode:    int(e[0x12]),
+			Poison:        int(int16(binary.LittleEndian.Uint16(e[0x50:]))),
+			HP:            int(int16(binary.LittleEndian.Uint16(e[0x5C:]))),
 			Model:         int(int8(e[0xD6])),
 			PaletteOffset: binary.LittleEndian.Uint32(e[0xD8:]),
 			Dialogue:      int(e[0xD0]),

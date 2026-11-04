@@ -20,7 +20,7 @@ All other multi-byte values are little-endian (32-bit x86).
 | Tag | Files | Contents |
 |---|---|---|
 | 5 | `FLAMES.RES`, `MENU640R.RES`, `MENU800R.RES`, `SAVE640R.RES`, `SAVE800R.RES`, `NEWH640R.RES`, `NEWH800R.RES` | Sequential Type 5 RGB555 frames, no file header |
-| 1 | `SOUNDS.RES`, `MUSICS.RES`, `OBJECTS.RES`, `INTR640R.RES`, `Intr800r.res` | Containers with an offset/size table (layout differs per file; see below) |
+| 1 | `SOUNDS.RES`, `MUSICS.RES`, `OBJECTS.RES`, `INTR640R.RES`, `Intr800r.res` | Containers with an offset table (layout differs per file; see below; `INTR*`: [interface resources](konung_interface_res.md)) |
 | — | `GRAPH.RES` (14.5 MB) | Starts with palettes (`00 00 E0 03`…), then mixed blocks. See [GRAPH.RES layout](konung_graph_sprites.md). |
 
 ## Type 5 frame (RGB555 row-RLE)

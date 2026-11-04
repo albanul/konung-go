@@ -67,12 +67,15 @@ type startScene struct {
 	occ    map[mapdata.Cell]bool // cells held or being entered by a character
 	follow bool                  // camera follows the hero (toggle with F)
 	rng    *rand.Rand
+
+	hud   *hud
+	party []gamestate.Entity // group 0's entities (copies; [0] = hero) shown in the portrait grid
 }
 
 // loadStartScene builds the scene for map mapNumber: terrain, decorations
 // and static objects from the KONUNG.N file, characters and creatures from
 // the GAME.N start state.
-func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, gameNumber, mapNumber int) (*startScene, error) {
+func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath string, gameNumber, mapNumber int) (*startScene, error) {
 	graphData, err := os.ReadFile(graphPath)
 	if err != nil {
 		return nil, err
@@ -117,6 +120,14 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", gamePath, err)
 	}
+	intrData, err := os.ReadFile(intrPath)
+	if err != nil {
+		return nil, err
+	}
+	hud, err := newHUD(intrData, graphData)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", intrPath, err)
+	}
 	rawTiles, err := mapdata.LoadTerrainTiles(graphData)
 	if err != nil {
 		return nil, err
@@ -126,6 +137,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 		tiles:       make([]*ebiten.Image, len(rawTiles)),
 		shadowLayer: ebiten.NewImage(ScreenWidth, ScreenHeight),
 		walk:        walk,
+		hud:         hud,
 		occ:         map[mapdata.Cell]bool{},
 		follow:      true,
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
@@ -192,6 +204,11 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 	// npc).
 	camX, camY := s.worldW/2, s.worldH/2
 	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
+	if g0 := game.Groups[0]; g0.Map == mapNumber {
+		for k := 0; k < g0.Count; k++ {
+			s.party = append(s.party, game.Entities[g0.First+k])
+		}
+	}
 	uploadSprite := func(sp *resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image) { return upload(sp.Image, sp.Shadow) }
 	logErr := func(err error) { log.Printf("%s: %v", gamePath, err) }
 	reserve := func(c mapdata.Cell) bool {
@@ -266,14 +283,19 @@ func (s *startScene) updateNPCs() {
 	}
 }
 
+// centerOn puts world point (x, y) at the centre of the game view (the part
+// of the screen the HUD frame leaves open).
 func (s *startScene) centerOn(x, y int) {
-	s.camX, s.camY = x-ScreenWidth/2, y-ScreenHeight/2
+	s.camX = x - (viewLeft+viewRight+1)/2
+	s.camY = y - (viewTop+viewBottom+1)/2
 	s.clampCamera()
 }
 
+// clampCamera keeps the map filling the game view: its left edge may reach
+// the HUD's inner edge and its bottom edge the bottom bar.
 func (s *startScene) clampCamera() {
-	s.camX = max(0, min(s.camX, s.worldW-ScreenWidth))
-	s.camY = max(0, min(s.camY, s.worldH-ScreenHeight))
+	s.camX = max(-viewLeft, min(s.camX, s.worldW-ScreenWidth))
+	s.camY = max(-viewTop, min(s.camY, s.worldH-viewBottom-1))
 }
 
 // blocked reports cells a character cannot path through: walk-grid
@@ -293,8 +315,11 @@ func (s *startScene) Update() {
 		if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 			s.follow = !s.follow
 		}
-		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && inView(mx, my) {
 			s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY))
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyH) && len(s.party) > 0 {
+			s.party[0] = debugDamage(s.party[0])
 		}
 		s.hero.update()
 	}
@@ -405,8 +430,25 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		if s.follow {
 			state = "on"
 		}
-		ebitenutil.DebugPrintAt(screen, "Click: move   F: camera follow "+state+"   Esc: menu", 8, ScreenHeight-20)
+		ebitenutil.DebugPrintAt(screen, "Click: move   F: camera follow "+state+"   H: test damage   Esc: menu", viewLeft+8, viewBottom-20)
 	}
+	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
+}
+
+// debugDamage is a test hook until combat exists: each press takes 400 HP
+// (one portrait state); after death the hero is healed to full.
+func debugDamage(e gamestate.Entity) gamestate.Entity {
+	switch {
+	case e.Dead():
+		e.Flags4 &^= 0x80
+		e.HP = gamestate.HPFull
+	case e.HP <= 400:
+		e.HP = 0
+		e.Flags4 |= 0x80
+	default:
+		e.HP -= 400
+	}
+	return e
 }
 
 func toEbiten(img *image.RGBA) *ebiten.Image { return ebiten.NewImageFromImage(img) }
