@@ -50,7 +50,7 @@ Ebitengine's system cursor is hidden. The menu draws the game sprite at the curr
 
 The nearby cursor variants include a red barred-circle marker, parchment/speech marker, flame marker, and hand marker. Their appearances are catalogued, but their exact in-game meanings have not been confirmed by tracing the executable's cursor-selection logic.
 
-Selecting menu item 4 («Новая игра», New game) opens the `KONUNG.1` scene. It draws terrain, flat decorations, a screen-sized shadow layer (all shadows unioned, then drawn as 50% black once), and static objects plus `GAME.0` characters and creatures, sorted by bottom edge. Only on-screen items are drawn. Arrow keys, WASD, or the mouse within 8 px of a screen edge scroll the camera, which starts on the player and is clamped to the map. Characters show one static frame; animation is not ported. `Escape` or `Backspace` returns to the menu.
+Selecting menu item 4 («Новая игра», New game) opens the `KONUNG.1` scene. It draws terrain, flat decorations, a screen-sized shadow layer (all shadows unioned, then drawn as 50% black once), and static objects plus `GAME.0` characters and creatures, sorted by bottom edge. Only on-screen items are drawn. Arrow keys, WASD, or the mouse within 8 px of a screen edge scroll the camera, which starts on the player and is clamped to the map. Characters and creatures play their idle loop, the current type/variant sequence. The step rate is 10 steps/s, and each entity is phase-offset; the original tick rate is not traced. The hero is Volk (Type 0 model 0) with a placeholder palette. `Escape` or `Backspace` returns to the menu.
 
 ## Input behavior currently implemented
 

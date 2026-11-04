@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"log"
 	"os"
+	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/konunggame"
@@ -15,14 +16,32 @@ import (
 const (
 	scrollSpeed    = 12
 	edgeScrollZone = 8
+	// ticksPerStep is how many 60 Hz updates each animation step lasts. The
+	// game's animation tick rate is not traced; 6 gives 10 steps/s, i.e. the
+	// usual 12-step idle loop (6 frames, each held 2 steps) in 1.2 s.
+	ticksPerStep = 6
 )
 
-// sceneObject is a static map object or an entity, ready to draw.
-type sceneObject struct {
+// sceneFrame is one drawable image with its shadow, in world pixels.
+type sceneFrame struct {
 	img, shadow *ebiten.Image
-	x, y        int // image top-left in world pixels
-	sx, sy      int // shadow top-left in world pixels
-	depth       int // bottom-edge sort key
+	x, y        int // image top-left
+	sx, sy      int // shadow top-left
+}
+
+// sceneObject is a static map object (one frame) or an entity (its idle
+// animation steps), ready to draw.
+type sceneObject struct {
+	frames []sceneFrame
+	phase  int // step offset so neighbours don't animate in lockstep
+	depth  int // bottom-edge sort key (from the first step)
+}
+
+func (o *sceneObject) frame(tick int) *sceneFrame {
+	if len(o.frames) == 1 {
+		return &o.frames[0]
+	}
+	return &o.frames[(tick/ticksPerStep+o.phase)%len(o.frames)]
 }
 
 type startScene struct {
@@ -41,7 +60,7 @@ type startScene struct {
 // loadStartScene builds the scene for map mapNumber: terrain, decorations
 // and static objects from the KONUNG.N file, characters and creatures from
 // the GAME.N start state.
-func loadStartScene(graphPath, objectsPath, mapPath, gamePath string, mapNumber int) (*startScene, error) {
+func loadStartScene(graphPath, objectsPath, mapPath, gamePath string, gameNumber, mapNumber int) (*startScene, error) {
 	graphData, err := os.ReadFile(graphPath)
 	if err != nil {
 		return nil, err
@@ -118,38 +137,52 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath string, mapNumber 
 	for _, e := range errs {
 		log.Printf("%s: %v", mapPath, e)
 	}
-	sprites := konungmap.ObjectSprites(konungmap.DrawOrder(placements, objs))
-	// Center on the player (group 0's first entity) when it starts here.
+	images := map[*image.RGBA]*ebiten.Image{}
+	shadows := map[*image.Alpha]*ebiten.Image{}
+	upload := func(img *image.RGBA, sh *image.Alpha) (*ebiten.Image, *ebiten.Image) {
+		ei, ok := images[img]
+		if !ok {
+			ei = toEbiten(img)
+			images[img] = ei
+		}
+		if sh == nil {
+			return ei, nil
+		}
+		es, ok := shadows[sh]
+		if !ok {
+			es = ebiten.NewImageFromImage(sh) // white, alpha = coverage
+			shadows[sh] = es
+		}
+		return ei, es
+	}
+	for _, sp := range konungmap.ObjectSprites(konungmap.DrawOrder(placements, objs)) {
+		img, sh := upload(sp.Image, sp.Shadow)
+		s.objects = append(s.objects, sceneObject{
+			frames: []sceneFrame{{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY}},
+			depth:  sp.Depth,
+		})
+	}
+	// Characters and creatures, each with its idle loop. Center the camera on
+	// the player (group 0's first entity) when it starts here.
 	camX, camY := s.worldW/2, s.worldH/2
+	game.HeroModelFromGame(gameNumber, konunggame.PlaceholderHeroPalette)
 	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
-		es, x, y, sx, sy, depth, err := p.LoadSprite(objectsData, graphData)
+		anim, err := p.LoadAnimation(objectsData, graphData)
 		if err != nil {
 			log.Printf("%s: %v", gamePath, err)
 			continue
 		}
-		sprites = append(sprites, konungmap.Sprite{Image: es.Image, X: x, Y: y, Shadow: es.Shadow, SX: sx, SY: sy, Depth: depth})
+		o := sceneObject{phase: p.Index * 5, depth: anim[0].Y + anim[0].Sprite.Image.Bounds().Dy()}
+		for _, f := range anim {
+			img, sh := upload(f.Sprite.Image, f.Sprite.Shadow)
+			o.frames = append(o.frames, sceneFrame{img: img, shadow: sh, x: f.X, y: f.Y, sx: f.SX, sy: f.SY})
+		}
+		s.objects = append(s.objects, o)
 		if p.Group == 0 && p.Index == game.Groups[0].First {
 			camX, camY = konunggame.WorldPos(p.Row, p.Col)
 		}
 	}
-	konungmap.SortSprites(sprites)
-	images := map[*image.RGBA]*ebiten.Image{}
-	shadows := map[*image.Alpha]*ebiten.Image{}
-	for _, sp := range sprites {
-		img, ok := images[sp.Image]
-		if !ok {
-			img = toEbiten(sp.Image)
-			images[sp.Image] = img
-		}
-		var sh *ebiten.Image
-		if sp.Shadow != nil {
-			if sh, ok = shadows[sp.Shadow]; !ok {
-				sh = ebiten.NewImageFromImage(sp.Shadow) // white, alpha = coverage
-				shadows[sp.Shadow] = sh
-			}
-		}
-		s.objects = append(s.objects, sceneObject{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY, depth: sp.Depth})
-	}
+	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
 	s.centerOn(camX, camY)
 	return s, nil
 }
@@ -214,9 +247,10 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	}
 	// Shadows are unioned, then every covered pixel is halved once (0x0043E5DF).
 	s.shadowLayer.Clear()
-	for _, o := range s.objects {
-		if o.shadow != nil && s.visible(o.sx, o.sy, o.shadow.Bounds().Dx(), o.shadow.Bounds().Dy()) {
-			drawAt(s.shadowLayer, o.shadow, o.sx-s.camX, o.sy-s.camY)
+	for i := range s.objects {
+		f := s.objects[i].frame(s.tick)
+		if f.shadow != nil && s.visible(f.sx, f.sy, f.shadow.Bounds().Dx(), f.shadow.Bounds().Dy()) {
+			drawAt(s.shadowLayer, f.shadow, f.sx-s.camX, f.sy-s.camY)
 		}
 	}
 	op := &ebiten.DrawImageOptions{}
@@ -224,9 +258,10 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	screen.DrawImage(s.shadowLayer, op)
 
 	// Objects and entities are depth-sorted by their bottom edge.
-	for _, o := range s.objects {
-		if s.visible(o.x, o.y, o.img.Bounds().Dx(), o.img.Bounds().Dy()) {
-			drawAt(screen, o.img, o.x-s.camX, o.y-s.camY)
+	for i := range s.objects {
+		f := s.objects[i].frame(s.tick)
+		if s.visible(f.x, f.y, f.img.Bounds().Dx(), f.img.Bounds().Dy()) {
+			drawAt(screen, f.img, f.x-s.camX, f.y-s.camY)
 		}
 	}
 }

@@ -43,10 +43,22 @@ func TestGame0Konung1(t *testing.T) {
 		t.Fatalf("entities on map 1 = %d, want 50 (player + 49)", len(placed))
 	}
 	objects, graph := load(t, "OBJECTS.RES"), load(t, "GRAPH.RES")
+	g.HeroModelFromGame(0, PlaceholderHeroPalette)
+	if g.Entities[0].Model != 0 {
+		t.Fatalf("hero model = %d, want 0 (Volk)", g.Entities[0].Model)
+	}
 	seen := map[[2]int]bool{}
 	for _, e := range placed {
 		if _, _, _, _, _, _, err := e.LoadSprite(objects, graph); err != nil {
 			t.Error(err)
+		}
+		anim, err := e.LoadAnimation(objects, graph)
+		if err != nil {
+			t.Error(err)
+		} else if len(anim) != 12 {
+			t.Errorf("entity %d idle loop has %d steps, want 12", e.Index, len(anim))
+		} else if anim[0].Sprite.Image == anim[2].Sprite.Image {
+			t.Errorf("entity %d idle steps 0 and 2 share an image; expected different frames", e.Index)
 		}
 		k := [2]int{e.Row, e.Col}
 		if seen[k] {

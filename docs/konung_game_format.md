@@ -1,8 +1,20 @@
 # `GAME.N` start state: characters and creatures
 
-Characters, NPCs and monsters are **not** stored in `KONUNG.N`. They come from `GAME.N`, the start-of-game state loaded by VA `0x0043BB6C`. `N` is the byte at `0x00A3E657`, set by the new-game choice.
+Characters, NPCs and monsters are **not** stored in `KONUNG.N`. They come from `GAME.N`, the start-of-game state loaded by VA `0x0043BB6C`. **`N` is the hero's model number.** The loader reads `dword[0x00A3E657] >> 24`, i.e. byte `0x00A3E65A`, which is `+0xD6` of the 0x100-byte hero template at `0x00A3E584`.
 
-Code: `internal/konunggame` (`Parse`, `Game.OnMap`, `WorldPos`, `Placed.LoadSprite`), `resource.LoadEntitySprite`. `cmd/map-render -game assets/Konung/GAME.0` draws them; `-game ""` disables them.
+## Heroes and start maps
+
+The new-game code (`0x00438F3F`–`0x004390D5`) copies the hero template into entity 0, including model `+0xD6` from `0x00A3E65A` and palette `+0xD8` from `0x00A3E65C`. It then sets the party group's map byte to `model*3 + 1` (`0x004390B4`).
+
+| Hero model (Type 0) | `GAME.N` | Start map | Hero |
+|---|---|---|---|
+| 0 | `GAME.0` | `KONUNG.1` | Volk (Волк), per the user's identification of `KONUNG.1` |
+| 1 | `GAME.1` | `KONUNG.4` | Dragomir (the user recognized model 1 as Dragomir) |
+| 2 | `GAME.2` | `KONUNG.7` | Michail (Михаил), per the user |
+
+Entity 0's model and palette in the files (model 1, palette 33 in all three) are placeholders that this code overwrites. The template's values come from the character-creation screen, which is not decoded. The port therefore uses model N (`Game.HeroModelFromGame`) with **placeholder palette 72**. Palettes 70–74 and 113–114 render model 0 cleanly; 33 does not.
+
+Code: `internal/konunggame` (`Parse`, `Game.OnMap`, `Game.HeroModelFromGame`, `WorldPos`, `Placed.LoadSprite`, `Placed.LoadAnimation`), `resource.LoadEntitySprite`, `resource.LoadEntityAnimation`. `cmd/map-render -game assets/Konung/GAME.0` draws them; `-game ""` disables them.
 
 ## File layout (verified)
 
@@ -36,19 +48,21 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 
 | Offset | Type | Meaning |
 |---|---|---|
-| `+0x00` | `int8` | type (animation set; animated models use `type − 6` when ≥ 6, `0x0041409A`) |
-| `+0x01` | `int8` | variant |
+| `+0x00` | `int8` | type = action / animation set (animated models use `type − 6` when ≥ 6, `0x0041409A`) |
+| `+0x01` | `int8` | variant = **facing direction** (8 per type) |
 | `+0x03` | byte | bit `0x80`: not drawn (shadow and draw passes skip it) |
 | `+0x04` | byte | bit `0x40`: animated `OBJECTS.RES` model, otherwise `GRAPH.RES` Type 0 |
 | `+0x08` | `uint16` | fine-grid row; `0` together with `+0x0A` = `0` means placed at runtime |
 | `+0x0A` | `uint16` | fine-grid column |
-| `+0x10` | byte | direction |
+| `+0x10` | byte | **animation step**, advanced by `0x00413DE4` until it reaches the count in `+0xD7` |
 | `+0xD6` | `int8` | model: `OBJECTS.RES` slot 0–29, or `GRAPH.RES` Type 0 block. **Earlier notes said `+0xD3`**; the code reads `dword[+0xD3] >> 24`, i.e. byte `+0xD6`. |
 | `+0xD8` | `uint32` | palette byte offset (per-entity dye), passed to `0x0043ED09` by the draw at `0x004272CB` |
 
 World position (VA `0x00439BA0`, fine-cell centre): `x = col*58 + (row odd ? 29 : 58)`, `y = row*16 + 16`.
 
 ## Frame and anchor lookup (model initializer `0x00414078`)
+
+Each (type, variant) has a record of `int16` words: `[count, frame index for step 0, step 1, …]`. Animated objects have 19 words (up to 18 steps), Type 0 has 13 (up to 12). The idle sets seen so far have 12 steps that cycle 6 frames, each held for 2 steps, e.g. Type 0 block 1 type 6 variant 5: `12, 24,24, 25,25, … 29,29`. In the table below, `d` is the **step**. Earlier notes called it direction.
 
 | | Animated `OBJECTS.RES` (`0x00722D2C + slot*0x3228`) | `GRAPH.RES` Type 0 (`0x007145B4 + n*0x4D28`) |
 |---|---|---|
@@ -69,20 +83,21 @@ The user identified `KONUNG.1` as Volk's (Волк) initial location.
 
 | Group | Entities | Content |
 |---|---|---|
-| 0 | 1 | the player: Type 0 model 1, palette 33, at row 86 col 33 (inside the village) |
+| 0 | 1 | the player (Volk): drawn as Type 0 model 0 with placeholder palette 72 (the file's model 1 / palette 33 are overwritten on new game), at row 86 col 33 inside the village |
 | 27 | 18 | villagers with fixed positions: Type 0 model 0 men; `OBJECTS` slot 14 women, slot 15 children (1-based index IDs 15/16) |
 | 64 | 1 | a single Type 0 villager |
 | 3 | 4 | giant spiders (slot 12, palette 148) at the nest around row 184 col 40 |
 | 105–109 | 26 | giant ants (slot 0, palette 56), five groups along the stream |
 
-`GAME.1` and `GAME.2` have the same groups but more monsters (spiders 4 → 8 → 16), and the player starts at (72, 34) and (100, 60) respectively. Whether `N` selects difficulty or hero is **not verified**.
+`GAME.1` and `GAME.2` are the other heroes' games. Their map-1 groups are similar, with more monsters (spiders 4 → 8 → 16), but those heroes start on `KONUNG.4` / `KONUNG.7`.
 
 Validation: `go test ./internal/konunggame` checks the player group, the 50 drawable entities on map 1, sprite decoding, and that spawned entities sit on distinct free cells. `go run ./cmd/map-render -all output/maps` renders 987 `GAME.0` entities across all maps with no decode errors.
 
 ## Open questions
 
-* What `N` in `GAME.N` selects (difficulty vs hero), and the new-game screen that sets `0x00A3E657`.
+* The character-creation screen: the hero template's palette (`0x00A3E65C`) and other fields.
+* The game's animation tick rate. The scene uses 10 steps/s and offsets each entity's phase so neighbours don't move in lockstep; both are presentation choices.
 * Exact runtime spawn positions for groups whose entities have no coordinates.
 * Group fields `+0x0A..+0x0E`, `+0x12..+0x16`, `+0x1E`; the conditional spawn check at `0x00411DE4`.
-* Animation: frames are static (the current type/variant/direction frame); frame sequencing is not ported.
+* Actions other than the file's current type (walking, fighting).
 * The other four `GAME.N` sections.

@@ -35,11 +35,12 @@ type Group struct {
 // Entity is a 256-byte entity record (fields that are understood).
 type Entity struct {
 	Index         int
-	Type, Variant int    // +0x00, +0x01 (signed)
+	Type          int    // +0x00 (signed): action / animation set
+	Variant       int    // +0x01 (signed): facing direction
 	Flags3        byte   // +0x03; bit 0x80 = not drawn
 	Flags4        byte   // +0x04; bit 0x40 = animated OBJECTS.RES model
 	Row, Col      int    // +0x08, +0x0A; 0,0 = placed at runtime around the group
-	Direction     int    // +0x10
+	Step          int    // +0x10: animation step (the variant +0x01 is the facing direction)
 	Model         int    // +0xD6 (signed): OBJECTS slot or GRAPH Type 0 block
 	PaletteOffset uint32 // +0xD8
 	Group         int    // owning group index
@@ -91,7 +92,7 @@ func Parse(data []byte) (*Game, error) {
 			Flags4:        e[4],
 			Row:           int(binary.LittleEndian.Uint16(e[0x08:])),
 			Col:           int(binary.LittleEndian.Uint16(e[0x0A:])),
-			Direction:     int(e[0x10]),
+			Step:          int(e[0x10]),
 			Model:         int(int8(e[0xD6])),
 			PaletteOffset: binary.LittleEndian.Uint32(e[0xD8:]),
 			Group:         grp,
@@ -194,7 +195,7 @@ func abs(v int) int {
 func (e Entity) ModelSpec() resource.EntityModel {
 	return resource.EntityModel{
 		Animated: e.Animated(), Model: e.Model, Type: e.Type, Variant: e.Variant,
-		Direction: e.Direction, PaletteOffset: e.PaletteOffset,
+		Step: e.Step, PaletteOffset: e.PaletteOffset,
 	}
 }
 
@@ -208,4 +209,51 @@ func (p Placed) LoadSprite(objects, graph []byte) (img *resource.EntitySprite, x
 	wx, wy := WorldPos(p.Row, p.Col)
 	x, y = wx+img.ImageDX, wy+img.ImageDY
 	return img, x, y, wx + img.ShadowDX, wy + img.ShadowDY, y + img.Image.Bounds().Dy(), nil
+}
+
+// Frame is one animation step positioned in world pixels.
+type Frame struct {
+	Sprite       *resource.EntitySprite
+	X, Y, SX, SY int
+}
+
+// LoadAnimation decodes every step of the entity's current sequence.
+func (p Placed) LoadAnimation(objects, graph []byte) ([]Frame, error) {
+	steps, err := resource.LoadEntityAnimation(objects, graph, p.ModelSpec())
+	if err != nil {
+		return nil, fmt.Errorf("entity %d: %w", p.Index, err)
+	}
+	wx, wy := WorldPos(p.Row, p.Col)
+	out := make([]Frame, len(steps))
+	for i, s := range steps {
+		out[i] = Frame{Sprite: s, X: wx + s.ImageDX, Y: wy + s.ImageDY, SX: wx + s.ShadowDX, SY: wy + s.ShadowDY}
+	}
+	return out, nil
+}
+
+// PlaceholderHeroPalette is used for the hero until the character-creation
+// palette is decoded: palette 72, one of the clean dyes for Type 0 model 0
+// (70-74, 113-114 render cleanly; the file's 33 suits model 1 only).
+const PlaceholderHeroPalette = 72 * 512
+
+// HeroModelFromGame applies the new-game rule that ties the hero to GAME.N:
+// the loader opens GAME.<hero model byte> (VA 0x0043BBB2 reads the template's
+// +0xD6), and the start map is model*3+1 (VA 0x004390B4). So in GAME.N the
+// player's entity is shown with Type 0 model N; the file's own value is a
+// placeholder that the new-game code overwrites from the hero template.
+// Model 0 = Volk (KONUNG.1), model 1 = Dragomir. The hero's palette (+0xD8)
+// also comes from the template (VA 0x0043904E), set on the character-creation
+// screen, which is not decoded: pass a non-zero paletteOffset to override the
+// file's placeholder.
+func (g *Game) HeroModelFromGame(n int, paletteOffset uint32) {
+	if len(g.Groups) == 0 {
+		return
+	}
+	if i := g.Groups[0].First; i >= 0 && i < len(g.Entities) {
+		g.Entities[i].Model = n
+		g.Entities[i].Flags4 &^= 0x40
+		if paletteOffset != 0 {
+			g.Entities[i].PaletteOffset = paletteOffset
+		}
+	}
 }

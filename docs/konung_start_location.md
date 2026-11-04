@@ -8,7 +8,7 @@ Human-like `OBJECTS.RES` entries: 15 (robed figure, 30 × 74, palette 152), 16 (
 
 ## Candidate map and uncertainty
 
-**Identified by the user: `KONUNG.1` is Volk's (Волк) initial location.** Whether this is also the walkthrough's "Old Camp" for Dragomir is not established. Its terrain, decorations and static objects are now decoded and rendered from the map data; see [the map format notes](konung_map_format.md). The render shows a palisaded village (log houses, a smithy, a building site, a well) on a coast, which fits a starting camp but is not proof. Only the warrior is still a hand-placed preview.
+**Identified by the user: `KONUNG.1` is Volk's (Волк) initial location.** Dragomir is hero model 1, whose start map is `KONUNG.4` (model*3+1); the walkthrough's "Old Camp" may therefore be `KONUNG.4`, but this is unverified. See [GAME.N notes](konung_game_format.md#heroes-and-start-maps). Its terrain, decorations and static objects are now decoded and rendered from the map data; see [the map format notes](konung_map_format.md). The render shows a palisaded village (log houses, a smithy, a building site, a well) on a coast, which fits a starting camp but is not proof. Only the warrior is still a hand-placed preview.
 
 Observed facts for `KONUNG.1`:
 

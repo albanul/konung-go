@@ -56,6 +56,10 @@ func main() {
 			if r.game, err = konunggame.Parse(data); err != nil {
 				fail(err)
 			}
+			// The game opens GAME.<hero model>, so the player shows model N.
+			if n, err := strconv.Atoi(strings.TrimPrefix(filepath.Ext(*gamePath), ".")); err == nil {
+				r.game.HeroModelFromGame(n, konunggame.PlaceholderHeroPalette)
+			}
 		}
 	}
 	switch {
