@@ -154,3 +154,36 @@ func Render(m *Map, tiles []*image.RGBA) *image.RGBA {
 	}
 	return dst
 }
+
+const (
+	walkOffset = 0x6400 // section 1: 320 rows x 160 bytes
+	WalkRows   = 320
+	WalkCols   = 160
+)
+
+// WalkGrid is KONUNG.N section 1 on the fine grid (same grid as objects and
+// entities). The loader at VA 0x0043C498 expands each byte b to a word:
+// 0xFF -> 0x0FFF, (b&0x0F)==0x0F -> (b<<8)|0x0FFF, else b<<8; game code then
+// treats (word & 0x0FFF) != 0 as occupied (e.g. VA 0x004119F7).
+type WalkGrid [WalkRows][WalkCols]byte
+
+// ParseWalkGrid reads section 1.
+func ParseWalkGrid(data []byte) (*WalkGrid, error) {
+	if len(data) != FileSize {
+		return nil, fmt.Errorf("KONUNG map has size %d, want %d", len(data), FileSize)
+	}
+	g := &WalkGrid{}
+	for r := 0; r < WalkRows; r++ {
+		copy(g[r][:], data[walkOffset+r*WalkCols:][:WalkCols])
+	}
+	return g, nil
+}
+
+// Blocked reports whether a fine cell is an obstacle (or off the grid).
+func (g *WalkGrid) Blocked(row, col int) bool {
+	if row < 0 || row >= WalkRows || col < 0 || col >= WalkCols {
+		return true
+	}
+	b := g[row][col]
+	return b == 0xFF || b&0x0F == 0x0F
+}

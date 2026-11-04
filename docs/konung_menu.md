@@ -11,7 +11,7 @@ The executable entry point is under `cmd/konung/`; the implementation is an impo
 | `cmd/konung/main.go` | Resolve default asset paths, initialize Ebitengine, set fullscreen/window title/cursor mode, start the game loop |
 | `internal/konungmenu/menu.go` | Load menu frames, map button frames, handle keyboard/mouse input, draw the background/buttons/custom pointer |
 | `internal/konungmenu/graph.go` | Read Type 5 sprites from the mixed `GRAPH.RES` stream after its palette area |
-| `internal/konungmenu/startscene.go` | New Game scene: viewport-culled `KONUNG.1` terrain, decorations, shadow layer, depth-sorted objects, camera scrolling, preview warrior |
+| `internal/konungmenu/startscene.go` | New Game scene: viewport-culled `KONUNG.1` terrain, decorations, shadow layer, depth-sorted objects, camera scrolling, GAME.0 characters/creatures |
 | `internal/konungmap/` | Engine-independent map/terrain decoding used by the scene and `cmd/map-render` |
 | `internal/konungmenu/resources.go` | Find assets by searching upward from the process working directory and source file location |
 
@@ -50,7 +50,7 @@ Ebitengine's system cursor is hidden. The menu draws the game sprite at the curr
 
 The nearby cursor variants include a red barred-circle marker, parchment/speech marker, flame marker, and hand marker. Their appearances are catalogued, but their exact in-game meanings have not been confirmed by tracing the executable's cursor-selection logic.
 
-Selecting menu item 4 («Новая игра», New game) opens the `KONUNG.1` scene. It draws the terrain, flat decorations, a screen-sized shadow layer (all shadows unioned, then drawn as 50% black once), and static objects sorted by bottom edge. Everything comes from map data through `internal/konungmap`, and only on-screen items are drawn. Arrow keys, WASD, or holding the mouse within 8 px of a screen edge scroll the camera, which is clamped to the map extents. A `GRAPH.RES` Type 0 block 0 warrior (palette 2, native size) is hand-placed beside the well and depth-sorted with the objects. Characters/NPCs are not decoded. `Escape` or `Backspace` returns to the menu, and the sword cursor still tracks the pointer.
+Selecting menu item 4 («Новая игра», New game) opens the `KONUNG.1` scene. It draws terrain, flat decorations, a screen-sized shadow layer (all shadows unioned, then drawn as 50% black once), and static objects plus `GAME.0` characters and creatures, sorted by bottom edge. Only on-screen items are drawn. Arrow keys, WASD, or the mouse within 8 px of a screen edge scroll the camera, which starts on the player and is clamped to the map. Characters show one static frame; animation is not ported. `Escape` or `Backspace` returns to the menu.
 
 ## Input behavior currently implemented
 

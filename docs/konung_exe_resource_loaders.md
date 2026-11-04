@@ -40,7 +40,7 @@ At `0x1ED8B6`, the bytes do not form a valid block header. At `0x1EE8B6`, there 
 
 The 64 KiB gap between `0x1ED8B6` and `0x1EE8B6` remains unexplained. CTPAX-X's source describes Type 0 metadata with 2,960 16-bit values, 1,536 32-bit offsets, and 3,840 more 16-bit values. The corresponding 19,744-byte metadata layout fits all 27 blocks, and each block has populated entries in the offset table. Swapping adjacent image/shadow offsets yields monotonic image-frame starts; frame payloads begin after the metadata and decode with the existing indexed-RLE helper. All 14,067 frames across these blocks decode successfully.
 
-The catalog extractor exports each complete Type 0 block, including its header, to `output/sprite-catalog/raw/GRAPH.T0/block_NNN.bin` and its decoded frames to the grouped `GRAPH.T0` gallery. The `type0.tsv` inventory records source offset, total and payload sizes, metadata size, remaining image-data bytes, populated offset count, block end, decoded frame count, and decode failures. Palette 2 is used only as a visual preview because the game's palette assignment for these blocks is not verified. Blocks 0–2 show adult human-like animated figures and are candidates for the warrior art, but no particular block has yet been matched to the village chief in the provided screenshot.
+The catalog extractor exports each complete Type 0 block, including its header, to `output/site/sprites/raw/GRAPH.T0/block_NNN.bin` and its decoded frames to the grouped `GRAPH.T0` gallery. The `type0.tsv` inventory records source offset, total and payload sizes, metadata size, remaining image-data bytes, populated offset count, block end, decoded frame count, and decode failures. Palette 2 is used only as a visual preview because the game's palette assignment for these blocks is not verified. Blocks 0–2 show adult human-like animated figures and are candidates for the warrior art, but no particular block has yet been matched to the village chief in the provided screenshot.
 
 ## Map entity and warrior model initialization
 
@@ -50,9 +50,9 @@ The first section is the terrain layer: 160 rows × 80 cells × 2 layer bytes, e
 
 At VA `0x004143DC`, an entity initializer assigns its map coordinates from the entity's words at `+0x08` and `+0x0A`, initializes state, and links it into the runtime grid. The loader calls this initializer from `0x0043C858` for one entity path and calls the model initializer at `0x00414078` from `0x0043C866` for the other.
 
-The model initializer at `0x00414078` selects either a Type 2 animated object or a Type 0 model. The Type 0 path uses the signed entity byte at `+0xD3` as the model-block index into a table based at `0x007145B4`, with a `0x4D28` stride per model. Entity fields at `+0`, `+1`, and `+0x10` select the actor subtype, variant, and direction/animation slot. It stores pointers to selected records at entity offsets `+0xDC` and `+0xE0`; a Type0 metadata value is copied into entity state at `+0xF4`. The selected record's fixed-point offsets are combined with entity offsets `+0xE8/+0xF0` and global screen/map offsets to produce render coordinates at `+0xE4/+0xEC`.
+The model initializer at `0x00414078` selects an animated `OBJECTS.RES` model (entity `+4` bit `0x40`, metadata `0x00722D2C + slot*0x3228`) or a `GRAPH.RES` Type 0 model (`0x007145B4 + n*0x4D28`). In both cases the model index is the signed byte at `+0xD6`; the code reads `dword[+0xD3] >> 24`, which an earlier note misread as `+0xD3`. Type, variant and direction (`+0`, `+1`, `+0x10`) select the frame index and anchor record, stored at `+0xDC`/`+0xE0`. The render position is the world position plus the anchor record's image dx/dy. Full tables are in [the GAME.N notes](konung_game_format.md).
 
-This confirms that Type 0 is an in-game animated-model path and that model choice and frame/direction lookup are entity-driven. The palette/dye operation has not yet been traced, so gallery palette 2 must not be treated as a runtime assignment. The inspected code also does not establish that `OBJECTS.RES` object IDs 87–89 identify the same kind of map entity as the Type 0 characters.
+This confirms that Type 0 is an in-game animated-model path and that model choice and frame/direction lookup are entity-driven. The palette is per entity: dword `+0xD8` is a palette byte offset (draw at `0x004272CB`). Gallery palette 2 is not a runtime assignment. The inspected code also does not establish that `OBJECTS.RES` object IDs 87–89 identify the same kind of map entity as the Type 0 characters.
 
 ## Known routines and buffers
 
@@ -88,7 +88,13 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00426833` | routine | Object shadow pass + depth bucketing | [map format](konung_map_format.md) |
 | `0x0043D3D8` | routine | Shadow RLE → per-row span list | [map format](konung_map_format.md) |
 | `0x0043E5DF` | routine | Apply shadow spans: halve RGB once per pixel | [map format](konung_map_format.md) |
-| `0x0069D1D4`, `0x007AB378` | buffers | Entity table (200 × `0x20`) and 0x100-byte entity records (characters; source file not traced) | [map format](konung_map_format.md) |
+| `0x0043BB6C` | routine | `GAME.N` loader (6 sections) | [GAME.N](konung_game_format.md) |
+| `0x0069D1B4` | buffer | Entity groups, 200 × `0x20`; group 0 = player party | [GAME.N](konung_game_format.md) |
+| `0x007AB378` | buffer | Entities, 2000 × `0x100` | [GAME.N](konung_game_format.md) |
+| `0x00A3E684`, `0x00A3E694` | globals | Player group pointer, hero entity pointer | [GAME.N](konung_game_format.md) |
+| `0x00A3E657` | global | Selected `GAME.N` number | [GAME.N](konung_game_format.md) |
+| `0x00439BA0` | routine | Fine-grid row/col → world pixel (cell centre) | [GAME.N](konung_game_format.md) |
+| `0x00722D2C`, `0x007145B4` | buffers | Animated `OBJECTS.RES` metadata (`0x3228` per slot); Type 0 model metadata (`0x4D28` per block) | [GAME.N](konung_game_format.md) |
 | `0x00671440`, `0x00664C40` | buffers | `LIGHTS.N` data: `0x3200` bytes then `0xC800` bytes; both zero-filled if the file is missing | map loader `0x0043C23C`–`0x0043C2BC` |
 | `0x00A3E6F8`, `0x00A3E6FC` | globals | Screen origin X/Y used by the terrain pass | terrain draw pass |
 | `0x007145B4` | buffer | Type 0 model table, stride `0x4D28` | this doc |

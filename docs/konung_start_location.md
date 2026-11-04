@@ -8,7 +8,7 @@ Human-like `OBJECTS.RES` entries: 15 (robed figure, 30 × 74, palette 152), 16 (
 
 ## Candidate map and uncertainty
 
-`KONUNG.1` remains a **provisional Old Camp map** candidate. Its terrain, decorations and static objects are now decoded and rendered from the map data; see [the map format notes](konung_map_format.md). The render shows a palisaded village (log houses, a smithy, a building site, a well) on a coast, which fits a starting camp but is not proof. Only the warrior is still a hand-placed preview.
+**Identified by the user: `KONUNG.1` is Volk's (Волк) initial location.** Whether this is also the walkthrough's "Old Camp" for Dragomir is not established. Its terrain, decorations and static objects are now decoded and rendered from the map data; see [the map format notes](konung_map_format.md). The render shows a palisaded village (log houses, a smithy, a building site, a well) on a coast, which fits a starting camp but is not proof. Only the warrior is still a hand-placed preview.
 
 Observed facts for `KONUNG.1`:
 
@@ -49,4 +49,4 @@ Entry 15 uses palette 152 and entry 16 uses palette 159. Entry IDs must use the 
 
 ## Remaining map and runtime work
 
-The New Game scene renders `KONUNG.1` from map data with a scrollable camera (arrow keys/WASD or mouse at the screen edge): terrain, decorations, merged 50% shadows, and depth-sorted static objects. The first six frames of Type 0 block 0 (palette 2, a visual placeholder) are hand-placed at world (2645, 1525) beside the well and depth-sorted with the objects. Entity/NPC placement is not decoded. The earlier preview house (`OBJECTS.RES` 1-based 88 over 89) is no longer used. Porting the executable's record parser, projection, and draw order remains necessary to reproduce the actual location. Keep `KONUNG.1 = Old Camp` provisional until it is tied to a labeled screenshot, save, or game location reference.
+The New Game scene renders `KONUNG.1` from map data with a scrollable camera: terrain, decorations, merged 50% shadows, and depth-sorted static objects. Characters and creatures come from `GAME.0` ([GAME.N notes](konung_game_format.md)), and the camera starts on the player inside the village. The earlier hand-placed warrior and house previews are gone.

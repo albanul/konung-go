@@ -27,10 +27,11 @@ Use the existing findings as a starting point. Before reverse engineering anythi
 |---|---|---|
 | A resource file you haven't seen before | [Resource file overview](#resource-file-overview) below, then [RES formats](docs/konung_res_format.md) | `internal/resource/` |
 | Map terrain, decorations, static objects, shadows, camera/projection | [Map format](docs/konung_map_format.md) | `internal/konungmap/`, `cmd/map-render/` |
-| The New Game scene (map terrain/objects + preview warrior) | [Menu & scene implementation](docs/konung_menu.md), [Start location](docs/konung_start_location.md) | `internal/konungmenu/startscene.go` |
+| The New Game scene (map terrain/objects + GAME.0 characters) | [Menu & scene implementation](docs/konung_menu.md), [Start location](docs/konung_start_location.md) | `internal/konungmenu/startscene.go` |
 | Main menu, buttons, cursor | [Menu implementation](docs/konung_menu.md), [Menu RES catalog](docs/konung_menu_res.md) | `internal/konungmenu/menu.go`, `graph.go` |
 | `GRAPH.RES` (palettes, cursors, terrain tiles, Type 0 character models) | [GRAPH.RES layout and sprites](docs/konung_graph_sprites.md) | `konungmap.LoadTerrainTiles`, `resource.DecodeType0Frames`, `konungmenu/graph.go` |
 | `OBJECTS.RES` (buildings, animated objects) | [RES formats: OBJECTS](docs/konung_res_format.md#objectsres), [Start location: OBJECTS path](docs/konung_start_location.md#objectsres-image-path-and-object-lookup), [Sprite index](docs/konung_sprite_index.md) | `resource.DecodeStaticObject` |
+| Characters, NPCs, monsters, player start (`GAME.N`) | [GAME.N format](docs/konung_game_format.md) | `internal/konunggame/`, `resource.LoadEntitySprite` |
 | Finding a sprite by appearance or ID | [Sprite index](docs/konung_sprite_index.md) + `docs/data/*.tsv` | `cmd/sprite-catalog/` |
 | Tracing code in `konung.exe` | [Executable loader notes](docs/konung_exe_resource_loaders.md), [RE workflow](#reverse-engineering-workflow) below | — |
 
@@ -44,6 +45,7 @@ One line per file family. Details live in the linked documents; "verified" means
 | `GRAPH.RES` | 256 palettes → 11 Type 5 cursors → Type 1 terrain tile block (512-slot table) → 64 KiB gap → 27 Type 0 character-model blocks | verified except gap and Type 0 palette/dye | [GRAPH layout](docs/konung_graph_sprites.md) |
 | `OBJECTS.RES` | 512-slot table; slots 0–29 animated (Type 2), others static | verified | [start location](docs/konung_start_location.md), [exe loaders](docs/konung_exe_resource_loaders.md) |
 | `KONUNG.N` | 4 sections: terrain (160×80×2 tile bytes), 320×160 flag grid, flat decorations (16-byte records), static object placements (36-byte records) | verified except the flag grid | [map format](docs/konung_map_format.md) |
+| `GAME.N` | Start state: 6 sections incl. 200 entity groups (group 0 = player) and 2000 × 256-byte entities | groups/entities/sprites verified; spawn placement approximate; 4 sections open | [GAME.N](docs/konung_game_format.md) |
 | `LIGHTS.N` | Read by the map loader; used by an alternate terrain draw path | open | [map format](docs/konung_map_format.md) |
 | `SOUNDS.RES` | Type 1 header + 1000 `(offset,size)` entries, PCM | verified via CTPAX-X + bytes | [res format](docs/konung_res_format.md#soundsres--sounds_res) |
 
@@ -51,12 +53,14 @@ One line per file family. Details live in the linked documents; "verified" means
 
 | Package / command | Responsibility |
 |---|---|
-| `internal/resource` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, static OBJECTS entries and map objects with shadows (`LoadMapObject`), `GRAPH.RES` Type 0 frames, sound entries |
+| `internal/resource` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, static OBJECTS entries and map objects with shadows (`LoadMapObject`), entity frames (`LoadEntitySprite`), `GRAPH.RES` Type 0 frames, sound entries |
 | `internal/konungmap` | Engine-independent `KONUNG.N` parsing (terrain, decorations, object placements), `GRAPH.RES` terrain tiles, projection, depth order, full-scene render |
+| `internal/konunggame` | Engine-independent `GAME.N` parsing: groups, entities, world positions, spawn placement, entity sprites |
 | `internal/konungmenu` | Ebitengine menu and New Game scene (camera, drawing); converts decoded `image.RGBA` to `ebiten.Image` |
 | `cmd/konung` | Game entry point |
-| `cmd/map-render` | `KONUNG.N` → PNG (terrain, decorations, shadows, objects; `-terrain` for terrain only, `-all` for every map + `index.html`) |
-| `cmd/sprite-catalog` | Extract all indexed images into an HTML gallery under `output/sprite-catalog/` |
+| `cmd/map-render` | `KONUNG.N` → PNG (terrain, decorations, shadows, objects, `GAME.N` characters; `-game` to choose/disable, `-terrain` for terrain only, `-all` for every map + `index.html`) |
+| `cmd/sprite-catalog` | Extract all indexed images into an HTML gallery under `output/site/sprites/` |
+| `internal/sitenav` | Shared nav bar and landing page (`output/site/index.html`) that join the tools' HTML outputs into one site |
 | `cmd/res-parser` | Extract Type 5 frames from a RES file to PNG |
 
 Put new format decoders in an engine-independent package (`internal/resource` or a sibling such as `internal/konungmap`) with a test against the installed assets, and keep Ebitengine code a thin consumer. This keeps tools and tests runnable without a display.
@@ -70,8 +74,8 @@ podman ps                                   # find <container>
 C="podman exec -w /workspaces/konung1.5 <container>"
 $C go build ./... && $C go test ./...      # asset-backed tests skip if assets are missing
 $C go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png
-$C go run ./cmd/map-render -all output/maps        # every KONUNG.N + index.html
-$C go run ./cmd/sprite-catalog
+$C go run ./cmd/map-render -all output/site/maps   # every KONUNG.N + index.html
+$C go run ./cmd/sprite-catalog              # -> output/site/sprites; open output/site/index.html for both
 $C go run cmd/res-parser/main.go <resource.RES> <output_directory>
 $C go run ./cmd/konung                      # needs a display; run on the host if the container has none
 ```
@@ -96,7 +100,7 @@ $C sed -n '53935,54260p' /tmp/kn/text.asm | awk -F'\t' '{print $1, $3}'   # addr
 * The game is a 32-bit Windows x86 application. Treat multi-byte resource values as little-endian unless the field is specifically documented otherwise. Some block tags are stored big-endian; follow the per-format specification.
 * Do not guess an unknown format. Inspect references in `konung.exe`, trace the read/parse call sites, and validate the interpretation against the resource bytes.
 * When recording a finding, distinguish observed facts from hypotheses. Include file name, offset, size, indexing convention (0- vs 1-based), and a reproducible validation method. Remove or mark superseded statements; don't leave a stale claim next to the new one.
-* Keep the `KONUNG.N` filename-to-location mapping provisional unless verified (`KONUNG.1 = Old Camp` is unconfirmed). In the New Game scene, terrain, decorations and objects are map-derived; only the Type 0 warrior is a hand-placed preview.
+* Keep the `KONUNG.N` filename-to-location mapping provisional unless verified (`KONUNG.1 = Old Camp` is unconfirmed). `KONUNG.1` is Volk's initial location (identified by the user). In the New Game scene everything is data-derived: map content from `KONUNG.1`, characters from `GAME.0`. Only spawn-group member positions are approximated.
 * Konung supports both 15-bit RGB 555 and 16-bit RGB 565 paths. Verify masks and conversion behavior before assigning a pixel format. All decoded assets so far use RGB555 with magenta `0x7C1F` as the transparent key.
 * The cursor is `GRAPH.RES` Type 5 sprite 4 (plain blade); sprite 1 includes a crossed-swords marker.
 
@@ -111,10 +115,10 @@ $C sed -n '53935,54260p' /tmp/kn/text.asm | awk -F'\t' '{print $1, $3}'   # addr
 
 Highest-value unknowns, roughly in priority order:
 
-1. Characters/NPCs: the entity records at `0x007AB378` (source file not traced) and the model initializer `0x00414078`. See [map format](docs/konung_map_format.md#open-questions).
+1. What `GAME.N`'s N selects (difficulty vs hero) and the new-game screen; exact runtime spawn positions; character animation. See [GAME.N](docs/konung_game_format.md#open-questions).
 2. Type 0 model palette/dye selection and the model ID → character mapping. See [exe notes](docs/konung_exe_resource_loaders.md).
 3. `KONUNG.N` section 1 (320×160 flag grid): is it walkability?
 4. `LIGHTS.N` format and the lit terrain draw path at VA `0x004257A9`.
 5. The 64 KiB gap in `GRAPH.RES` at `0x1ED8B6`, and the second 8-byte table at VA `0x006324B8`.
-6. `KONUNG.N` ↔ in-game location names. Render all maps with `map-render -all` and compare them against screenshots or the walkthrough.
+6. `KONUNG.N` ↔ in-game location names (`KONUNG.1` = Volk's start is known). Render all maps with `map-render -all` and compare them against screenshots or the walkthrough.
 7. `cmd/sprite-catalog` has its own Type 0 walker that duplicates `resource.DecodeType0Frames`; consolidate when touching it.

@@ -154,9 +154,38 @@ func (s SortedPlacement) DepthKey() int {
 	return key
 }
 
-// RenderScene composes terrain, decorations, shadows and objects into one
-// image in the game's order. objects may be nil to render terrain only.
-func RenderScene(m *Map, tiles []*image.RGBA, decorations []Decoration, sorted []SortedPlacement) *image.RGBA {
+// Sprite is anything drawn in the depth-sorted pass (static objects and
+// entities), with optional shadow. Positions are world pixels (top-left).
+type Sprite struct {
+	Image  *image.RGBA
+	X, Y   int
+	Shadow *image.Alpha
+	SX, SY int
+	Depth  int // bottom-edge sort key
+}
+
+// ObjectSprites converts resolved static objects to sprites.
+func ObjectSprites(sorted []SortedPlacement) []Sprite {
+	out := make([]Sprite, 0, len(sorted))
+	for _, s := range sorted {
+		px, py := s.Placement.Pos()
+		out = append(out, Sprite{
+			Image: s.Object.Image, X: s.X, Y: s.Y,
+			Shadow: s.Object.Shadow, SX: px + s.Object.ShadowDX, SY: py + s.Object.ShadowDY,
+			Depth: s.DepthKey(),
+		})
+	}
+	return out
+}
+
+// SortSprites orders sprites by depth; ties keep their input order.
+func SortSprites(s []Sprite) {
+	sort.SliceStable(s, func(i, j int) bool { return s[i].Depth < s[j].Depth })
+}
+
+// RenderScene composes terrain, decorations, shadows and sprites into one
+// image in the game's order. sprites must already be depth-sorted.
+func RenderScene(m *Map, tiles []*image.RGBA, decorations []Decoration, sprites []Sprite) *image.RGBA {
 	dst := Render(m, tiles)
 	for _, d := range decorations {
 		if d.Tile < len(tiles) && tiles[d.Tile] != nil {
@@ -166,17 +195,15 @@ func RenderScene(m *Map, tiles []*image.RGBA, decorations []Decoration, sorted [
 	}
 	// Union all shadows into one mask, then halve covered pixels once.
 	mask := image.NewAlpha(dst.Bounds())
-	for _, s := range sorted {
-		if sh := s.Object.Shadow; sh != nil {
-			x, y := s.Placement.Pos()
-			r := sh.Bounds().Add(image.Pt(x+s.Object.ShadowDX, y+s.Object.ShadowDY))
-			draw.DrawMask(mask, r, image.Opaque, image.Point{}, sh, sh.Bounds().Min, draw.Over)
+	for _, s := range sprites {
+		if s.Shadow != nil {
+			r := s.Shadow.Bounds().Add(image.Pt(s.SX, s.SY))
+			draw.DrawMask(mask, r, image.Opaque, image.Point{}, s.Shadow, s.Shadow.Bounds().Min, draw.Over)
 		}
 	}
 	draw.DrawMask(dst, dst.Bounds(), image.NewUniform(color.RGBA{0, 0, 0, 0x80}), image.Point{}, mask, image.Point{}, draw.Over)
-	for _, s := range sorted {
-		img := s.Object.Image
-		draw.Draw(dst, img.Bounds().Add(image.Pt(s.X, s.Y)), img, img.Bounds().Min, draw.Over)
+	for _, s := range sprites {
+		draw.Draw(dst, s.Image.Bounds().Add(image.Pt(s.X, s.Y)), s.Image, s.Image.Bounds().Min, draw.Over)
 	}
 	return dst
 }

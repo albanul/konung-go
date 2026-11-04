@@ -8,29 +8,21 @@ import (
 	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"konung1.5/internal/konunggame"
 	"konung1.5/internal/konungmap"
-	"konung1.5/internal/resource"
 )
 
 const (
-	warriorModelID = 0
-	warriorFrames  = 6
-	warriorPalette = 2 // preview only; runtime dye selection not traced
 	scrollSpeed    = 12
 	edgeScrollZone = 8
 )
 
-// warriorPos is a hand-picked world position inside the KONUNG.1 palisade.
-// Characters come from a separate entity path (VA 0x00414078) that is not
-// decoded yet, so the warrior is still a preview.
-var warriorPos = image.Pt(2645, 1525)
-
-// sceneObject is a static map object ready to draw.
+// sceneObject is a static map object or an entity, ready to draw.
 type sceneObject struct {
 	img, shadow *ebiten.Image
 	x, y        int // image top-left in world pixels
 	sx, sy      int // shadow top-left in world pixels
-	depth       int // bottom-edge sort key (konungmap.SortedPlacement.DepthKey)
+	depth       int // bottom-edge sort key
 }
 
 type startScene struct {
@@ -40,14 +32,16 @@ type startScene struct {
 	tileMarginY    int
 	worldW, worldH int
 	decorations    []konungmap.Decoration
-	objects        []sceneObject // in depth order
+	objects        []sceneObject // objects and entities, in depth order
 	shadowLayer    *ebiten.Image
-	warrior        []*ebiten.Image
 	camX, camY     int
 	tick           int
 }
 
-func loadStartScene(graphPath, objectsPath, mapPath string) (*startScene, error) {
+// loadStartScene builds the scene for map mapNumber: terrain, decorations
+// and static objects from the KONUNG.N file, characters and creatures from
+// the GAME.N start state.
+func loadStartScene(graphPath, objectsPath, mapPath, gamePath string, mapNumber int) (*startScene, error) {
 	graphData, err := os.ReadFile(graphPath)
 	if err != nil {
 		return nil, err
@@ -71,6 +65,18 @@ func loadStartScene(graphPath, objectsPath, mapPath string) (*startScene, error)
 	placements, err := konungmap.ParsePlacements(mapData)
 	if err != nil {
 		return nil, err
+	}
+	walk, err := konungmap.ParseWalkGrid(mapData)
+	if err != nil {
+		return nil, err
+	}
+	gameData, err := os.ReadFile(gamePath)
+	if err != nil {
+		return nil, err
+	}
+	game, err := konunggame.Parse(gameData)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", gamePath, err)
 	}
 	rawTiles, err := konungmap.LoadTerrainTiles(graphData)
 	if err != nil {
@@ -112,33 +118,39 @@ func loadStartScene(graphPath, objectsPath, mapPath string) (*startScene, error)
 	for _, e := range errs {
 		log.Printf("%s: %v", mapPath, e)
 	}
-	uploaded := map[*resource.MapObject][2]*ebiten.Image{}
-	for _, sp := range konungmap.DrawOrder(placements, objs) {
-		imgs, ok := uploaded[sp.Object]
-		if !ok {
-			imgs[0] = toEbiten(sp.Object.Image)
-			if sp.Object.Shadow != nil {
-				imgs[1] = ebiten.NewImageFromImage(sp.Object.Shadow) // white, alpha = coverage
-			}
-			uploaded[sp.Object] = imgs
+	sprites := konungmap.ObjectSprites(konungmap.DrawOrder(placements, objs))
+	// Center on the player (group 0's first entity) when it starts here.
+	camX, camY := s.worldW/2, s.worldH/2
+	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
+		es, x, y, sx, sy, depth, err := p.LoadSprite(objectsData, graphData)
+		if err != nil {
+			log.Printf("%s: %v", gamePath, err)
+			continue
 		}
-		px, py := sp.Placement.Pos()
-		s.objects = append(s.objects, sceneObject{
-			img: imgs[0], shadow: imgs[1],
-			x: sp.X, y: sp.Y,
-			sx: px + sp.Object.ShadowDX, sy: py + sp.Object.ShadowDY,
-			depth: sp.DepthKey(),
-		})
+		sprites = append(sprites, konungmap.Sprite{Image: es.Image, X: x, Y: y, Shadow: es.Shadow, SX: sx, SY: sy, Depth: depth})
+		if p.Group == 0 && p.Index == game.Groups[0].First {
+			camX, camY = konunggame.WorldPos(p.Row, p.Col)
+		}
 	}
-
-	warrior, err := resource.DecodeType0Frames(graphData, warriorModelID, warriorFrames, warriorPalette)
-	if err != nil {
-		return nil, err
+	konungmap.SortSprites(sprites)
+	images := map[*image.RGBA]*ebiten.Image{}
+	shadows := map[*image.Alpha]*ebiten.Image{}
+	for _, sp := range sprites {
+		img, ok := images[sp.Image]
+		if !ok {
+			img = toEbiten(sp.Image)
+			images[sp.Image] = img
+		}
+		var sh *ebiten.Image
+		if sp.Shadow != nil {
+			if sh, ok = shadows[sp.Shadow]; !ok {
+				sh = ebiten.NewImageFromImage(sp.Shadow) // white, alpha = coverage
+				shadows[sp.Shadow] = sh
+			}
+		}
+		s.objects = append(s.objects, sceneObject{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY, depth: sp.Depth})
 	}
-	for _, f := range warrior {
-		s.warrior = append(s.warrior, toEbiten(f))
-	}
-	s.centerOn(warriorPos.X, warriorPos.Y)
+	s.centerOn(camX, camY)
 	return s, nil
 }
 
@@ -211,24 +223,11 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	op.ColorScale.Scale(0, 0, 0, 0.5)
 	screen.DrawImage(s.shadowLayer, op)
 
-	// Objects and the warrior are depth-sorted by their bottom edge.
-	var frame *ebiten.Image
-	warriorDepth := 1 << 30
-	if len(s.warrior) > 0 {
-		frame = s.warrior[(s.tick/8)%len(s.warrior)]
-		warriorDepth = warriorPos.Y + frame.Bounds().Dy()
-	}
+	// Objects and entities are depth-sorted by their bottom edge.
 	for _, o := range s.objects {
-		if frame != nil && o.depth > warriorDepth {
-			drawAt(screen, frame, warriorPos.X-s.camX, warriorPos.Y-s.camY)
-			frame = nil
-		}
 		if s.visible(o.x, o.y, o.img.Bounds().Dx(), o.img.Bounds().Dy()) {
 			drawAt(screen, o.img, o.x-s.camX, o.y-s.camY)
 		}
-	}
-	if frame != nil {
-		drawAt(screen, frame, warriorPos.X-s.camX, warriorPos.Y-s.camY)
 	}
 }
 

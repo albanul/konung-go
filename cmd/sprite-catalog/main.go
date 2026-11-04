@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"konung1.5/internal/resource"
+	"konung1.5/internal/sitenav"
 )
 
 type sourceRow struct {
@@ -73,7 +74,7 @@ func main() {
 
 func run() error {
 	root := "assets/Konung"
-	out := "output/sprite-catalog"
+	out := filepath.Join(sitenav.DefaultRoot, "sprites")
 	if len(os.Args) > 1 {
 		root = os.Args[1]
 	}
@@ -641,11 +642,13 @@ func writeCatalog(out string, items []catalogItem) error {
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>Konung sprite catalog</title>
 <style>
+__NAVSTYLE__
 body{font:14px system-ui;margin:20px;background:#1d2024;color:#eee}input,select{font:inherit;padding:8px;margin:4px}
 #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
 .card{background:#30353b;padding:8px;border-radius:5px;min-width:0}.card img{width:100%;height:130px;object-fit:contain;image-rendering:pixelated;background:repeating-conic-gradient(#454a50 0% 25%,#383d43 0% 50%) 50%/16px 16px}
 .meta{overflow-wrap:anywhere}.muted{color:#bbc2ca}.notice{padding:12px;background:#513b22;border-left:4px solid #e4a84d;max-width:1100px}.frames{margin-top:8px}.framegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(105px,1fr));gap:8px;margin-top:8px}.framecard{background:#25292e;padding:5px;border-radius:4px;overflow-wrap:anywhere}.framecard img{height:90px}small{color:#c4c9cf}button{padding:8px;margin:8px}
 </style></head><body>
+__NAV__
 <h1>Konung image catalog</h1>
 <p class="notice"><b>Review note.</b> GRAPH Type 0 animation frames are decoded and grouped below. The shown palette is a visual preview only; the original palette assignment is not yet verified. Complete raw blocks and offsets are in <a href="type0.tsv">type0.tsv</a>. The preceding 64 KiB region is unidentified.</p>
 <p>Animated resources are grouped by model. Open “Explore frames” on a card to inspect the animation and directions.</p>
@@ -666,9 +669,22 @@ function renderGrouped(namespace,q){const groups=new Map();for(const x of data){
 function render(){const q=document.querySelector('#q').value.toLowerCase(),n=sel.value;if(n==='OBJECTS'||n==='GRAPH.T0'){renderGrouped(n,q);return}const rows=data.filter(x=>(!n||x.namespace===n)&&(!q||searchable(x).includes(q)));document.querySelector('#count').textContent=rows.length+' images ('+data.length+' extracted total)';document.querySelector('#grid').innerHTML=rows.slice(0,limit).map(x=>imageCard(x,false)).join('');document.querySelector('#more').hidden=rows.length<=limit}
 document.querySelector('#q').oninput=()=>{limit=300;render()};sel.onchange=()=>{limit=300;render()};document.querySelector('#more').onclick=()=>{limit+=300;render()};render();
 </script></body></html>`
+	root, inSite := sitenav.SectionRoot(out)
+	navStyle, nav := "", ""
+	if inSite {
+		navStyle, nav = sitenav.Style, string(sitenav.Nav("sprites"))
+	}
+	page = strings.Replace(page, "__NAVSTYLE__", navStyle, 1)
+	page = strings.Replace(page, "__NAV__", nav, 1)
 	page = strings.Replace(page, "__DATA__", string(data), 1)
 	pagePath := filepath.Join(out, "index.html")
-	return os.WriteFile(pagePath, []byte(page), 0644)
+	if err := os.WriteFile(pagePath, []byte(page), 0644); err != nil {
+		return err
+	}
+	if inSite {
+		return sitenav.WriteHub(root)
+	}
+	return nil
 }
 
 func hexOffset(offset uint64) string {

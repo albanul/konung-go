@@ -61,9 +61,15 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, err
 	}
-	world, err := loadStartScene(graphPath, objectsPath, mapPath)
+	// GAME.0..2 are the start states selected by the byte at VA 0x00A3E657
+	// (the new-game choice); GAME.0 is used until that menu exists.
+	gamePath, err := FindGameResource("assets/Konung/GAME.0")
 	if err != nil {
-		return nil, fmt.Errorf("load house and warrior scene: %w", err)
+		return nil, err
+	}
+	world, err := loadStartScene(graphPath, objectsPath, mapPath, gamePath, 1)
+	if err != nil {
+		return nil, fmt.Errorf("load KONUNG.1 scene: %w", err)
 	}
 
 	m := &Menu{

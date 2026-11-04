@@ -1,6 +1,6 @@
 # `KONUNG.N` map format
 
-This records the verified layout of the `KONUNG.N` map files (terrain, flat decorations, static objects with shadows) and how the game draws them. Characters/NPCs come from a separate entity path and are not decoded; see "Open questions".
+This records the verified layout of the `KONUNG.N` map files (terrain, flat decorations, static objects with shadows) and how the game draws them. Characters, NPCs and monsters come from `GAME.N`; see [the GAME.N notes](konung_game_format.md).
 
 Code: `internal/konungmap` (`Parse`, `ParseDecorations`, `ParsePlacements`, `LoadPlacedObjects`, `DrawOrder`, `RenderScene`), `resource.LoadMapObject`, `resource.DecodeShadowMask`. Tool: `cmd/map-render`.
 
@@ -36,7 +36,7 @@ Rows are drawn top to bottom and columns left to right. Layer 0 is drawn, then l
 
 Validation: `go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png` produces a 3886 × 3712 image (use `-terrain` for the terrain layer alone); its terrain is seamless: coast and sea along the top, a branching river, and a road on the right. `go test ./internal/konungmap` checks the extents and that every referenced tile decodes.
 
-`go run ./cmd/map-render -all output/maps` renders all 43 installed maps (terrain, decorations, shadows, objects) to `konung_NN.png` plus a browsable `index.html`. All of them parse and render without missing tiles or object decode errors. Extents range from 10 × 23 cells (`KONUNG.6`) to 80 × 67 (`KONUNG.36`, the full 80-column width).
+`go run ./cmd/map-render -all output/site/maps` renders all 43 installed maps (terrain, decorations, shadows, objects) to `konung_NN.png` plus a browsable `index.html`. All of them parse and render without missing tiles or object decode errors. Extents range from 10 × 23 cells (`KONUNG.6`) to 80 × 67 (`KONUNG.36`, the full 80-column width).
 
 ## Flat decorations: section 2 (verified)
 
@@ -106,7 +106,7 @@ Validation: the `KONUNG.1` render shows a palisaded village (log houses, a smith
 
 ## Open questions
 
-* Characters/NPCs: the entity table at `0x0069D1D4` (200 × `0x20` bytes) references 0x100-byte entity records at `0x007AB378`, from a file other than `KONUNG.N` (not traced). Model initialization is at `0x00414078`.
+* Characters/NPCs/monsters come from `GAME.N`, not from the map; see [the GAME.N notes](konung_game_format.md).
 * Animated static objects (header `+0x18` > 0, frame cycling) and random variants: the port always draws variant 0.
 * ID substitution from the game-state table at `0x0043CB21`.
 * Objects anchored above y = 0 are clipped in `map-render` PNGs; the game scrolls past them.
