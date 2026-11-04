@@ -78,7 +78,14 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00A3E6BC` | global | Pointer to the T1 image data | GRAPH loader |
 | `0x00627FD8` | buffer | `KONUNG.N` terrain section (`0x6400`) | [map format](konung_map_format.md) |
 | `0x00505C70` | buffer | Expanded 320 × 160 word grid from `KONUNG.N` section 1 | [map format](konung_map_format.md) |
-| `0x00828378`, `0x0082CE78` | buffers | `KONUNG.N` sections 2 and 3 | [map format](konung_map_format.md) |
+| `0x00828378` | buffer | `KONUNG.N` section 2: flat decorations (16-byte records); count at `0x00A3E7F8` | [map format](konung_map_format.md) |
+| `0x0082CE78` | buffer | `KONUNG.N` section 3: static object placements (36-byte records); count at `0x00A3E800` | [map format](konung_map_format.md) |
+| `0x00780DDC` | buffer | Static `OBJECTS.RES` headers, `0x100` bytes per map object ID (slot − 30) | [map format](konung_map_format.md) |
+| `0x00425A95` | routine | Decoration draw loop (after terrain) | [map format](konung_map_format.md) |
+| `0x00426833` | routine | Object shadow pass + depth bucketing | [map format](konung_map_format.md) |
+| `0x0043D3D8` | routine | Shadow RLE → per-row span list | [map format](konung_map_format.md) |
+| `0x0043E5DF` | routine | Apply shadow spans: halve RGB once per pixel | [map format](konung_map_format.md) |
+| `0x0069D1D4`, `0x007AB378` | buffers | Entity table (200 × `0x20`) and 0x100-byte entity records (characters; source file not traced) | [map format](konung_map_format.md) |
 | `0x00671440`, `0x00664C40` | buffers | `LIGHTS.N` data: `0x3200` bytes then `0xC800` bytes; both zero-filled if the file is missing | map loader `0x0043C23C`–`0x0043C2BC` |
 | `0x00A3E6F8`, `0x00A3E6FC` | globals | Screen origin X/Y used by the terrain pass | terrain draw pass |
 | `0x007145B4` | buffer | Type 0 model table, stride `0x4D28` | this doc |

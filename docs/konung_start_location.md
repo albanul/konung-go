@@ -8,7 +8,7 @@ Human-like `OBJECTS.RES` entries: 15 (robed figure, 30 × 74, palette 152), 16 (
 
 ## Candidate map and uncertainty
 
-`KONUNG.1` remains a **provisional Old Camp map** candidate. Its terrain layer is now decoded and rendered faithfully; see [the map format notes](konung_map_format.md). Objects and characters in the scene are still hand-placed previews.
+`KONUNG.1` remains a **provisional Old Camp map** candidate. Its terrain, decorations and static objects are now decoded and rendered from the map data; see [the map format notes](konung_map_format.md). The render shows a palisaded village (log houses, a smithy, a building site, a well) on a coast, which fits a starting camp but is not proof. Only the warrior is still a hand-placed preview.
 
 Observed facts for `KONUNG.1`:
 
@@ -49,4 +49,4 @@ Entry 15 uses palette 152 and entry 16 uses palette 159. Entry IDs must use the 
 
 ## Remaining map and runtime work
 
-The New Game scene renders `KONUNG.1`'s full terrain with a scrollable camera (arrow keys/WASD or mouse at the screen edge). House 88 with shadow 89 and the first six frames of Type 0 block 0 (palette 2, a visual placeholder) are hand-placed at world pixels (2900, 2500) and (3330, 2800) beside the road. These are not coordinates decoded from the map. Porting the executable's record parser, projection, and draw order remains necessary to reproduce the actual location. Keep `KONUNG.1 = Old Camp` provisional until it is tied to a labeled screenshot, save, or game location reference.
+The New Game scene renders `KONUNG.1` from map data with a scrollable camera (arrow keys/WASD or mouse at the screen edge): terrain, decorations, merged 50% shadows, and depth-sorted static objects. The first six frames of Type 0 block 0 (palette 2, a visual placeholder) are hand-placed at world (2645, 1525) beside the well and depth-sorted with the objects. Entity/NPC placement is not decoded. The earlier preview house (`OBJECTS.RES` 1-based 88 over 89) is no longer used. Porting the executable's record parser, projection, and draw order remains necessary to reproduce the actual location. Keep `KONUNG.1 = Old Camp` provisional until it is tied to a labeled screenshot, save, or game location reference.

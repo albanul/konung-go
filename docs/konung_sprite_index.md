@@ -26,7 +26,7 @@ The index has 1,425 data rows: 11 GRAPH Type 5 sprites, 512 GRAPH table slots, 5
 
 ## Useful lookups
 
-Scene assets: the New Game scene uses `OBJECTS` 88 (house) over 89 (shadow) and `GRAPH.T0` block 0 frames 0–5 as the warrior. Human-like `OBJECTS` entries are 15 (robed figure, 30 × 74, palette 152), 16 (child-sized), and 5 (corpse-like). None has a confirmed identity. See [the start-location notes](konung_start_location.md).
+Scene assets: the New Game scene draws the objects `KONUNG.1` places (map object ID + 30 = 0-based `OBJECTS` slot; see [map format](konung_map_format.md)) and uses `GRAPH.T0` block 0 frames 0–5 as the warrior. Note that the `OBJECTS` IDs in this index are 1-based, so map object ID `n` is index row `n + 31`. Human-like `OBJECTS` entries are 15 (robed figure, 30 × 74, palette 152), 16 (child-sized), and 5 (corpse-like). None has a confirmed identity. See [the start-location notes](konung_start_location.md).
 
 ```sh
 # Find an object by one-based OBJECTS.RES ID

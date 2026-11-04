@@ -1,6 +1,8 @@
-# `KONUNG.N` map format: terrain layer
+# `KONUNG.N` map format
 
-This records the verified terrain layout of the `KONUNG.N` map files and how the game draws it. Object/entity sections are not decoded yet; see "Open questions".
+This records the verified layout of the `KONUNG.N` map files (terrain, flat decorations, static objects with shadows) and how the game draws them. Characters/NPCs come from a separate entity path and are not decoded; see "Open questions".
+
+Code: `internal/konungmap` (`Parse`, `ParseDecorations`, `ParsePlacements`, `LoadPlacedObjects`, `DrawOrder`, `RenderScene`), `resource.LoadMapObject`, `resource.DecodeShadowMask`. Tool: `cmd/map-render`.
 
 ## File sections (observed)
 
@@ -10,8 +12,8 @@ Every installed `KONUNG.N` is 128,800 bytes (`0x1F720`). The map loader at VA `0
 |---|---:|---|---|
 | `0x00000` | `0x6400` | `0x00627FD8` | **Terrain**: 160 rows × 80 cells × 2 layer bytes (verified, below) |
 | `0x06400` | `0xC800` | `0x00512470` | 320 × 160 byte grid, expanded to 16-bit words at `0x00505C70` (below). Values in `KONUNG.1`: `0x00`, `0x0F`, `0x4F`, `0x40`. Hypothesis: walkability/obstacle grid at half-cell resolution. **Not terrain.** |
-| `0x12C00` | `0x3E80` | `0x00828378` | Records with a 16-byte stride (the loop at `0x0043C537` walks up to 999 entries and stops at a `-1` first dword). Role not traced. |
-| `0x16A80` | `0x8CA0` | `0x0082CE78` | Not traced. Raw words 87/88 found here earlier (`0x16D4C`, `0x17EBC`, `0x18414`) may be object references. |
+| `0x12C00` | `0x3E80` | `0x00828378` | **Flat decorations**: up to 999 × 16-byte records (verified, below) |
+| `0x16A80` | `0x8CA0` | `0x0082CE78` | **Static object placements**: up to 999 × 36-byte records (verified, below) |
 
 Expansion of section 1 (loop at `0x0043C498`): byte `0xFF` → word `0x0FFF`; if `(b & 0x0F) == 0x0F` → `(b << 8) | 0x0FFF`; otherwise → `b << 8`.
 
@@ -32,13 +34,82 @@ y = originY + row * 0x20                          // 32 px
 
 Rows are drawn top to bottom and columns left to right. Layer 0 is drawn, then layer 1, both at the same position. The blit routine at `0x0043E242` treats `(x, y)` as the image's top-left corner (no hotspot) and clips against the viewport.
 
-Validation: `go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png` produces a seamless 3886 × 3712 terrain image: coast and sea along the top, a branching river, and a road on the right. `go test ./internal/konungmap` checks the extents and that every referenced tile decodes.
+Validation: `go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png` produces a 3886 × 3712 image (use `-terrain` for the terrain layer alone); its terrain is seamless: coast and sea along the top, a branching river, and a road on the right. `go test ./internal/konungmap` checks the extents and that every referenced tile decodes.
 
-`go run ./cmd/map-render -all output/maps` renders all 43 installed maps to `konung_NN.png` plus a browsable `index.html`. All of them parse and render without missing tiles. Extents range from 10 × 23 cells (`KONUNG.6`) to 80 × 67 (`KONUNG.36`, the full 80-column width).
+`go run ./cmd/map-render -all output/maps` renders all 43 installed maps (terrain, decorations, shadows, objects) to `konung_NN.png` plus a browsable `index.html`. All of them parse and render without missing tiles or object decode errors. Extents range from 10 × 23 cells (`KONUNG.6`) to 80 × 67 (`KONUNG.36`, the full 80-column width).
+
+## Flat decorations: section 2 (verified)
+
+Loader `0x0043C537`; draw loop `0x00425A95`, which runs right after the terrain pass, in file order. Records end at 999 entries or when the first dword is ≤ −1. The count is stored at `0x00A3E7F8`.
+
+| Offset | Type | Meaning |
+|---|---|---|
+| `+0x00` | `int32` | **0-based** `GRAPH.T1` slot. Terrain bytes are 1-based; these are not. The loader replaces it with an image pointer. |
+| `+0x04` | `uint32` | Overwritten by the loader with the T1 palette byte offset (file value ignored) |
+| `+0x08` | 4 bytes | zero in files; role unknown |
+| `+0x0C` | `int16` | x, world pixels (image top-left) |
+| `+0x0E` | `int16` | y, world pixels |
+
+`KONUNG.1`: 373 records sorted by y; slots 16–31 and 169–197 (ground clutter, flowers, logs).
+
+## Static object placements: section 3 (verified)
+
+Loader `0x0043CB98`; shadow pass and depth bucketing `0x00426833`–`0x00426B78`. Records end at 999 entries or when the first dword is ≤ −1. The count is stored at `0x00A3E800`.
+
+| Offset | Type | Meaning |
+|---|---|---|
+| `+0x00` | `int32` | Object ID. `OBJECTS.RES` 0-based slot = ID + `0x1E` (always a static entry). The loader replaces it with a pointer to the object's 0x100-byte header (`0x00780DDC + ID*0x100`). |
+| `+0x04` | `uint32` | Palette byte offset override; `0` → header `+0x14` |
+| `+0x08` | 8 bytes | zero in files |
+| `+0x10` | 12 bytes | `0xFF` in files; role unknown |
+| `+0x1C` | `uint16` | runtime (animation counter, set from header `+0x18`) |
+| `+0x1E` | `uint16` | fine-grid column → replaced by world x |
+| `+0x20` | `uint16` | fine-grid row → replaced by world y |
+| `+0x22` | byte | flags: `0x08` raises the depth baseline by h/4; `0x80` runtime |
+| `+0x23` | byte | variant/frame. The loader sets it to 0, or to `rand() % header[+0x0C]` when header `+0x18` > 0. |
+
+Position (loader `0x0043CC0B`), on the same 160 × 320 fine grid as section 1:
+
+```
+x = col * 0x3A - (row odd ? 0x1D : 0)    // 58 px, odd rows shifted LEFT 29 px
+y = row * 0x10                           // 16 px
+```
+
+At load time, the loader at `0x0043CB21` can substitute record IDs from a game-state table (`0x00458A62`), e.g. for quest-dependent objects. This is not ported; the files' IDs are drawn as-is.
+
+### Static object header (0x100 bytes, `OBJECTS.RES` slot ≥ 30)
+
+Per variant `f` (0–7), 8-byte entries:
+
+| Offset | Meaning |
+|---|---|
+| `+0x04` | data size in file; replaced at runtime by a pointer to the data after the header |
+| `+0x08` | if ≥ 2, the shadow is not drawn |
+| `+0x0C` | variant count (random variant pick) |
+| `+0x14` | default palette byte offset |
+| `+0x18` | > 0 enables animation / random variant |
+| `+0x80 + 8f` | shadow image offset (relative to the data after the header); −1 = none |
+| `+0x84 + 8f` | image offset; variant 0 is typically 0, so the image sits right after the header |
+| `+0xC0 + 8f`, `+0xC2 + 8f` | shadow dx, dy (`int16`) added to the placement position |
+| `+0xC4 + 8f`, `+0xC6 + 8f` | image dx, dy (`int16`) |
+
+Example: `KONUNG.1`'s first record is ID 117 at col 27, row 33, giving world (1537, 528). It maps to slot 147, a 454 × 378 log house with image offset (−225, −346) and shadow offset (−432, −180).
+
+### Shadows and draw order
+
+* Shadow images use the indexed row-RLE header and row sizes, but a positive command is a run of shadow pixels with **no pixel payload** (`0x0043D3D8` turns them into per-row span lists).
+* After all shadows are collected, `0x0043E5DF` darkens every covered framebuffer pixel once: `(c & 0x7BDF) >> 1` (RGB555; `0xF7DF` mask in 565 mode). Overlapping shadows don't stack.
+* Object images are bucketed by bottom edge: `y + dy + height`, minus `height/4` if flag `0x08` is set. They are drawn in that order, interleaved with characters.
+* Full order: terrain → decorations → shadows (single 50% darkening) → depth-sorted objects and characters.
+
+Validation: the `KONUNG.1` render shows a palisaded village (log houses, a smithy, a building site, a well), trees with ground shadows, and a stone dolmen. All 43 maps render with no object decode errors. `go test ./internal/konungmap ./internal/resource` checks counts, the first records, offsets and depth order.
 
 ## Open questions
 
-* Object/building/NPC placement (sections at `0x12C00` and `0x16A80`) and their draw order relative to terrain.
+* Characters/NPCs: the entity table at `0x0069D1D4` (200 × `0x20` bytes) references 0x100-byte entity records at `0x007AB378`, from a file other than `KONUNG.N` (not traced). Model initialization is at `0x00414078`.
+* Animated static objects (header `+0x18` > 0, frame cycling) and random variants: the port always draws variant 0.
+* ID substitution from the game-state table at `0x0043CB21`.
+* Objects anchored above y = 0 are clipped in `map-render` PNGs; the game scrolls past them.
 * Section 1 semantics (walkability is a hypothesis).
 * The `LIGHTS.N` shading path. The loader reads `0x3200` bytes to `0x00671440` (80 × 160, one byte per terrain cell, indexed `row*0x50 + col` by the lit draw path) and `0xC800` bytes to `0x00664C40`.
 * `KONUNG.1 = Old Camp` remains provisional.

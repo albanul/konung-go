@@ -43,3 +43,51 @@ func TestCellOriginStagger(t *testing.T) {
 		}
 	}
 }
+
+func TestKonung1Objects(t *testing.T) {
+	mapData, err := os.ReadFile("../../assets/Konung/KONUNG.1")
+	if err != nil {
+		t.Skip("KONUNG.1 not available:", err)
+	}
+	graph, err := os.ReadFile("../../assets/Konung/GRAPH.RES")
+	if err != nil {
+		t.Skip("GRAPH.RES not available:", err)
+	}
+	objects, err := os.ReadFile("../../assets/Konung/OBJECTS.RES")
+	if err != nil {
+		t.Skip("OBJECTS.RES not available:", err)
+	}
+	decorations, err := ParseDecorations(mapData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decorations) != 373 || decorations[0] != (Decoration{Tile: 182, X: 1624, Y: 320}) {
+		t.Fatalf("decorations: %d, first %+v", len(decorations), decorations[0])
+	}
+	placements, err := ParsePlacements(mapData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(placements) != 195 {
+		t.Fatalf("placements = %d, want 195", len(placements))
+	}
+	if p := placements[0]; p.ID != 117 || p.Col != 27 || p.Row != 33 {
+		t.Fatalf("first placement %+v", p)
+	}
+	if x, y := placements[0].Pos(); x != 27*58-29 || y != 33*16 {
+		t.Fatalf("first placement pos %d,%d", x, y)
+	}
+	objs, errs := LoadPlacedObjects(placements, objects, graph)
+	if len(errs) != 0 {
+		t.Fatalf("object decode errors: %v", errs)
+	}
+	sorted := DrawOrder(placements, objs)
+	if len(sorted) != len(placements) {
+		t.Fatalf("sorted %d of %d placements", len(sorted), len(placements))
+	}
+	for i := 1; i < len(sorted); i++ {
+		if sorted[i-1].DepthKey() > sorted[i].DepthKey() {
+			t.Fatalf("draw order not sorted at %d", i)
+		}
+	}
+}
