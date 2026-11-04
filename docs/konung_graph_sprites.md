@@ -1,4 +1,18 @@
-# GRAPH.RES Sprite Notes
+# GRAPH.RES Layout and Sprite Notes
+
+## Whole-file layout (single reference)
+
+| File offset | Contents | Loaded to (VA) | Details |
+|---|---|---|---|
+| `0x000000` | 256 palettes × 256 RGB555 LE words (`0x20000` bytes); palette `p` is at `p*512` | — | below |
+| `0x020000` | 11 Type 5 sprites (`32 × 32`): cursors and UI | — | [sprite table below](#leading-sprite-sequence) |
+| `0x0227E8` | Type 1 terrain block: 8-byte `(BE tag, LE size)` header, 512 × `(offset, paletteByteOffset)` LE entries, then image data. Slots 0–303 are terrain tiles and slot 304 is a 603 × 657 image. Palette = `paletteByteOffset / 512`. | table → `0x006314B8`; image base pointer → `0x00A3E6BC` | [start location: terrain block](konung_start_location.md#graphres-terrain-tile-block); map bytes reference slot = byte − 1 per [map format](konung_map_format.md) |
+| `0x1ED8B6` | 64 KiB, unidentified | — | [exe notes](konung_exe_resource_loaders.md) |
+| `0x1EE8B6` | 27 Type 0 character-model blocks (BE tag 0, LE size including header) through EOF `0xDD559B` | model table `0x007145B4`, stride `0x4D28` | [exe notes](konung_exe_resource_loaders.md#map-entity-and-warrior-model-initialization) |
+
+Indexed images (terrain, OBJECTS, Type 0) share one row-RLE format: `uint16 width, height`, `height × uint16` row byte sizes, then per row: a high-bit byte skips `n & 0x7F` transparent pixels, `0` ends the row, and otherwise `n` palette indices follow. Decoder: `resource.DecodeIndexedRLEFrame`. The executable's blit for these images is VA `0x0043E242`, which draws at the image's top-left corner.
+
+The rest of this document catalogs the leading Type 5 sprites.
 
 This catalog covers the first 11 Type 5 images in `assets/Konung/GRAPH.RES`. Indices are zero-based within the Type 5 sequence after the palette area; they are not global indices for every resource block in the file.
 

@@ -44,7 +44,11 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, err
 	}
-	world, err := loadStartScene(graphPath, objectsPath)
+	mapPath, err := FindGameResource("assets/Konung/KONUNG.1")
+	if err != nil {
+		return nil, err
+	}
+	world, err := loadStartScene(graphPath, objectsPath, mapPath)
 	if err != nil {
 		return nil, fmt.Errorf("load house and warrior scene: %w", err)
 	}
@@ -71,6 +75,13 @@ func (m *Menu) Update() error {
 		}
 		return ebiten.Termination
 	}
+	if m.inWorld {
+		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
+			m.inWorld = false
+		}
+		m.world.Update()
+		return nil
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 		m.selected = (m.selected + menuItems - 1) % menuItems
 	}
@@ -82,13 +93,6 @@ func (m *Menu) Update() error {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && m.selected == 3 {
 		m.inWorld = true
-	}
-	if m.inWorld {
-		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
-			m.inWorld = false
-		}
-		m.world.Update()
-		return nil
 	}
 
 	mx, my := ebiten.CursorPosition()

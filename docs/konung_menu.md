@@ -11,6 +11,8 @@ The executable entry point is under `cmd/konung/`; the implementation is an impo
 | `cmd/konung/main.go` | Resolve default asset paths, initialize Ebitengine, set fullscreen/window title/cursor mode, start the game loop |
 | `internal/konungmenu/menu.go` | Load menu frames, map button frames, handle keyboard/mouse input, draw the background/buttons/custom pointer |
 | `internal/konungmenu/graph.go` | Read Type 5 sprites from the mixed `GRAPH.RES` stream after its palette area |
+| `internal/konungmenu/startscene.go` | New Game scene: viewport-culled `KONUNG.1` terrain, camera scrolling, preview house/warrior, OBJECTS/Type 0 decoding |
+| `internal/konungmap/` | Engine-independent map/terrain decoding used by the scene and `cmd/map-render` |
 | `internal/konungmenu/resources.go` | Find assets by searching upward from the process working directory and source file location |
 
 The executable uses `MENU800R.RES` and `GRAPH.RES` from `assets/Konung/`. It decodes the resources in memory; it does not need extracted PNG files.
@@ -36,7 +38,7 @@ Ebitengine's system cursor is hidden. The menu draws the game sprite at the curr
 
 The nearby cursor variants include a red barred-circle marker, parchment/speech marker, flame marker, and hand marker. Their appearances are catalogued, but their exact in-game meanings have not been confirmed by tracing the executable's cursor-selection logic.
 
-Selecting menu item 4 opens a controlled scene preview. It draws `OBJECTS.RES` house 88 over its matching shadow 89, then displays the first six decoded frames from `GRAPH.RES` Type 0 block 0 as a warrior in front. The preview uses palette 2 and hand-set screen coordinates because the original dye selection and map entity coordinates have not been verified. The sword cursor continues to track the pointer in this view.
+Selecting menu item 4 («Новая игра», New game) opens the `KONUNG.1` scene. It draws the real terrain layer through `internal/konungmap` and only blits cells inside the viewport. Arrow keys, WASD, or holding the mouse within 8 px of a screen edge scroll the camera, which is clamped to the map extents. `OBJECTS.RES` house 88 with shadow 89 and the first six frames of `GRAPH.RES` Type 0 block 0 (palette 2) are hand-placed in world coordinates. Their real map positions and dye are not decoded. `Escape` or `Backspace` returns to the menu, and the sword cursor still tracks the pointer.
 
 ## Input behavior currently implemented
 
@@ -44,7 +46,7 @@ Selecting menu item 4 opens a controlled scene preview. It draws `OBJECTS.RES` h
 * Up/down arrows move the selected menu item and wrap around at either end.
 * Moving the mouse over a button selects it.
 * `Enter` exits only when the last item is selected. Clicking exits only when the last item is under the pointer.
-* Menu item 4 opens the house and warrior preview; the other non-exit items still have visual states only.
+* Menu item 4 opens the scrollable `KONUNG.1` scene. While it is open, the arrow keys scroll the map instead of changing the menu selection. The other non-exit items still have visual states only.
 
 ## Asset path behavior
 

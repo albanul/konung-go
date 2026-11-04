@@ -8,30 +8,42 @@ import (
 	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"konung1.5/internal/konungmap"
 	"konung1.5/internal/resource"
 )
 
 const (
-	terrainTileCount = 304
-	grassFillTile    = 15
-	houseObjectID    = 88
-	shadowObjectID   = 89
-	warriorModelID   = 0
-	warriorFrames    = 6
+	houseObjectID  = 88
+	shadowObjectID = 89
+	warriorModelID = 0
+	warriorFrames  = 6
+	warriorScale   = 1.65
+	scrollSpeed    = 12
+	edgeScrollZone = 8
+)
+
+// Preview placements in world pixels. The house and warrior are not decoded
+// from KONUNG.1's object/entity sections yet; they are hand-placed near the
+// road so the terrain render has a focal point.
+var (
+	housePos   = image.Pt(2900, 2500)
+	warriorPos = image.Pt(3330, 2800)
 )
 
 type startScene struct {
-	background *ebiten.Image
-	warrior    []*ebiten.Image
-	tick       int
+	m              *konungmap.Map
+	tiles          []*ebiten.Image
+	tileMarginX    int
+	tileMarginY    int
+	worldW, worldH int
+	house, shadow  *ebiten.Image
+	warrior        []*ebiten.Image
+	camX, camY     int
+	tick           int
 }
 
-func loadStartScene(graphPath, objectsPath string) (*startScene, error) {
+func loadStartScene(graphPath, objectsPath, mapPath string) (*startScene, error) {
 	graphData, err := os.ReadFile(graphPath)
-	if err != nil {
-		return nil, err
-	}
-	tiles, err := decodeGraphTiles(graphData)
 	if err != nil {
 		return nil, err
 	}
@@ -39,45 +51,99 @@ func loadStartScene(graphPath, objectsPath string) (*startScene, error) {
 	if err != nil {
 		return nil, err
 	}
-	house, err := decodeStaticObjectFrame(objectsData, graphData, houseObjectID)
+	mapData, err := os.ReadFile(mapPath)
 	if err != nil {
 		return nil, err
 	}
-	shadow, err := decodeStaticObjectFrame(objectsData, graphData, shadowObjectID)
+	m, err := konungmap.Parse(mapData)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", mapPath, err)
+	}
+	rawTiles, err := konungmap.LoadTerrainTiles(graphData)
 	if err != nil {
 		return nil, err
 	}
-	warrior, err := decodeType0Frames(graphData, warriorModelID, warriorFrames)
-	if err != nil {
-		return nil, err
-	}
-
-	background := ebiten.NewImage(ScreenWidth, ScreenHeight)
-	grass := tiles[grassFillTile]
-	for y := -64; y < ScreenHeight+64; y += 32 {
-		for x := -114; x < ScreenWidth+114; x += 56 {
-			drawAt(background, grass, x, y)
+	s := &startScene{m: m, tiles: make([]*ebiten.Image, len(rawTiles))}
+	// Only upload tiles the map references; slot 304 is a large non-tile image.
+	for r := range m.Cells {
+		for c := range m.Cells[r] {
+			for _, b := range m.Cells[r][c] {
+				t := konungmap.Tile(rawTiles, b)
+				if t == nil || s.tiles[b-1] != nil {
+					continue
+				}
+				s.tiles[b-1] = ebiten.NewImageFromImage(t)
+				s.tileMarginX = max(s.tileMarginX, t.Bounds().Dx())
+				s.tileMarginY = max(s.tileMarginY, t.Bounds().Dy())
+			}
 		}
 	}
-	// The selected map's raw 88/89 references have no verified coordinates yet.
-	// Use the actual house and matching shadow art in a deliberate preview setup.
-	drawScaledAt(background, shadow, 140, 28, 1, 1)
-	drawScaledAt(background, house, 140, 28, 1, 1)
-	return &startScene{background: background, warrior: warrior}, nil
+	s.worldW, s.worldH = m.WorldSize()
+	if s.house, err = decodeStaticObjectFrame(objectsData, graphData, houseObjectID); err != nil {
+		return nil, err
+	}
+	if s.shadow, err = decodeStaticObjectFrame(objectsData, graphData, shadowObjectID); err != nil {
+		return nil, err
+	}
+	if s.warrior, err = decodeType0Frames(graphData, warriorModelID, warriorFrames); err != nil {
+		return nil, err
+	}
+	s.centerOn(warriorPos.X, warriorPos.Y)
+	return s, nil
 }
 
-func (s *startScene) Update() { s.tick++ }
+func (s *startScene) centerOn(x, y int) {
+	s.camX, s.camY = x-ScreenWidth/2, y-ScreenHeight/2
+	s.clampCamera()
+}
+
+func (s *startScene) clampCamera() {
+	s.camX = max(0, min(s.camX, s.worldW-ScreenWidth))
+	s.camY = max(0, min(s.camY, s.worldH-ScreenHeight))
+}
+
+func (s *startScene) Update() {
+	s.tick++
+	mx, my := ebiten.CursorPosition()
+	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) || mx < edgeScrollZone {
+		s.camX -= scrollSpeed
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || ebiten.IsKeyPressed(ebiten.KeyD) || mx >= ScreenWidth-edgeScrollZone {
+		s.camX += scrollSpeed
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyW) || my < edgeScrollZone {
+		s.camY -= scrollSpeed
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) || ebiten.IsKeyPressed(ebiten.KeyS) || my >= ScreenHeight-edgeScrollZone {
+		s.camY += scrollSpeed
+	}
+	s.clampCamera()
+}
 
 func (s *startScene) Draw(screen *ebiten.Image) {
-	screen.DrawImage(s.background, nil)
-	if len(s.warrior) == 0 {
-		return
+	screen.Fill(color.Black)
+	// Same order as the game's terrain pass (VA 0x0042562F): rows top to
+	// bottom, columns left to right, base layer then overlay layer.
+	rowMin := max(0, (s.camY-s.tileMarginY)/konungmap.CellHeight)
+	rowMax := min(konungmap.Rows-1, (s.camY+ScreenHeight)/konungmap.CellHeight)
+	colMin := max(0, (s.camX-s.tileMarginX)/konungmap.CellWidth)
+	colMax := min(konungmap.Cols-1, (s.camX+ScreenWidth)/konungmap.CellWidth)
+	for r := rowMin; r <= rowMax; r++ {
+		for c := colMin; c <= colMax; c++ {
+			x, y := konungmap.CellOrigin(r, c)
+			for _, b := range s.m.Cells[r][c] {
+				if b != 0 && int(b) <= len(s.tiles) && s.tiles[b-1] != nil {
+					drawAt(screen, s.tiles[b-1], x-s.camX, y-s.camY)
+				}
+			}
+		}
 	}
-	frame := s.warrior[(s.tick/8)%len(s.warrior)]
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(1.65, 1.65)
-	op.GeoM.Translate(492, 344)
-	screen.DrawImage(frame, op)
+	drawAt(screen, s.shadow, housePos.X-s.camX, housePos.Y-s.camY)
+	drawAt(screen, s.house, housePos.X-s.camX, housePos.Y-s.camY)
+	if len(s.warrior) > 0 {
+		frame := s.warrior[(s.tick/8)%len(s.warrior)]
+		drawScaledAt(screen, frame, warriorPos.X-s.camX, warriorPos.Y-s.camY, warriorScale, warriorScale)
+	}
 }
 
 func drawScaledAt(dst, src *ebiten.Image, x, y int, scaleX, scaleY float64) {
@@ -85,65 +151,6 @@ func drawScaledAt(dst, src *ebiten.Image, x, y int, scaleX, scaleY float64) {
 	op.GeoM.Scale(scaleX, scaleY)
 	op.GeoM.Translate(float64(x), float64(y))
 	dst.DrawImage(src, op)
-}
-
-func decodeGraphTiles(data []byte) ([]*ebiten.Image, error) {
-	const graphBlock = 0x227e8
-	if len(data) < graphBlock+8+512*8 {
-		return nil, fmt.Errorf("GRAPH.RES is truncated before terrain index")
-	}
-	resourceSize := int(binary.LittleEndian.Uint32(data[graphBlock+4:]))
-	resourceEnd := graphBlock + 8 + resourceSize
-	if resourceEnd > len(data) || resourceEnd < graphBlock+8+512*8 {
-		return nil, fmt.Errorf("GRAPH.RES terrain block has invalid size %d", resourceSize)
-	}
-	var palettes [256][256]color.RGBA
-	for p := range palettes {
-		for i := range palettes[p] {
-			v := binary.LittleEndian.Uint16(data[(p*256+i)*2:])
-			palettes[p][i] = color.RGBA{uint8(((v >> 10) & 31) * 255 / 31), uint8(((v >> 5) & 31) * 255 / 31), uint8((v & 31) * 255 / 31), 255}
-			if v == 0x7c1f {
-				palettes[p][i].A = 0
-			}
-		}
-	}
-	payloadStart := graphBlock + 8
-	entries := data[payloadStart : payloadStart+512*8]
-	blockStart := payloadStart + 512*8
-	// GRAPH.RES has 304 terrain tiles in this block. Entry 304 is a larger
-	// non-tile image (603x657), despite having a valid offset and palette.
-	tiles := make([]*ebiten.Image, terrainTileCount)
-	for i := 0; i < len(tiles); i++ {
-		off := binary.LittleEndian.Uint32(entries[i*8:])
-		palOff := binary.LittleEndian.Uint32(entries[i*8+4:])
-		if off == 0xffffffff || palOff == 0xffffffff {
-			break
-		}
-		end := uint32(resourceEnd - blockStart)
-		if i+1 < 512 {
-			next := binary.LittleEndian.Uint32(entries[(i+1)*8:])
-			if next != 0xffffffff && next > off {
-				end = next
-			}
-		}
-		if end <= off || blockStart+int(end) > len(data) {
-			return nil, fmt.Errorf("GRAPH.RES tile %d has invalid range", i)
-		}
-		palIndex := palOff / 512
-		if palIndex >= 256 {
-			return nil, fmt.Errorf("GRAPH.RES tile %d has invalid palette %d", i, palIndex)
-		}
-		img, err := decodeIndexedTile(data[blockStart+int(off):blockStart+int(end)], &palettes[palIndex])
-		if err != nil {
-			return nil, fmt.Errorf("decode GRAPH.RES tile %d: %w", i, err)
-		}
-		tiles[i] = ebiten.NewImageFromImage(img)
-	}
-	return tiles, nil
-}
-
-func decodeIndexedTile(src []byte, palette *[256]color.RGBA) (*image.RGBA, error) {
-	return resource.DecodeIndexedRLEFrame(src, palette)
 }
 
 func decodeStaticObjectFrame(objects, graph []byte, objectIndex int) (*ebiten.Image, error) {
@@ -170,7 +177,7 @@ func decodeStaticObjectFrame(objects, graph []byte, objectIndex int) (*ebiten.Im
 	if err != nil {
 		return nil, err
 	}
-	img, err := decodeIndexedTile(objects[base+headerBytes:base+int(blockSize)], &palette)
+	img, err := resource.DecodeIndexedRLEFrame(objects[base+headerBytes:base+int(blockSize)], &palette)
 	if err != nil {
 		return nil, fmt.Errorf("decode OBJECTS.RES object %d: %w", objectIndex, err)
 	}

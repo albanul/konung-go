@@ -44,13 +44,44 @@ The catalog extractor exports each complete Type 0 block, including its header, 
 
 ## Map entity and warrior model initialization
 
-The map scene loader at VA `0x0043C0FC` opens `LIGHTS.N`, then `KONUNG.N`. For `KONUNG.N`, it seeks past a `0x200`-byte header, reads `0x6400` bytes to `0x627FD8`, and then reads sections of `0xC800`, `0x3E80`, and `0x8CA0` bytes. The latter three sizes plus the first section total `0x1F6A0`, matching the map files' 128,800-byte size; the `0x200` seek is additional. The loader processes a 160 × 160-byte table from the first section and later a 200-entry array of `0x20`-byte runtime records. This disproves the earlier seven-equal-plane interpretation as the executable's read layout.
+The map scene loader at VA `0x0043C0FC` opens `LIGHTS.N`, then `KONUNG.N`. For `KONUNG.N`, the `0x200` argument passed to the file helper is an open flag; it is not a skipped header. The loader reads `0x6400` bytes to `0x627FD8`, then reads sections of `0xC800`, `0x3E80`, and `0x8CA0` bytes to their respective buffers. These sizes total `0x1F720`, matching the map files' 128,800-byte size. The first section is processed as 160 records of `0xA0` bytes; later code initializes a 200-entry array of `0x20`-byte runtime records. This disproves the earlier seven-equal-plane interpretation as the executable's read layout.
+
+The first section is the terrain layer: 160 rows × 80 cells × 2 layer bytes, each a 1-based index into the `GRAPH.T1` table that the `GRAPH.RES` loader reads to `0x006314B8` (at `0x0043B6B1`). The terrain renderer at `0x0042562F` draws cells at `x = col*0x74 + (odd row ? 0x3A : 0)`, `y = row*0x20`. The `0xC800`-byte second section is expanded into a 320 × 160 word grid at `0x00505C70` and is not terrain. Full details are in [the map format notes](konung_map_format.md).
 
 At VA `0x004143DC`, an entity initializer assigns its map coordinates from the entity's words at `+0x08` and `+0x0A`, initializes state, and links it into the runtime grid. The loader calls this initializer from `0x0043C858` for one entity path and calls the model initializer at `0x00414078` from `0x0043C866` for the other.
 
 The model initializer at `0x00414078` selects either a Type 2 animated object or a Type 0 model. The Type 0 path uses the signed entity byte at `+0xD3` as the model-block index into a table based at `0x007145B4`, with a `0x4D28` stride per model. Entity fields at `+0`, `+1`, and `+0x10` select the actor subtype, variant, and direction/animation slot. It stores pointers to selected records at entity offsets `+0xDC` and `+0xE0`; a Type0 metadata value is copied into entity state at `+0xF4`. The selected record's fixed-point offsets are combined with entity offsets `+0xE8/+0xF0` and global screen/map offsets to produce render coordinates at `+0xE4/+0xEC`.
 
 This confirms that Type 0 is an in-game animated-model path and that model choice and frame/direction lookup are entity-driven. The palette/dye operation has not yet been traced, so gallery palette 2 must not be treated as a runtime assignment. The inspected code also does not establish that `OBJECTS.RES` object IDs 87–89 identify the same kind of map entity as the Type 0 characters.
+
+## Known routines and buffers
+
+Quick lookup table. Each row is described in the section or document named in the "Source" column.
+
+| VA | Kind | Meaning | Source |
+|---|---|---|---|
+| `0x0044023E` | routine | File read `(handle, buffer, size)` | observed at every loader |
+| `0x00440047` | routine | File open `(path, flags)`; returns `-1` on failure | map loader |
+| `0x004404C1` | routine | File close | map loader |
+| `0x0043B4AB` | routine | `GRAPH.RES` loader; reads the T1 table at `0x0043B6B1` | this doc |
+| `0x0043B8BB` | routine | `OBJECTS.RES` loader | this doc |
+| `0x0043BA50` | routine | `FLAMES.RES` loader (74 frames) | [res format](konung_res_format.md) |
+| `0x0043C0FC` | routine | Map loader (`LIGHTS.N`, `KONUNG.N`) | [map format](konung_map_format.md) |
+| `0x0042562F` | routine | Terrain draw pass | [map format](konung_map_format.md) |
+| `0x0043E242` | routine | Indexed-RLE blit `(surface, image, palette, x, y)`, clipped, top-left origin | [map format](konung_map_format.md) |
+| `0x0043ED09` | routine | Takes a palette byte offset and returns the palette used by the blit (conversion details not traced) | terrain draw pass |
+| `0x0043D8E7` | routine | Type 5 RGB555 frame draw | [res format](konung_res_format.md) |
+| `0x00414078` | routine | Entity model initializer (Type 2 / Type 0) | this doc |
+| `0x004143DC` | routine | Entity position initializer | this doc |
+| `0x006314B8` | buffer | `GRAPH.T1` table, 512 × 8 bytes | [GRAPH layout](konung_graph_sprites.md) |
+| `0x006324B8` | buffer | Another 8-byte-entry table directly after T1 (referenced at `0x0042A4E0`, `0x00438E4A`); role unknown | open |
+| `0x00A3E6BC` | global | Pointer to the T1 image data | GRAPH loader |
+| `0x00627FD8` | buffer | `KONUNG.N` terrain section (`0x6400`) | [map format](konung_map_format.md) |
+| `0x00505C70` | buffer | Expanded 320 × 160 word grid from `KONUNG.N` section 1 | [map format](konung_map_format.md) |
+| `0x00828378`, `0x0082CE78` | buffers | `KONUNG.N` sections 2 and 3 | [map format](konung_map_format.md) |
+| `0x00671440`, `0x00664C40` | buffers | `LIGHTS.N` data: `0x3200` bytes then `0xC800` bytes; both zero-filled if the file is missing | map loader `0x0043C23C`–`0x0043C2BC` |
+| `0x00A3E6F8`, `0x00A3E6FC` | globals | Screen origin X/Y used by the terrain pass | terrain draw pass |
+| `0x007145B4` | buffer | Type 0 model table, stride `0x4D28` | this doc |
 
 ## Implication for the missing character animations
 

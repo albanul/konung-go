@@ -4,18 +4,17 @@
 
 The available [Konung walkthrough](https://shara-games.ru/knyaz/) identifies **Old Camp** as Dragomir's starting location. This supports the intended scene for the New Game menu action. The walkthrough does not connect Old Camp to a particular `KONUNG.N` filename.
 
-The earlier placeholder scene used `OBJECTS.RES` entry **15** (a robed human-shaped figure, 30 × 74 pixels, palette 152) with `GRAPH.RES` Type 5 sprite **10**, a standalone sword. It has been replaced by a Type 0 warrior preview. Entry 16 is a child-sized person, entry 4 is a plant-like monster, and entry 5 is the corpse-like humanoid that was mistakenly selected in an earlier build.
+Human-like `OBJECTS.RES` entries: 15 (robed figure, 30 × 74, palette 152), 16 (child-sized), and 5 (corpse-like); entry 4 is a plant-like monster. None is used by the current scene, which uses a `GRAPH.RES` Type 0 warrior.
 
 ## Candidate map and uncertainty
 
-`KONUNG.1` remains a **provisional Old Camp map** candidate, but the current Go scene no longer renders it: the executable's map record layout and projection are not yet ported. The scene now provides a controlled asset preview using `OBJECTS.RES` 88/89 and a Type 0 warrior.
+`KONUNG.1` remains a **provisional Old Camp map** candidate. Its terrain layer is now decoded and rendered faithfully; see [the map format notes](konung_map_format.md). Objects and characters in the scene are still hand-placed previews.
 
 Observed facts for `KONUNG.1`:
 
-* File size is 128,800 bytes.
-* File size is 128,800 bytes (`0x1F6A0`).
-* The executable loader at VA `0x0043C0FC` skips `0x200` bytes and reads sections of `0x6400`, `0xC800`, `0x3E80`, and `0x8CA0` bytes. These sections sum to the map file's full size. It processes 160 records of `0xA0` bytes from the first section and later initializes a 200-entry array of `0x20`-byte runtime records.
-* The earlier seven-plane / 80-by-115 interpretation used by the Go preview is provisional and does not match the executable's read layout. Its tile placement and projection should not be treated as the game's map renderer.
+* File size is 128,800 bytes (`0x1F720`).
+* The executable loader at VA `0x0043C0FC` reads sections of `0x6400`, `0xC800`, `0x3E80`, and `0x8CA0` bytes, which sum to the file size. Its `0x200` argument is an open flag, not a skipped header.
+* The terrain is the **first** `0x6400`-byte section: 160 rows × 80 two-byte cells (base and overlay layers), each byte a 1-based `GRAPH.T1` tile index, drawn on a staggered 116 × 32 px grid. This is verified against the executable's renderer at VA `0x0042562F`. An earlier preview drew the `0xC800`-byte section at `0x6400` as terrain. That section is a 320 × 160 grid expanded into flag words (probably walkability), not terrain.
 * Scanning the file as little-endian words finds values 87 twice, 88 once, and no 89 in `KONUNG.1`; the 88 reference is at file offset `0x16D4C` (87 references at `0x17EBC` and `0x18414`). These are raw references only: their record and coordinate interpretation is not established, so they cannot yet be positioned faithfully in the Go scene.
 
 Do not record `KONUNG.1 = Old Camp` as a confirmed game-data fact until the map is matched using executable references, a labeled in-game screenshot, or a known save.
@@ -26,14 +25,14 @@ The supplied gameplay screenshot labels the selected speaker as a level-5 warrio
 
 ## `GRAPH.RES` terrain tile block
 
-The useful portions of `GRAPH.RES` for the scene are:
+For the whole-file overview, see [GRAPH.RES layout](konung_graph_sprites.md#whole-file-layout-single-reference). Terrain-block details:
 
 * `0x00000..0x1FFFF`: 256 × 256 little-endian RGB555 palette words.
 * `0x227E8`: an embedded Type 1 block with an 8-byte `(type, size)` header. This nested block does not use the 12-byte top-level header documented for standalone Type 1 archives.
 * Immediately after the nested header: 512 little-endian `(offset, paletteByteOffset)` entries. The image data starts after this table.
 * `paletteByteOffset / 512` selects one of the 256-color palettes in the initial palette table.
 * The indexed image uses the width/height, per-row byte sizes, and RLE commands documented by the external [CTPAX-X GRAPH extractor source](https://www.ctpax-x.org/index.php?goto=files&show=147&view=sources/kngrpres.c). A high-bit command skips transparent pixels; otherwise the command gives the count of following palette indices. Image byte length is derived from the next entry's image offset, or the enclosing block end for the last image.
-* The first 304 entries (0–303) decode as terrain images. Entry 304 has a valid index record but its image header reports `603 × 657`; it is not a map tile. The provisional renderer uses byte-sized map references, so it only addresses entries 0–255.
+* The first 304 entries (0–303) decode as terrain images. Entry 304 has a valid index record but its image header reports `603 × 657`; it is not a map tile. Map terrain bytes are 1-based, so they address slots 0–254 (verified, see [map format](konung_map_format.md)). The decoder is `konungmap.LoadTerrainTiles`.
 
 The nested block's recorded payload size is 1,880,262 bytes. These layout details were checked against the local file bytes and the extractor's source. They are separate from the leading Type 5 cursor sprites listed in [the GRAPH sprite catalog](konung_graph_sprites.md).
 
@@ -46,10 +45,8 @@ The external [CTPAX-X object extractor source](https://www.ctpax-x.org/index.php
 * Adjacent frame/shadow offsets are XOR-swapped in the stored table; the first image is decoded with the indexed RLE format. Palette assignments for the first 24 object entries are listed in the extractor source.
 * Transparent object pixels use RGB555 magenta `0x7C1F`.
 
-The former placeholder scene used entry **15**, palette **152**, and sword sprite `GRAPH.T5:10`. Object entry **16** uses palette **159** and is a child-sized figure; object entry **5** is the corpse-like sprite. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes changes which object is selected.
-
-The palette assignment and offsets above describe the former placeholder path, not a character identity. The live Ebitengine scene reads `GRAPH.RES` and `OBJECTS.RES` directly; it does not depend on extracted image files.
+Entry 15 uses palette 152 and entry 16 uses palette 159. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes changes which object is selected. Static entries (≥ 30) have a `0x100`-byte header whose dword at `+20` is the palette byte offset; image data follows the header (`decodeStaticObjectFrame`). The scene reads `GRAPH.RES` and `OBJECTS.RES` directly, without extracted image files.
 
 ## Remaining map and runtime work
 
-The Go preview draws house 88 with shadow 89 and cycles through the first six frames of Type 0 block 0 as a warrior standing in front. It uses palette 2 as a visual placeholder; the engine's dye/palette selection and these frames' exact game animation role remain unverified. The scene uses explicit preview coordinates, not coordinates decoded from a map. Porting the executable's record parser, projection, and draw order remains necessary to reproduce an actual location. Keep `KONUNG.1 = Old Camp` provisional until it is tied to a labeled screenshot, save, or game location reference.
+The New Game scene renders `KONUNG.1`'s full terrain with a scrollable camera (arrow keys/WASD or mouse at the screen edge). House 88 with shadow 89 and the first six frames of Type 0 block 0 (palette 2, a visual placeholder) are hand-placed at world pixels (2900, 2500) and (3330, 2800) beside the road. These are not coordinates decoded from the map. Porting the executable's record parser, projection, and draw order remains necessary to reproduce the actual location. Keep `KONUNG.1 = Old Camp` provisional until it is tied to a labeled screenshot, save, or game location reference.

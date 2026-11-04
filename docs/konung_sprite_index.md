@@ -26,7 +26,7 @@ The index has 1,425 data rows: 11 GRAPH Type 5 sprites, 512 GRAPH table slots, 5
 
 ## Useful lookups
 
-The current scene combines object entry 15 (a robed human-shaped figure) with `GRAPH.T5` sprite 10 (a standalone sword) as a temporary sword-bearing fighter. Entry 15 is 30 × 74 pixels in its first frame and uses palette 152. Its identity and warrior role are not confirmed. Entry 16 is a child-sized figure; entry 5 is the corpse-like humanoid that was mistakenly selected earlier. See [the Old Camp scene findings](konung_start_location.md).
+Scene assets: the New Game scene uses `OBJECTS` 88 (house) over 89 (shadow) and `GRAPH.T0` block 0 frames 0–5 as the warrior. Human-like `OBJECTS` entries are 15 (robed figure, 30 × 74, palette 152), 16 (child-sized), and 5 (corpse-like). None has a confirmed identity. See [the start-location notes](konung_start_location.md).
 
 ```sh
 # Find an object by one-based OBJECTS.RES ID
@@ -46,7 +46,7 @@ awk -F '\t' '$1 == "TYPE5" && $2 == "FLAMES.RES" { print $3, $7 "x" $8 }' docs/d
 * `OBJECTS` width and height describe only the first decoded frame. Frame dimensions can change during an animation. `frame_count` comes from the even image offsets after correcting the stored image/shadow offset pairs.
 * `GRAPH.T1` palette IDs are `paletteByteOffset / 512`, using the 256-color palettes at the start of `GRAPH.RES`. See [the GRAPH sprite and terrain notes](konung_graph_sprites.md) and the external [CTPAX-X GRAPH extractor source](https://www.ctpax-x.org/index.php?goto=files&show=147&view=sources/kngrpres.c).
 * Map usage counts include all installed maps, not missing numbered files. The current directory has `KONUNG.1`–`.50` except `.9`, `.13`, `.18`, `.26`, `.31`, `.34`, and `.41`.
-* Map values are counted as byte references in each 16-bit cell. This matches the visible byte range and 256-entry map addressing, but has not yet been confirmed from the game executable. `0x00` and `0xFF` are excluded from usage counts as empty markers in the provisional scene renderer.
+* Map values are counted as byte references in each 16-bit cell. For the terrain section (first `0x6400` bytes), the executable confirms that each cell holds two layer bytes, each a **1-based** `GRAPH.T1` index (slot = byte − 1). The usage counts in the TSV may predate this offset; see [the map format notes](konung_map_format.md). `0x00` and `0xFF` are excluded from usage counts as empty markers in the provisional scene renderer.
 * The per-frame Type 5 resources include `FLAMES.RES`, both menu sizes, both new-character screens, and both save screens. Their visible menu labels and flame animation groups are documented in [the menu frame catalog](konung_menu_res.md) and [the resource format notes](konung_res_format.md).
 
 ## External format references

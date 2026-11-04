@@ -165,7 +165,7 @@
 
 ## 6. Использование распаковщика (`cmd/res-parser`)
 
-Код распаковщика находится в файле [cmd/res-parser/main.go](file:///var/home/alba/Coding/konung1.5/cmd/res-parser/main.go).
+Код распаковщика находится в файле [cmd/res-parser/main.go](../cmd/res-parser/main.go).
 
 ### Запуск (в среде DevContainer или хост-системе с Go)
 
@@ -190,7 +190,9 @@ go run cmd/res-parser/main.go assets/Konung/SAVE640R.RES output_save640
 |---|---|---|
 | Type 5 (меню, FLAMES, отдельные GRAPH кадры) | `internal/resource/rle.go` | Общий декодер кадров и последовательных Type 5 файлов. |
 | Ведущие GRAPH Type 5 спрайты | `internal/konungmenu/graph.go` | Читает смешанный GRAPH после 128 KiB палитр. Каталог проверенных кадров — [здесь](konung_graph_sprites.md). |
-| Indexed RLE, GRAPH terrain, первый кадр OBJECTS | `internal/konungmenu/startscene.go` | Рабочие scene helpers; привязаны к `ebiten` и выборке данных текущей сцены, не являются общим API для пакетной распаковки. Полный индекс ресурсов — [здесь](konung_sprite_index.md). |
+| Indexed RLE | `internal/resource/indexed.go` | Общий декодер для GRAPH terrain, OBJECTS и Type 0. |
+| GRAPH terrain tiles, карты `KONUNG.N` | `internal/konungmap/` | Без зависимости от `ebiten`; см. [формат карт](konung_map_format.md) и `cmd/map-render`. |
+| Статические OBJECTS, кадры Type 0 | `internal/konungmenu/startscene.go` | Привязаны к `ebiten`; кандидаты на перенос в `internal/resource`. Полный индекс ресурсов — [здесь](konung_sprite_index.md). |
 | Звуковой каталог и WAV заголовки | `internal/resource/sound.go` | Читает 1000 записей и собирает PCM WAV (mono, 16-bit, 22050 Hz), как CTPAX-X `knsfxres.c`. |
 
 Таким образом, основные форматы для последующего чтения обнаружены и покрыты помощниками, включая отсутствовавший ранее sound archive reader. Полного CLI экстрактора всех `OBJECTS.RES` кадров и всех mixed-блоков `GRAPH.RES` в проекте пока нет: текущий код умеет разбирать нужные для сцены записи, а TSV индекс уже содержит инвентаризацию файлов. Источники CTPAX-X являются независимой сверкой структуры; при расширении общего экстрактора нужно валидировать блоки по установленным игровым данным.
