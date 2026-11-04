@@ -35,7 +35,7 @@ Arrows: left at (139, 486), slot 0x12 (0x13 pressed); right at (780, 486), slot 
 
 **Scrolling.** Hotspot 120 (left arrow) decrements the scroll, not below 0 (`0x004235E4`). Hotspot 121 (right arrow) increments it only if `0x0041EB9C` reports an item in the bag slot just past the last visible cell (`scroll + visible < 32`) (`0x0042367F`).
 
-**Cell tint (`0x0042C914`).** The first matching rule wins: the character can't use the item (`0x00418364`) → tint (24, 0, 0); item `+0xE` bit 0 → (15, 15, 0); enchanted (item `+1` ≥ 0) → (0, 12, 0). `0x0043FD18(r, g, b)` tints each 5-bit channel by n %: c + trunc((31 − c)·n/100); negative n darkens. `resfmt.TintPalette` ports it.
+**Cell tint (`0x0042C914`).** The first matching rule wins: the character can't use the item (`0x00418364`) → tint (24, 0, 0); unidentified (item `+0xE` bit 0) → (15, 15, 0); enchanted (item `+1` ≥ 0) → (0, 12, 0). `0x0043FD18(r, g, b)` tints each 5-bit channel by n %: c + trunc((31 − c)·n/100); negative n darkens. `resfmt.TintPalette` ports it.
 
 ## Moving items
 
@@ -76,6 +76,30 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 
 **Quick bag (`` ` ``/`~`, VK 0xC0, `0x004371D2`).** Only with no window open (`0x00A3E740` = 0). It toggles the bag strip (`0x0042F50C`) for the first selected member: if the strip already shows that member (`0x00A3E730`) it is hidden, otherwise the scroll resets and the strip is drawn. The strip covers the bottom of the game view, just above the status bar. Its cells and arrows work as in the window (hotspot routine `0x004395E6` tests `0x00A3E730`, not the window). The window toggle saves and restores the strip state (`0x00A3E760`), and the shovel leaves the strip open. While an item is held, a left click on the map drops it ([ground items](konung_ground_items.md#hover-and-pick-up)). Port: `charWindow.quick`.
 
+## Hover texts (verified)
+
+The hover handler (`0x00423FBA`, switch on the hotspot at `0x004244B3`) writes the status line. With no window open, a pile and then a character under the mouse come first ([ground items](konung_ground_items.md)). Otherwise:
+
+* **Panel buttons** (hotspots 1–7): «Сменить оружие (1, 2, 3)», «Достать/Убрать оружие (Пробел)», «Карта (M)», «Все ко мне (F)», «Атаковать (A)», «Информация к размышлению (Q)», «Панель персонажа (I)» (`0x0045E17C`, `0x0045D77C`, `0x0045DF7C`, `0x0045D97C`, `0x0045D57C`, `0x0045DB7C`, `0x0045DD7C`).
+* **Items**: doll boxes 8–18 (helmet, hand, shield, armour, bow, ammunition, jewellery; the hand box shows the blade if it is the active weapon or there is no axe, `0x00424375`), the in-hand box 19 (`0x00A3E7A0`) and bag cells (`0x004241A1`, skipped while windows 1, 2 or 5 are open) call **`0x004305E4(item)`**.
+
+**Item description (`0x004305E4`, `gamestate.Game.ItemDescription`).** It sets the message counter `0x00A3E84C` to 12, redraws the bottom bar, builds the text in `0x00A3E120` by category (jump table `0x0043138C`) and draws it wrapped (`0x0042CBBC`, small font, at (view left + 10, view bottom + 5), width view right − view left − 15).
+
+| Category | Text |
+|---|---|
+| 0–5 | name, «, убойная сила » (0–2) or «, броня: » + uint16 `+0x2C`, «, износ » + trunc(float `+4`, at least 1) + «/» + trunc(float `+8`), «, вес » + `%4.2f` of `+0x38`·0.001, «, отравление: » + item `+0xC` (0 and 2 only, when ≠ 0), the special property's name, the enchantment, «, требует: » + stat name + «:» + minimum (`+0x30`/`+0x32`, when the stat is ≠ 0) |
+| 12 | «Колчан стрел: » + count (`+4`) + name, damage, weight × count, poisoning, special property |
+| 6–8 | name, weight (`+0x7A`), enchantment |
+| 9 | name, «, концентрация » + `%5.2f` of float `+4` (when record `+0x78` < 0), weight |
+| 11 | name, weight |
+| 10, > 12 | nothing (the buffer keeps its previous text) |
+
+An enchantment adds, per effect with a stat, the stat's name from `0x00465A24` (5 bytes each, with a leading space: « Хар», « Лов», « Хар», « Здр», « Сил», « Вын», « Брн», « Удр», « Вер»), then «+» for a positive stacking value or «=» for a replacing one, then the value. Its requirement follows as «, требует: » + name + «:» + minimum. No separator precedes the first effect («вес 0.20 Вын+1»). Unidentified items (gear 0–8, misc 11) show only «Неведомое оружие» (categories 0, 2), «Неведомый лук» (1) or «Неведомый предмет»; arrows show the count and « неведомые стрелы». Herbs have no unidentified variant.
+
+Validation: `gamestate.TestItemDescriptionGame0` checks 14 `GAME.0` items, e.g. Volk's knife «Нож, убойная сила 60, износ 16/16, вес 0.20, требует:  Сил:3» and «Богатырские доспехи, броня: 200, износ 110/110, вес 5.00 Лов=100 Вын-20, требует:  Хар:35, требует:  Вын:95». `GAME.0` has no unidentified or poisoned items; those branches follow the code only.
+
+Port: `startScene.statusText` (a click message still wins for its short lifetime; the in-hand box is not ported).
+
 ## Derived values
 
 | Routine | Port | Rule |
@@ -85,7 +109,7 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 | `0x0041B898` | `Game.CarriedWeight` | grams: gear table `+0x38` for equipment, jewellery `+0x7A` for `+0xB2`, bag by category (≤5 gear, 6–8 jewellery, 9 herbs, 11 misc `+0x7A`, 12 gear × count, 10 and others 0), ammunition `+0xCC` × count |
 | `0x0042EF48` | `MaxWeight` | Вын·1000/3 + 10000 |
 | `0x0041AC1C` | `Game.Armour` | `+0x4E` + gear `+0x2C` of slots 3–5; bonus `+0xC4` added if `+0xD1` bit 0, else replaces |
-| `0x0041AF48(e, kind)` | `Game.Attack` | creatures: trunc(Сил·0.04·HP·0.0625). Axe or blade active: gear `+0x2C` (or the special table `0x004623B8` value when item `+2` ≥ 0 and its kind matches) + trunc(Сил·0.04·HP·0.0625). Otherwise trunc(Сил·0.02·HP·0.0625). Bonus `+0xC6` by `+0xD1` bit 1. |
+| `0x0041AF48(e, kind)` | `Game.Attack` | creatures: trunc(Сил·0.04·HP·0.0625). Axe or blade active: gear `+0x2C` (or the special property's value, record `0x0046238C` `+0x2C`, when item `+2` ≥ 0 and its kind matches) + trunc(Сил·0.04·HP·0.0625). Otherwise trunc(Сил·0.02·HP·0.0625). Bonus `+0xC6` by `+0xD1` bit 1. |
 | `0x0041ADE4` | `Game.SheetDamage` | window only, with ammunition, bow mode and a bow: bow `+0x2C` × arrow `+0x2C`, same bonus rule |
 | `0x00418364` | `Game.CanUse` | gear (categories ≤5, 12) and jewellery (6–8): the enchantment's requirement; gear also its type's (`+0x30` stat id, `+0x32` minimum). Others usable. Returns 1 when `0x00A3E768` ≠ 0 (not traced; the port assumes 0). |
 
@@ -98,5 +122,5 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 ## Open questions
 
 * The raise column (`0x00410B08`: per-face stat caps `0x0045B10A`, costs `0x0045B010`), the XP-pool text, and the stance icon slots 0xA9/0xAA.
-* Item `+0xE` bit 0, `0x00A3E768`, `0x0041B4CC` (stat 9, `+0xC8`).
+* `0x00A3E768`, `0x0041B4CC` (stat 9, `+0xC8`).
 * The in-hand box (hotspot 19, `0x00A3E7A0`) and using items on characters (cursor modes 8/9), and the background tiling flag `0x00A3E744` (`0x0043141C` tiles INTR slot 5).

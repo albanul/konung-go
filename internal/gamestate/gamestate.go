@@ -99,7 +99,7 @@ type Item struct {
 	Special  int  // +2 int8: special property (resfmt.ItemSpecial), -1 = none
 	Type     int  // +3: record in that table
 	Count    int  // +4 int32: stack size of arrows (category 12); other items hold floats here
-	Flagged  bool // +0xE bit 0: enchantment ignored, cell tinted yellow (meaning not traced)
+	Flagged  bool // +0xE bit 0: unidentified («Неведомое…» description, enchantment ignored, cell tinted yellow)
 }
 
 // Item returns item record i; ok is false for 0 (empty slot) or out of range.

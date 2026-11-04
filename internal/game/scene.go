@@ -473,6 +473,42 @@ func (s *startScene) drawSelection(dst *ebiten.Image) {
 	drawAt(dst, img, x+dx-s.camX, y+dy-s.camY)
 }
 
+// statusText is what the status line shows: a recent message, then (with no
+// window open) a pile or a character under the mouse, then the hotspot under
+// the mouse (0x004244B3): a panel button's tooltip, an item in the
+// character window or in the bag strip (0x004305E4).
+func (s *startScene) statusText() []byte {
+	if s.frame < s.msgEnd {
+		return s.msg
+	}
+	if !s.inv.open {
+		if _, ok := s.pileUnderCursor(); ok {
+			return s.tables.CString(gamestate.MsgSomethingOnGround)
+		}
+		if s.hovered >= 0 {
+			return s.game.StatusLine(s.entity(s.hovered), s.tables)
+		}
+	}
+	if len(s.party) == 0 {
+		return nil
+	}
+	hero := s.party[0]
+	mx, my := ebiten.CursorPosition()
+	item := 0
+	switch spot := s.tables.HUDHotspot800(mx, my); {
+	case spot >= 1 && spot <= len(gamestate.ButtonTooltips):
+		return s.tables.CString(gamestate.ButtonTooltips[spot-1])
+	case s.inv.showStrip() && s.inv.strip.hit(mx, my):
+		item = hero.Bag[((mx-s.inv.strip.x0)/s.inv.strip.cellW+s.inv.scroll)&31]
+	case s.inv.open:
+		item = gamestate.HoveredItem(hero, spot)
+	}
+	if item == 0 {
+		return nil
+	}
+	return s.game.ItemDescription(s.tables, item)
+}
+
 // windowClick handles a left click on the character window's doll boxes
 // (hotspots 8–18, click handler 0x00422864; 19, the in-hand box, is not
 // ported) and returns a message VA or 0.
@@ -724,15 +760,11 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	if len(s.party) > 0 {
 		s.inv.drawQuick(screen, s.hud, s.game, s.tables, s.party[0])
 	}
-	if s.frame < s.msgEnd {
-		s.font.drawLine(screen, s.msg, viewLeft+10, viewBottom+5)
-	} else if _, ok := s.pileUnderCursor(); ok {
-		s.font.drawLine(screen, s.tables.CString(gamestate.MsgSomethingOnGround), viewLeft+10, viewBottom+5)
-	} else if s.hovered >= 0 {
-		// The status line in the bottom bar (0x0043195C), small font.
-		s.font.drawWrapped(screen, s.game.StatusLine(s.entity(s.hovered), s.tables),
-			viewLeft+10, viewBottom+5, viewRight-viewLeft-15)
+	if text := s.statusText(); text != nil {
+		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.
+		s.font.drawWrapped(screen, text, viewLeft+10, viewBottom+5, viewRight-viewLeft-15)
 	}
+
 }
 
 // hitTest returns the entity whose drawn sprite has an opaque pixel under

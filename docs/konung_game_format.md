@@ -122,10 +122,11 @@ The slot meaning of 0–2 is verified by `0x0042192C` (mode *m* requires slot *m
 |---|---|---|
 | `+0x00` | byte | **category**: selects the item type table (`0x0042C870`, below). Equals the slot index for equipped gear; 9 = herbs/potions, 11 = quest items, 12 = arrows. `0xFF` = free (`0x004227A0`). |
 | `+0x01` | `int8` | enchantment index (table `0x00458590`), −1 = none |
-| `+0x02` | `int8` | special property (table `0x004623B8`), −1 = none |
+| `+0x02` | `int8` | special property (64-byte records at `0x0046238C`: name such as «, на червяков» at `+0`, value `+0x2C`, target kind `+0x2E`), −1 = none |
 | `+0x03` | byte | item type (index into the type table below), verified by `0x004281A4` |
 | `+0x04` | `int32` / `float32` | stack count for arrows (category 12, `0x0041B898`); other items: **hypothesis** current / maximum condition floats at `+4`/`+8` |
-| `+0x0E` | byte | bit 0: enchantment ignored and bag cell tinted yellow; meaning not traced |
+| `+0x0C` | `int16` | poisoning (description «, отравление:»; weapons and arrows) |
+| `+0x0E` | byte | bit 0: **unidentified**: the description shows «Неведомое оружие / Неведомый лук / Неведомый предмет», the enchantment is ignored, the bag cell is tinted yellow |
 
 **Item type tables (verified).** The category picks the table, the type the record (`0x0042C870`). Every record starts with its CP866 name.
 

@@ -53,7 +53,7 @@ Decoder: `resfmt.ParseInterface`, `InterfaceRes.Slot`, `InterfaceRes.Image`. Tes
 
 **Game view.** The frame leaves x 140–799, y 0–555 (800 mode) for the map (`0x00427C10`: `0x00A3E874`, `0x00A3E880`, `0x00A3E890`, `0x00A3E89C`).
 
-**Port.** The rules are in `gamestate` (`PortraitState`, `PortraitSlot`, `HPBar`, `HUDButtonSlots`, `Entity.HP`, `.Poison`, `.WeaponMode`, `.Dead`). Drawing is in `internal/game/hud.go`, 800×600 only. The camera centres on the view rectangle, clicks on the HUD don't move the hero, and the hero is always shown as selected. **H** is a debug key that takes 400 HP per press until combat exists. Of the button clicks, weapon (hotspot 1), stance (hotspot 2) and bag (hotspot 7) are implemented, with the pressed-button feedback.
+**Port.** The rules are in `gamestate` (`PortraitState`, `PortraitSlot`, `HPBar`, `HUDButtonSlots`, `Entity.HP`, `.Poison`, `.WeaponMode`, `.Dead`). Drawing is in `internal/game/hud.go`, 800×600 only. The camera centres on the view rectangle, clicks on the HUD don't move the hero, and the hero is always shown as selected. **H** is a debug key that takes 400 HP per press until combat exists. Of the button clicks, weapon (hotspot 1), stance (hotspot 2) and bag (hotspot 7) are implemented, with the pressed-button feedback. Hovering a button shows its tooltip ([hover texts](konung_character_window.md#hover-texts-verified)).
 
 ## HUD hotspots (verified)
 

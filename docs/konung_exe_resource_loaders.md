@@ -68,6 +68,8 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0043BA50` | routine | `FLAMES.RES` loader (74 frames) | [res format](konung_res_format.md) |
 | `0x0043C0FC` | routine | Map loader (`LIGHTS.N`, `KONUNG.N`) | [map format](konung_map_format.md) |
 | `0x0042562F` | routine | Terrain draw pass | [map format](konung_map_format.md) |
+| `0x00426684`, `0x0043E242`, `0x0043D8EF` | routines | Sprite pass (shadows, then depth-sorted objects and characters); opaque clipped RLE blit; alpha-blended blit for flames | [map format](konung_map_format.md#shadows-and-draw-order) |
+| `0x00A3E700`, `0x00A3E750` | globals | Options: transparent flames; shadows | [map format](konung_map_format.md#shadows-and-draw-order) |
 | `0x0043E242` | routine | Indexed-RLE blit `(surface, image, palette, x, y)`, clipped, top-left origin | [map format](konung_map_format.md) |
 | `0x0043ED09` | routine | Takes a palette byte offset and returns the palette used by the blit (conversion details not traced) | terrain draw pass |
 | `0x0043BEF8` | routine | `MENU<width>R.RES` loader; frames 1–14 → slots `0x1F2`–`0x1FF` of `0x006304B8` | [menu](konung_menu.md) |
@@ -102,7 +104,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0042C870` | routine | Item → icon INTR slot by category | [GAME.N](konung_game_format.md#inventory-and-items-verified) |
 | `0x00424610`, `0x0042E04C`, `0x0042F50C` | routines | Character window toggle (I, HUD bag); window draw (case 3 of `0x0042DBBC`); bag strip draw | [character window](konung_character_window.md) |
 | `0x0041C750`, `0x0041B244`, `0x0041B898`, `0x0041AC1C`, `0x0041AF48`, `0x0041ADE4`, `0x00418364` | routines | Recompute stats from enchantments; stat getter; carried weight; armour; attack; bow damage; can-use check | [character window](konung_character_window.md#derived-values) |
-| `0x00458590`, `0x004623B8` | data | Enchantment table (16 B); special-property table (64 B) | [character window](konung_character_window.md#derived-values) |
+| `0x00458590`, `0x0046238C` | data | Enchantment table (16 B); special-property table (64 B: name, value `+0x2C`, kind `+0x2E`) | [character window](konung_character_window.md#derived-values) |
 | `0x0046573C`–`0x00465874`, `0x0045AE20` | data | Character window layout rows (640/800 pairs); titles | [character window](konung_character_window.md) |
 | `0x0041E210`, `0x00429194`, `0x00424918`, `0x0041E500`, `0x0041E778`, `0x004246F8`, `0x00425104`, `0x0041B164` | routines | Character window item moves: lift; return; bag insert; equipment box; jewellery box; bag drop; cursor by category; item weight | [character window](konung_character_window.md#moving-items) |
 | `0x00A3E520`–`0x00A3E578`, `0x00A3E790` | globals | Held item, source and backups; cursor mode / sprite | [character window](konung_character_window.md#moving-items) |
@@ -115,6 +117,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00A3E764`, `0x00A3E6DC` | globals | Game speed 0–2 (extra ticks per frame); mouse buttons (bit 0x01 left, 0x02 right) | [menu](konung_menu.md) |
 | `0x00423E26`, `0x00414E64`, `0x00415504`, `0x004371D2`, `0x004138C8` | routines | Right click on a bag cell; misc item use (shovel case 24); quick bag toggle; drop an item on the ground | [character window](konung_character_window.md#right-click-and-the-quick-bag), [ground items](konung_ground_items.md) |
 | `0x00426146`, `0x00426420` | code, data | Selection ellipses under selected members (INTR 172/126/178 by HP); walk offset jump table | [interface](konung_interface_res.md) |
+| `0x00423FBA`, `0x004305E4`, `0x00465A24` | routines, data | Hover handler (status line, switch `0x004244B3`); item description; stat short names | [character window](konung_character_window.md#hover-texts-verified) |
 | `0x0042C914`, `0x0043FD18` | routines | Bag cell tint; palette tint | [character window](konung_character_window.md#bag-strip-0x0042f50c) |
 | `0x004290AC`, `0x0042DBBC` | routines | Press a HUD button for one loop pass; window draw dispatcher (table `0x0042F4C8`, index = arg + 1) | [interface](konung_interface_res.md) |
 | `0x0046281C`, `0x00462B1C` | data | Combat-stance equipment draw order: 4 actions × 8 facings × 6 `int32` (bow-drawn variant) | [GAME.N](konung_game_format.md#equipment-overlays-verified) |

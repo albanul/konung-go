@@ -137,10 +137,34 @@ func (t *ExeTables) Enchant(i int) Enchant {
 	return e
 }
 
-// ItemSpecial returns entry i of the special-property table 0x004623B8
+// ItemSpecial returns entry i of the special-property table (records at
+// 0x0046238C + i·64: name +0, value +0x2C, kind +0x2E; read here at 0x004623B8)
 // (64 bytes; item byte +2): a damage value and the target kind it applies
 // to (0x0041AF48 compares the kind with its argument).
 func (t *ExeTables) ItemSpecial(i int) (value, kind int) {
 	b := t.at(0x004623B8 + i*64)
 	return int(binary.LittleEndian.Uint16(b)), int(int16(binary.LittleEndian.Uint16(b[2:])))
 }
+
+// ItemField16 returns the int16 at offset off of an item type's record.
+func (t *ExeTables) ItemField16(table, typ, off int) int {
+	va := t.itemRecord(table, typ)
+	if va < 0 {
+		return 0
+	}
+	return int(int16(binary.LittleEndian.Uint16(t.at(va + off))))
+}
+
+// StatName returns the short stat name for a requirement/enchantment stat id
+// (1-based, table 0x00465A24, 5 bytes each, with a leading space): " Хар",
+// " Лов", " Хар", " Здр", " Сил", " Вын", " Брн", " Удр", " Вер".
+func (t *ExeTables) StatName(id int) []byte {
+	if id < 1 || id > 9 {
+		return nil
+	}
+	return t.CString(0x00465A24 + (id-1)*5)
+}
+
+// ItemSpecialName returns the text of special property i (record start
+// 0x0046238C + i·64; ItemSpecial reads its +0x2C/+0x2E), e.g. ", на червяков".
+func (t *ExeTables) ItemSpecialName(i int) []byte { return t.CString(0x0046238C + i*64) }
