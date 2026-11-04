@@ -50,7 +50,7 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 |---|---|---|
 | `+0x00` | `int8` | type = action / animation set (animated models use `type − 6` when ≥ 6, `0x0041409A`) |
 | `+0x01` | `int8` | variant = **facing direction** (8 per type) |
-| `+0x02` | byte | action state bits: `0x40` idle, `0x48` walking to `+0x0C`/`+0x0E` (village AI); bit `0x04` cleared when leaving the bow ([weapons](#weapons-and-combat-stance-verified)) |
+| `+0x02` | byte | action state bits: `0x40` idle, `0x48` walking to `+0x0C`/`+0x0E` (village AI); intents `0x01` melee, `0x04` shoot, `0x02` retaliating ([combat](konung_combat.md)); bit `0x04` cleared when leaving the bow ([weapons](#weapons-and-combat-stance-verified)) |
 | `+0x03` | byte | bit `0x80`: not drawn (shadow and draw passes skip it); bit `0x04`: **combat stance** |
 | `+0x04` | byte | bit `0x40`: animated `OBJECTS.RES` model, otherwise `GRAPH.RES` Type 0; bit `0x80`: dead (HUD); bits `0x07`: portrait face; `0x51`/`0x52` = child/woman (village AI) |
 | `+0x08` | `uint16` | fine-grid row; `0` together with `+0x0A` = `0` means placed at runtime |
@@ -85,8 +85,9 @@ Body records come in two sets of six types: 0–5, and 6–11 with the same layo
 |---|---|---|
 | 6 (0) | 12, 6 frames held 2 steps each | idle |
 | 7 (1) | 12 distinct frames | **walk**. The anchor records carry one cell of displacement per cycle, e.g. facing E: image dx −14 → +32 over the 12 steps; S: dy −77 → −47; NE: (−16, −79) → (6, −93). Snapping to the next cell continues the motion seamlessly (E: last step +32, next cycle starts at 58 − 14 = +44, a normal step). So a walking character advances one fine cell per walk cycle. |
-| 8 (2) | 7 | unknown (repeats frames; possibly hit/death) |
-| 9 (3), 10 (4), 11 (5) | 12 | unknown (possibly actions/attacks) |
+| 8 (2) | 7 | hit reaction ([combat](konung_combat.md#action-types-verified)) |
+| 9 (3) | 12 | death |
+| 10 (4), 11 (5) | — | no peaceful records: the bow shot (4) and the melee swing (5) use the stance set 0–5 |
 
 **Facing (variant):** 0 W, 1 NW, 2 N, 3 NE, 4 E, 5 SE, 6 S, 7 SW, i.e. clockwise from west. Identified visually from the walk frames, not from movement code. On the fine grid, the matching neighbour cells are: same row ±1 col (E/W, 58 px), row ±2 (N/S, 32 px), and row ±1 for the diagonals (±29, ±16 px; the column depends on row parity). See `mapdata.Neighbors`.
 

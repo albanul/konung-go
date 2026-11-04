@@ -102,6 +102,22 @@ func (t *ExeTables) GearValue(typ int) int {
 	return int(binary.LittleEndian.Uint16(t.at(va + 0x2C)))
 }
 
+// GearRange returns a gear type's uint16 at record +0x34, the range the bow
+// hit chance divides the distance by (0x0041B53A).
+func (t *ExeTables) GearRange(typ int) int {
+	va := t.itemRecord(ItemTableGear, typ)
+	if va < 0 {
+		return 0
+	}
+	return int(binary.LittleEndian.Uint16(t.at(va + 0x34)))
+}
+
+// FacingDodge is the 8×8 byte table at 0x00450E14 indexed by the target's
+// and the attacker's facing: non-zero when the target can dodge (0x0041C4D1).
+func (t *ExeTables) FacingDodge(targetDir, attackerDir int) bool {
+	return t.at(0x00450E14)[(targetDir&7)*8+(attackerDir&7)] != 0
+}
+
 // GearRequirement returns the stat id (StatGetter numbering) and minimum a
 // gear type requires (record +0x30, +0x32; minimum 0 = none, 0x00418364).
 func (t *ExeTables) GearRequirement(typ int) (stat, min int) {

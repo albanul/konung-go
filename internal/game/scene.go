@@ -87,6 +87,10 @@ type startScene struct {
 	pileAt     map[mapdata.Cell]int // active piles by cell (index into game.Piles)
 	pickIntent bool                 // entity +3 bit 0x40: pick up where the walk ends
 	hovered    int                  // entity under the cursor in the last frame, -1 = none
+
+	byEntity   map[int]*npc // non-party characters on this map by entity index
+	target     int          // hero's attack target (entity +6), -1 = none; see combat.go
+	targetCell mapdata.Cell // the target's cell when last checked (+0x0C/+0x0E)
 }
 
 // sceneAssets is what stays loaded across map changes: resource files, exe
@@ -227,6 +231,8 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		tables:      tables,
 		font:        a.font,
 		hovered:     -1,
+		target:      -1,
+		byEntity:    map[int]*npc{},
 		occ:         map[mapdata.Cell]bool{},
 		hand:        gamestate.NewHand(),
 		mapNumber:   mapNumber,
@@ -319,6 +325,9 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	}
 	release := func(c mapdata.Cell) { delete(s.occ, c) }
 	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
+		if p.Group != 0 && p.Dead() {
+			continue // the leave cleanup (0x00436AD0) removes the dead
+		}
 		cell := mapdata.Cell{Row: p.Row, Col: p.Col}
 		s.occ[cell] = true
 		cur := func() gamestate.Entity { return p.Entity }
@@ -353,6 +362,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 			n.blocked = s.blocked
 		}
 		s.npcs = append(s.npcs, n)
+		s.byEntity[p.Index] = n
 	}
 	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
 	s.activatePiles()
@@ -418,6 +428,9 @@ func (s *startScene) updateControls(mx, my int) {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
 		s.hand.Return(hero)
 		gamestate.ToggleStance([]*gamestate.Entity{hero})
+		if !hero.InStance() {
+			s.endFight() // the swing needs the stance's animation set
+		}
 		s.hud.press(hudStanceButton, gamestate.HUDButtonSlots(*hero)[hudStanceButton])
 	}
 	weapon := func(mode int) {
@@ -491,7 +504,11 @@ func (s *startScene) click(hero *gamestate.Entity, mx, my, spot int, right bool)
 		}
 	case !right && s.hand.Holding():
 		s.dropHeld(hero)
+	case right && hero.InStance() && s.hovered >= 0 && s.hovered != hero.Index && !s.entity(s.hovered).Dead():
+		s.startFight(s.hovered) // 0x00423C8B: attack the character under the cursor
 	default:
+		s.endFight()
+		s.hero.act = 0
 		s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY))
 		s.pickIntent = right
 	}
@@ -702,6 +719,7 @@ func (s *startScene) step() {
 	}
 	if s.tick%walkTicksPerStep == 0 {
 		s.activatePiles()
+		s.combatTick()
 	}
 	s.updateNPCs()
 }
@@ -822,7 +840,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		if s.follow {
 			state = "on"
 		}
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("L/R click: move/take   Space: stance   1/2/3: weapon   I, ~: bag   +/-: speed x%d   F: follow %s   Esc: menu", s.speed+1, state), viewLeft+8, viewBottom-20)
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("L/R click: move/take   Space: stance (R click: attack)   1/2/3: weapon   I, ~: bag   +/-: speed x%d   F: follow %s   Esc: menu", s.speed+1, state), viewLeft+8, viewBottom-20)
 	}
 	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
 	if s.inv.open && len(s.party) > 0 {

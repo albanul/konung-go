@@ -73,7 +73,7 @@ func (g *Game) Recompute(e Entity, t *resfmt.ExeTables) Entity {
 
 // StatValue is the stat getter 0x0041B244 used by item and enchantment
 // requirements: 1, 3 Хар; 2 Лов; 4 health (HP/16); 5 Сил; 6 Вын; 7 armour;
-// 8 attack. Id 9 (0x0041B4CC) is not traced and reads as 0.
+// 8 attack; 9 hit chance at distance 1 (0x0041B4CC(e, 1), Game.HitChance).
 func (g *Game) StatValue(e Entity, t *resfmt.ExeTables, id int) int {
 	switch id {
 	case 1, 3:
@@ -90,6 +90,8 @@ func (g *Game) StatValue(e Entity, t *resfmt.ExeTables, id int) int {
 		return g.Armour(e, t)
 	case 8:
 		return g.Attack(e, t, -1)
+	case 9:
+		return g.HitChance(e, t, 1)
 	}
 	return 0
 }

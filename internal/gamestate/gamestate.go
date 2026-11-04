@@ -60,6 +60,9 @@ type Entity struct {
 	Marksmanship  int     // +0x44 word: «Меткость» ×100
 	BaseStats     [4]int  // words +0x5A, +0x60, +0x56, +0x64: base Хар, Сил, Лов, Вын («базовая» column)
 	Quiver        int     // +0xCC word: ammunition item in the box next to the bow (0 = empty)
+	HitBonus      int     // +0xCA int16: added to the hit chance while HitBonusOn != 0 (0x0041B5EE)
+	HitBonusOn    int     // +0xCE word: see HitBonus; meaning not traced further
+	PoisonDealt   int     // +0x52 int16: poison a creature adds to its target's +0x50 per hit (0x0041AF5D)
 	ArmourBase    int     // +0x4E int16: armour without gear («Броня», 0x0041AC1C)
 	Bonus         [3]int  // +0xC4, +0xC6, +0xC8 int16: armour, attack and stat-9 bonuses written by Game.Recompute
 	BonusFlags    byte    // +0xD1: bits 0-2 = the three bonuses stack (1) or replace (0)
@@ -174,6 +177,9 @@ func Parse(data []byte) (*Game, error) {
 			Marksmanship:  u16(e, 0x44),
 			BaseStats:     [4]int{u16(e, 0x5A), u16(e, 0x60), u16(e, 0x56), u16(e, 0x64)},
 			Quiver:        u16(e, 0xCC),
+			HitBonus:      s16(e, 0xCA),
+			HitBonusOn:    u16(e, 0xCE),
+			PoisonDealt:   s16(e, 0x52),
 			ArmourBase:    int(int16(binary.LittleEndian.Uint16(e[0x4E:]))),
 			Bonus:         [3]int{s16(e, 0xC4), s16(e, 0xC6), s16(e, 0xC8)},
 			BonusFlags:    e[0xD1],

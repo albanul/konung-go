@@ -105,7 +105,7 @@ Port: `startScene.statusText` (a click message still wins for its short lifetime
 | Routine | Port | Rule |
 |---|---|---|
 | `0x0041C750` | `Game.Recompute` | Sum the enchantments (table `0x00458590`, 16 B: `+2` required stat, `+3` minimum, three `{stat, mask, int16 value}` at `+4/+8/+0xC`) of worn gear, then jewellery (skipping items with `+0xE` bit 0), then the character's own `+0xD2`, `+0xD3`. Mask 1 stacks the value; mask 0 replaces it and locks the stat. Writes effective Лов/Хар/Сил/Вын from their bases (`+2` each), HP (its own base, capped at 1600; bonus ×16), and bonuses `+0xC4` armour, `+0xC6` attack, `+0xC8` stat 9, `+0xD1` = stack flags. |
-| `0x0041B244` | `Game.StatValue` | requirement stat ids: 1/3 Хар, 2 Лов, 4 HP/16, 5 Сил, 6 Вын, 7 armour, 8 attack, 9 `0x0041B4CC` (not traced) |
+| `0x0041B244` | `Game.StatValue` | requirement stat ids: 1/3 Хар, 2 Лов, 4 HP/16, 5 Сил, 6 Вын, 7 armour, 8 attack, 9 hit chance `0x0041B4CC(e, 1)` (`Game.HitChance`, [combat](konung_combat.md#formulas-verified)) |
 | `0x0041B898` | `Game.CarriedWeight` | grams: gear table `+0x38` for equipment, jewellery `+0x7A` for `+0xB2`, bag by category (≤5 gear, 6–8 jewellery, 9 herbs, 11 misc `+0x7A`, 12 gear × count, 10 and others 0), ammunition `+0xCC` × count |
 | `0x0042EF48` | `MaxWeight` | Вын·1000/3 + 10000 |
 | `0x0041AC1C` | `Game.Armour` | `+0x4E` + gear `+0x2C` of slots 3–5; bonus `+0xC4` added if `+0xD1` bit 0, else replaces |
@@ -122,5 +122,5 @@ Port: `startScene.statusText` (a click message still wins for its short lifetime
 ## Open questions
 
 * The raise column (`0x00410B08`: per-face stat caps `0x0045B10A`, costs `0x0045B010`), the XP-pool text, and the stance icon slots 0xA9/0xAA.
-* `0x00A3E768`, `0x0041B4CC` (stat 9, `+0xC8`).
+* `0x00A3E768` (god mode, see [combat](konung_combat.md#open-questions)).
 * The in-hand box (hotspot 19, `0x00A3E7A0`) and using items on characters (cursor modes 8/9), and the background tiling flag `0x00A3E744` (`0x0043141C` tiles INTR slot 5).

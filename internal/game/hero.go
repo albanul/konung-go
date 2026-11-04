@@ -44,6 +44,14 @@ type walker struct {
 	anims map[animKey][]sceneFrame
 	load  func(kind, dir int) []sceneFrame
 
+	// act is an action animation other than idle/walk (gamestate.ActFlinch,
+	// ActDeath, ActAttack; 0 = none), played one step per game tick from
+	// actStep 0 and held on its last step (0x00413DE4).
+	act, actStep int
+	// stopAt, when set, ends the walk before stepping into a cell it
+	// accepts (the hero's attack target, 0x004149B0).
+	stopAt func(mapdata.Cell) bool
+
 	blocked   func(mapdata.Cell) bool // cells this walker may not path through
 	reserve   func(mapdata.Cell) bool // claim the next cell; false if taken
 	release   func(mapdata.Cell)      // free the cell just left
@@ -68,7 +76,8 @@ type animKey struct {
 	kind, dir int
 }
 
-// framesFor returns the frames for kind (0 idle, 1 walk) in the current
+// framesFor returns the frames for kind (an action type: 0 idle, 1 walk,
+// gamestate.ActFlinch, ActDeath, ActAttack) in the current
 // look and facing, loading them on first use.
 func (w *walker) framesFor(kind int) []sceneFrame {
 	k := animKey{w.look, kind, int(w.dir)}
@@ -123,6 +132,10 @@ func (w *walker) faceNext() {
 // startStep claims path[0]. If someone took it, it replans once toward the
 // goal; if that fails too, the walker stops.
 func (w *walker) startStep() bool {
+	if w.stopAt != nil && w.stopAt(w.path[0]) {
+		w.path = nil
+		return false
+	}
 	if w.reserve == nil || w.reserve(w.path[0]) {
 		w.faceNext()
 		return true
@@ -174,7 +187,9 @@ func (w *walker) position() (float64, float64) {
 // drawn from the cell being left; their anchors carry the body forward.
 func (w *walker) frame(tick int) (sceneFrame, bool) {
 	var f sceneFrame
-	if frames := w.framesFor(1); w.walking && len(frames) > 0 {
+	if frames := w.framesFor(w.act); w.act != 0 && len(frames) > 0 {
+		f = frames[min(w.actStep, len(frames)-1)]
+	} else if frames := w.framesFor(1); w.walking && len(frames) > 0 {
 		f = frames[min(w.stepT/walkTicksPerStep, len(frames)-1)]
 	} else if frames := w.framesFor(0); len(frames) > 0 {
 		f = frames[(tick/ticksPerStep+w.phase)%len(frames)]
@@ -184,6 +199,51 @@ func (w *walker) frame(tick int) (sceneFrame, bool) {
 	x, y := mapdata.CellCenter(w.cell)
 	f.x, f.y, f.sx, f.sy = f.x+x, f.y+y, f.sx+x, f.sy+y
 	return f, true
+}
+
+// startAct starts action animation act at step 0 (0x004143DC).
+func (w *walker) startAct(act int) { w.act, w.actStep = act, 0 }
+
+// advanceAct is 0x00413DE4: the next step of the action, or false (staying
+// on the last step) when the action has played out.
+func (w *walker) advanceAct() bool {
+	if w.actStep+1 >= len(w.framesFor(w.act)) {
+		return false
+	}
+	w.actStep++
+	return true
+}
+
+// actSteps is the action's step count (+0xD7).
+func (w *walker) actSteps() int { return len(w.framesFor(w.act)) }
+
+// turnToward turns one octant toward d, the shorter way (0x004391BC).
+func (w *walker) turnToward(d mapdata.Direction) {
+	cur, t := int(w.dir), int(d)
+	if cur > t {
+		t += 8
+	}
+	if t-cur > 4 {
+		cur = (cur + 7) % 8
+	} else {
+		cur = (cur + 1) % 8
+	}
+	w.dir = mapdata.Direction(cur)
+}
+
+// chase plans a path that ends on goal even though goal is occupied (the
+// target's cell); stopAt keeps the walker from entering it.
+func (w *walker) chase(goal mapdata.Cell) {
+	start := w.cell
+	if w.walking {
+		start = w.path[0]
+	}
+	blocked := func(c mapdata.Cell) bool { return c != goal && w.blocked(c) }
+	path := mapdata.FindPath(start, goal, blocked, w.searchCap)
+	if w.walking {
+		path = append([]mapdata.Cell{start}, path...)
+	}
+	w.path, w.goal = path, goal
 }
 
 // entityLoader returns a lazy loader of idle/walk frames for an entity, with
@@ -232,7 +292,8 @@ const (
 // the idle animation, and the idle case of the type switch (0x0041291C) only
 // advances it. Their group rectangle is a territory: 0x00412C30 alarms the
 // group when a party member is inside it and sends members outside it home.
-// Alarm and return are not ported yet.
+// Alarm, attacks and return are not ported yet; characters hit by the hero
+// flinch and die (combat.go).
 type npc struct {
 	walker
 	mode   npcMode
@@ -247,7 +308,7 @@ const (
 	npcSearchCap = 4000
 )
 
-func (n *npc) idle() bool { return !n.walking && len(n.path) == 0 }
+func (n *npc) idle() bool { return !n.walking && len(n.path) == 0 && n.act == 0 }
 
 // villageTick is one AI tick of 0x00416934 for an idle villager. budget is
 // the tick's remaining path searches; it returns the number used.
