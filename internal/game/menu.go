@@ -81,7 +81,7 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		sword:      ebiten.NewImageFromImage(swordFrame),
 		world:      world,
 	}
-	for i := 0; i < menuItems; i++ {
+	for i := range menuItems {
 		m.buttons[i][0] = ebiten.NewImageFromImage(frames[3+i*2])
 		m.buttons[i][1] = ebiten.NewImageFromImage(frames[4+i*2])
 		b := menuButtons800[i]
