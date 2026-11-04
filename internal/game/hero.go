@@ -216,9 +216,8 @@ func entityLoader(game *gamestate.Game, p gamestate.Placed, cur func() gamestate
 type npcMode int
 
 const (
-	npcStill    npcMode = iota // no usable behaviour: stays put
+	npcStill    npcMode = iota // creatures while calm, and groups without a ported AI: stay put
 	npcVillager                // village group (kind 0x80): ported AI 0x00416934
-	npcRoamer                  // creature group (kind 0x40): approximation, see npc
 )
 
 // npc is a non-player character.
@@ -228,8 +227,12 @@ const (
 // the post's facing; any other villager rolls rand()%100 and, at or above its
 // threshold, walks to a gamestate.VillageStepTarget.
 //
-// Creatures use a stand-in: the group-rectangle rule of 0x0041F5D8 with a
-// 2–8 s pause. Their own AI (0x004123BC) is not traced.
+// Creatures (group kind 0x40, AI 0x004123BC) stand still and play their idle
+// loop while their group is calm: the calm case of 0x00412E00 only restarts
+// the idle animation, and the idle case of the type switch (0x0041291C) only
+// advances it. Their group rectangle is a territory: 0x00412C30 alarms the
+// group when a party member is inside it and sends members outside it home.
+// Alarm and return are not ported yet.
 type npc struct {
 	walker
 	mode   npcMode
@@ -237,14 +240,11 @@ type npc struct {
 	post   gamestate.Post
 	posted bool
 	moveAt int // village roll threshold (gamestate.VillageMoveThreshold)
-	wait   int // roamer pause, in updates
 	rng    func(int) int
 }
 
 const (
-	npcPauseMin   = 120 // roamer pause: 2 s
-	npcPauseRange = 360 // + up to 6 s
-	npcSearchCap  = 4000
+	npcSearchCap = 4000
 )
 
 func (n *npc) idle() bool { return !n.walking && len(n.path) == 0 }
@@ -274,20 +274,4 @@ func (n *npc) villageTick(budget int) int {
 	}
 	n.walkTo(mapdata.Cell{Row: r, Col: c})
 	return 1
-}
-
-// roamTick runs every update for creatures (the stand-in described on npc).
-func (n *npc) roamTick() {
-	if !n.idle() {
-		return
-	}
-	if n.wait > 0 {
-		n.wait--
-		return
-	}
-	n.wait = npcPauseMin + n.rng(npcPauseRange)
-	blocked := func(r, c int) bool { return n.blocked(mapdata.Cell{Row: r, Col: c}) }
-	if r, c, ok := gamestate.WanderTarget(n.area, n.rng, blocked); ok {
-		n.walkTo(mapdata.Cell{Row: r, Col: c})
-	}
 }

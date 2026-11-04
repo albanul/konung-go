@@ -301,8 +301,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	}
 	// Characters and creatures are walkers with lazily loaded idle/walk
 	// loops. The player (group 0's first entity) is controllable; villagers
-	// run the ported village AI, creatures a rectangle-roaming stand-in (see
-	// npc).
+	// run the ported village AI, creatures stand still while calm (see npc).
 	camX, camY := s.worldW/2, s.worldH/2
 	if g0 := game.Groups[0]; g0.Map == mapNumber {
 		for k := 0; k < g0.Count; k++ {
@@ -350,10 +349,6 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 			n.post, n.posted = game.PostOf(p.Entity)
 			n.moveAt = gamestate.VillageMoveThreshold(p.Entity)
 			n.blocked = s.blocked
-		case hasArea:
-			n.mode = npcRoamer
-			n.wait = s.rng.IntN(npcPauseMin + npcPauseRange)
-			n.blocked = func(c mapdata.Cell) bool { return !area.Contains(c.Row, c.Col) || s.blocked(c) }
 		default:
 			n.blocked = s.blocked
 		}
@@ -383,9 +378,6 @@ func (s *startScene) updateNPCs() {
 		}
 	}
 	for _, n := range s.npcs {
-		if n.mode == npcRoamer {
-			n.roamTick()
-		}
 		n.update()
 	}
 }
