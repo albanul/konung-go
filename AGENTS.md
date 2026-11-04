@@ -130,5 +130,5 @@ Highest-value unknowns, roughly in priority order:
 5. The 64 KiB gap in `GRAPH.RES` at `0x1ED8B6`, and the second 8-byte table at VA `0x006324B8`.
 6. `KONUNG.N` ↔ in-game location names (`KONUNG.1` = Volk's start is known). Render all maps with `map-render -all` and compare them against screenshots or the walkthrough.
 7. HUD: button actions, the info window (`0x0042E04C`), the alternate portrait table `0x0062F3D8`. See [interface](docs/konung_interface_res.md#open-questions).
-8. Map changes: per-map state save `0x00436AD0` (NPCs restart on every visit), the settlement gate on exits, travel by item `0x00422AD8` ([map exits](docs/konung_game_format.md#map-exits-verified)); the pile window `0x004170A0`. See [ground items](docs/konung_ground_items.md#open-questions).
+8. Map changes: removing the dead and refilling village post 0 on leave (`0x00436AD0`), monster respawn on entry `0x00420CCC`, the settlement gate on exits, travel by item `0x00422AD8` ([map exits](docs/konung_game_format.md#map-exits-verified)); the pile window `0x004170A0`. See [ground items](docs/konung_ground_items.md#open-questions).
 9. `cmd/sprite-catalog` has its own Type 0 walker that duplicates `resfmt.DecodeType0Frames`; consolidate when touching it.

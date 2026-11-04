@@ -114,7 +114,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00A3E770` | global | Game time, +1 per main-loop tick | [ground items](konung_ground_items.md#map-load-0x0043cf1a) |
 | `0x00505C70` | buffer | Fine-grid word map, 0x140 bytes per row: occupant bits `0xFFF`, `0x1000` exit, `0x2000` pile | [ground items](konung_ground_items.md) |
 | `0x007AA2DC`, `0x00A3E81C`, `0x00421BB8`, `0x00422AD8` | buffer, global, routines | Map exits (`GAME.N` section 4) and their count; exit taken at walk end; travel by item | [GAME.N](konung_game_format.md#map-exits-verified) |
-| `0x00A3E810`, `0x00A3E7FC`, `0x004118DC`, `0x00436AD0`, `0x0043C0FC` | globals, routines | Pending map change (−map); current map; place the party at group 0's cell; save the map state; load a map | [GAME.N](konung_game_format.md#map-exits-verified) |
+| `0x00A3E810`, `0x00A3E7FC`, `0x004118DC`, `0x00436AD0`, `0x0043C0FC` | globals, routines | Pending map change (−map); current map; place the party at group 0's cell; leave cleanup (remove the dead, refill post 0); load a map | [GAME.N](konung_game_format.md#map-exits-verified) |
 | `0x00A3E764`, `0x00A3E6DC` | globals | Game speed 0–2 (extra ticks per frame); mouse buttons (bit 0x01 left, 0x02 right) | [menu](konung_menu.md) |
 | `0x00423E26`, `0x00414E64`, `0x00415504`, `0x004371D2`, `0x004138C8` | routines | Right click on a bag cell; misc item use (shovel case 24); quick bag toggle; drop an item on the ground | [character window](konung_character_window.md#right-click-and-the-quick-bag), [ground items](konung_ground_items.md) |
 | `0x00426146`, `0x00426420` | code, data | Selection ellipses under selected members (INTR 172/126/178 by HP); walk offset jump table | [interface](konung_interface_res.md) |

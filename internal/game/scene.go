@@ -154,28 +154,38 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 }
 
 // changeMap takes map exit x (0x00421CCD, then the main loop's map change at
-// 0x004377C6): the party's state goes back into the game, the party moves to
-// the exit's target and the scene is rebuilt for that map. The game also
-// saves the old map's state (0x00436AD0); the port keeps piles and the party
-// in s.game, but other characters restart from GAME.N on every visit.
+// 0x004377C6): the scene's characters go back into the game (storeWorld),
+// the party moves to the exit's target and the scene is rebuilt for that
+// map. If the target fails to load, the game state is restored.
 func (s *startScene) changeMap(x gamestate.MapExit) {
 	group := s.game.Groups[0]
-	saved := make([]gamestate.Entity, len(s.party))
-	for i, e := range s.party {
-		saved[i] = s.game.Entities[e.Index]
-		s.game.Entities[e.Index] = e
-	}
+	entities := append([]gamestate.Entity(nil), s.game.Entities...)
+	s.storeWorld()
 	s.game.TakeExit(x)
 	ns, err := s.assets.buildScene(s.game, x.To, s)
 	if err != nil {
 		log.Printf("map exit %d to KONUNG.%d: %v", x.Index, x.To, err)
 		s.game.Groups[0] = group
-		for i, e := range saved {
-			s.game.Entities[e.Index] = saved[i]
-		}
+		s.game.Entities = entities
 		return
 	}
 	*s = *ns
+}
+
+// storeWorld writes the scene's runtime state back into s.game: the party
+// (stance, weapon, inventory) and every other character's cell and facing.
+// The game keeps all characters in one global array (0x007AB378) and runs
+// the AI only for the current map, so a map looks as it was left on the
+// next visit; the map loader (0x0043C612) puts them back on their stored
+// cells, idle.
+func (s *startScene) storeWorld() {
+	for _, e := range s.party {
+		s.game.Entities[e.Index] = e
+	}
+	for _, n := range s.npcs {
+		e := &s.game.Entities[n.entity]
+		e.Row, e.Col, e.Variant = n.cell.Row, n.cell.Col, int(n.dir)
+	}
 }
 
 // buildScene builds the scene for map mapNumber: terrain, decorations and
