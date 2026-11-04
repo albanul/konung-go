@@ -63,6 +63,21 @@ func (t *ExeTables) ItemIcon(table, typ int) int {
 	return n
 }
 
+// ItemGroundImage returns the INTR slot an item type is drawn with when it
+// lies alone on the ground (0x00439DF0): the word after the inventory icon
+// (gear +0x3C, other tables +0x7E), or -1.
+func (t *ExeTables) ItemGroundImage(table, typ int) int {
+	va := t.itemRecord(table, typ)
+	if va < 0 {
+		return -1
+	}
+	n := int(int16(binary.LittleEndian.Uint16(t.at(va + itemTables[table].icon + 2))))
+	if n < 0 || n >= 512 {
+		return -1
+	}
+	return n
+}
+
 // ItemWeight returns an item type's weight in grams: gear record +0x38,
 // other tables +0x7A (0x0041B898).
 func (t *ExeTables) ItemWeight(table, typ int) int {

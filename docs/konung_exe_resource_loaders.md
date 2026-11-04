@@ -107,6 +107,11 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0041E210`, `0x00429194`, `0x00424918`, `0x0041E500`, `0x0041E778`, `0x004246F8`, `0x00425104`, `0x0041B164` | routines | Character window item moves: lift; return; bag insert; equipment box; jewellery box; bag drop; cursor by category; item weight | [character window](konung_character_window.md#moving-items) |
 | `0x00A3E520`–`0x00A3E578`, `0x00A3E790` | globals | Held item, source and backups; cursor mode / sprite | [character window](konung_character_window.md#moving-items) |
 | `0x0042F9B8`, `0x00A3E84C` | routine, global | Status-line message; its 12-pass counter | [character window](konung_character_window.md#moving-items) |
+| `0x0079EFDC`, `0x007A6CDC`, `0x00A3E804`, `0x00A3E7E0` | buffers | Ground piles (`GAME.N` section 3) and their active list on the current map; counts | [ground items](konung_ground_items.md) |
+| `0x00439DF0`, `0x00410E10`, `0x004110EC`, `0x0041093C`, `0x004399AC`, `0x00434C90` | routines | Pile image; pile at cell; pick-up; remove/respawn; allocate item record; bag has misc item | [ground items](konung_ground_items.md) |
+| `0x00A3E770` | global | Game time, +1 per main-loop tick | [ground items](konung_ground_items.md#map-load-0x0043cf1a) |
+| `0x00505C70` | buffer | Fine-grid word map, 0x140 bytes per row: occupant bits `0xFFF`, `0x1000` exit, `0x2000` pile | [ground items](konung_ground_items.md) |
+| `0x007AA2DC`, `0x00421BB8` | buffer, routine | Map exits (`GAME.N` section 4); exit taken at walk end | [GAME.N](konung_game_format.md#file-layout-verified) |
 | `0x0042C914`, `0x0043FD18` | routines | Bag cell tint; palette tint | [character window](konung_character_window.md#bag-strip-0x0042f50c) |
 | `0x004290AC`, `0x0042DBBC` | routines | Press a HUD button for one loop pass; window draw dispatcher (table `0x0042F4C8`, index = arg + 1) | [interface](konung_interface_res.md) |
 | `0x0046281C`, `0x00462B1C` | data | Combat-stance equipment draw order: 4 actions × 8 facings × 6 `int32` (bow-drawn variant) | [GAME.N](konung_game_format.md#equipment-overlays-verified) |

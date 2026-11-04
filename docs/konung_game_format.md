@@ -24,8 +24,8 @@ All three installed files are 709,822 bytes, exactly the sum of six reads:
 |---|---:|---|---|
 | `0x00000` | `0x20000` | `0x0067AC34` | 8192 × 16-byte **items**; byte `+3` = item type |
 | `0x20000` | `0x1900` | `0x0069D1B4` | 200 × 32-byte **groups** |
-| `0x21900` | `0x7D00` | `0x0079EFDC` | 500 × `0x40` records (loader post-processes entries with word `+0x12` ≠ 0 through `0x00439DF0`); not traced |
-| `0x29600` | `0x109A` | `0x007AA2DC` | 250 × `0x11` records; not traced |
+| `0x21900` | `0x7D00` | `0x0079EFDC` | 500 × `0x40` **items on the ground** (piles) — [ground items](konung_ground_items.md) |
+| `0x29600` | `0x109A` | `0x007AA2DC` | 250 × `0x11` **map exits** (count = records before the first with byte `+4` = 0). Byte `+3` = map; rectangle rows `+9`..`+0xD`, cols `+0xB`..`+0xF` (words) gets fine-grid flag `0x10` at map load (`0x0043D11B`). A party member ending a walk there (`0x00421BB8`) sets the next map `0x00A3E810 = −byte +4`, the party position to rows/cols words `+5`/`+7`, and party `+0xC` to byte `+2`. An extra condition on the current settlement (`0x00A3E6A8` `+0x3D`/`+0x3E`) is not decoded; map changes are not ported. |
 | `0x2A69A` | `0x7D000` | `0x007AB378` | 2000 × 256-byte **entities** |
 | `0xA769A` | `0x5E24` | `0x00835B18` | 20 × `0x4B5` **settlements** with named-character posts ([village AI](#village-ai-verified-against-code-and-game0)) |
 
@@ -236,5 +236,5 @@ Validation: `go test ./internal/gamestate` checks the player group, the 50 drawa
 * Group fields `+0x0A`, `+0x0E`, `+0x12`, `+0x16`, `+0x1D` (calm/alarm), `+0x1E` beyond bits `0x40` (creature AI) / `0x80` (village AI); the conditional spawn check at `0x00411DE4`.
 * The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation. Actions other than idle/walk (attacks, hits, death) are not ported; the combat stance and drawn weapons are.
 * Item record fields other than category and type (`+4`/`+8` condition is a hypothesis); the gear table's remaining fields; which jewellery box is which; combat animation types 2, 4, 5; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
-* The other three `GAME.N` sections (items, groups, entities and settlements are decoded); settlement bytes outside the posts.
+* `GAME.N` section 4 (map exits) fields `+0..+2`, `+6`, `+8`; settlement bytes outside the posts.
 * Creature AI `0x004123BC` (idle roaming, aggro, return home); the port uses a rectangle stand-in. Village alarm state (group `+0x1D` ≠ 0, `0x00416DA6`) and the `+4` bits `0x38` post path.

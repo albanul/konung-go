@@ -71,14 +71,18 @@ type startScene struct {
 	hud   *hud
 	party []gamestate.Entity // group 0's entities (copies; [0] = hero) shown in the portrait grid
 
-	game    *gamestate.Game
-	tables  *resfmt.ExeTables
-	font    *gameFont // small status-line font (resfmt.FontSmallVA)
-	inv     *charWindow
-	hand    gamestate.Hand // item being moved in the character window
-	msg     []byte         // status-line message (0x0042F9B8) and when it ends
-	msgEnd  int
-	hovered int // entity under the cursor in the last frame, -1 = none
+	game   *gamestate.Game
+	tables *resfmt.ExeTables
+	font   *gameFont // small status-line font (resfmt.FontSmallVA)
+	inv    *charWindow
+	hand   gamestate.Hand // item being moved in the character window
+	msg    []byte         // status-line message (0x0042F9B8) and when it ends
+	msgEnd int
+
+	mapNumber  int
+	pileAt     map[mapdata.Cell]int // active piles by cell (index into game.Piles)
+	pickIntent bool                 // entity +3 bit 0x40: pick up where the walk ends
+	hovered    int                  // entity under the cursor in the last frame, -1 = none
 }
 
 // loadStartScene builds the scene for map mapNumber: terrain, decorations
@@ -161,6 +165,8 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 		hovered:     -1,
 		occ:         map[mapdata.Cell]bool{},
 		hand:        gamestate.NewHand(),
+		mapNumber:   mapNumber,
+		pileAt:      map[mapdata.Cell]int{},
 		follow:      true,
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
 	}
@@ -283,6 +289,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 		s.npcs = append(s.npcs, n)
 	}
 	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
+	s.activatePiles()
 	s.centerOn(camX, camY)
 	return s, nil
 }
@@ -418,6 +425,9 @@ func (s *startScene) cursorSprite() int {
 	if s.inv.open || s.hand.Holding() {
 		return s.hand.Cursor
 	}
+	if c, ok := s.pileUnderCursor(); ok && !s.occ[c] {
+		return gamestate.CursorTake // 0x00428D7F: visible pile on a free cell
+	}
 	return gamestate.CursorPointer
 }
 
@@ -458,11 +468,19 @@ func (s *startScene) Update() {
 		// While the character window covers the view, clicks don't move the hero.
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && inView(mx, my) && !clicked && !s.inv.open {
 			s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY))
+			s.pickIntent = true // every plain map click (0x004239E3)
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyH) && len(s.party) > 0 {
 			s.party[0] = debugDamage(s.party[0])
 		}
 		s.hero.update()
+		if s.pickIntent && !s.hero.walking && len(s.hero.path) == 0 {
+			s.pickIntent = false
+			s.arrive()
+		}
+	}
+	if s.tick%walkTicksPerStep == 0 {
+		s.activatePiles()
 	}
 	s.updateNPCs()
 	if s.hero != nil {
@@ -517,6 +535,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 			drawAt(screen, t, d.X-s.camX, d.Y-s.camY)
 		}
 	}
+	s.drawPiles(screen)
 	// Shadows are unioned, then every covered pixel is halved once (0x0043E5DF).
 	s.shadowLayer.Clear()
 	drawShadow := func(f *sceneFrame) {
@@ -595,6 +614,8 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	}
 	if s.tick < s.msgEnd {
 		s.font.drawLine(screen, s.msg, viewLeft+10, viewBottom+5)
+	} else if _, ok := s.pileUnderCursor(); ok {
+		s.font.drawLine(screen, s.tables.CString(gamestate.MsgSomethingOnGround), viewLeft+10, viewBottom+5)
 	} else if s.hovered >= 0 {
 		// The status line in the bottom bar (0x0043195C), small font.
 		s.font.drawWrapped(screen, s.game.StatusLine(s.entity(s.hovered), s.tables),

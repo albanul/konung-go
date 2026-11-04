@@ -78,6 +78,7 @@ type Game struct {
 	Groups      []Group
 	Entities    []Entity
 	Settlements []Settlement // section 6: villages with their named-character posts
+	Piles       []Pile       // section 3: items lying on the ground
 	items       []byte
 }
 
@@ -185,6 +186,7 @@ func Parse(data []byte) (*Game, error) {
 		})
 	}
 	g.Settlements = parseSettlements(data)
+	g.Piles = parsePiles(data)
 	return g, nil
 }
 
