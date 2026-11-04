@@ -8,10 +8,11 @@ import (
 
 func TestHeroWalksToGoal(t *testing.T) {
 	start := mapdata.Cell{Row: 86, Col: 33}
-	h := &hero{cell: start}
+	h := &walker{cell: start, searchCap: pathSearchLimit}
 	wall := func(c mapdata.Cell) bool { return c.Col == 36 && c.Row > 80 && c.Row < 96 } // force a detour
 	goal := mapdata.Cell{Row: 88, Col: 40}
-	h.walkTo(goal, wall)
+	h.blocked = wall
+	h.walkTo(goal)
 	if len(h.path) == 0 {
 		t.Fatal("no path planned")
 	}
@@ -45,10 +46,10 @@ func TestHeroWalksToGoal(t *testing.T) {
 		}
 	}
 	// Re-targeting mid-step keeps the step in progress.
-	h.walkTo(mapdata.Cell{Row: 88, Col: 30}, wall)
+	h.walkTo(mapdata.Cell{Row: 88, Col: 30})
 	h.update()
 	next := h.path[0]
-	h.walkTo(mapdata.Cell{Row: 70, Col: 40}, wall)
+	h.walkTo(mapdata.Cell{Row: 70, Col: 40})
 	if h.path[0] != next {
 		t.Fatalf("re-target dropped the current step %v (now %v)", next, h.path[0])
 	}

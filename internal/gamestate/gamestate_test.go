@@ -94,3 +94,57 @@ func TestGame0Konung1(t *testing.T) {
 		}
 	}
 }
+
+func TestVillageWanderArea(t *testing.T) {
+	g, err := Parse(load(t, "GAME.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, ok := g.Groups[27].WanderArea()
+	if !ok || a != (Area{36, 136, 24, 50}) {
+		t.Fatalf("village area = %+v ok %v, want rows 36-136 cols 24-50", a, ok)
+	}
+	if _, ok := g.Groups[0].WanderArea(); ok {
+		t.Fatal("player group must not wander")
+	}
+	walk, err := mapdata.ParseWalkGrid(load(t, "KONUNG.1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := 1
+	intn := func(n int) int { seed = seed*1103515245 + 12345; return int(uint(seed)>>16) % n }
+	for i := 0; i < 200; i++ {
+		r, c, ok := WanderTarget(a, intn, walk.Blocked)
+		if !ok || !a.Contains(r, c) || walk.Blocked(r, c) {
+			t.Fatalf("target %d,%d ok %v is outside the area or blocked", r, c, ok)
+		}
+	}
+}
+
+func TestKonung1WalkAnimations(t *testing.T) {
+	g, err := Parse(load(t, "GAME.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	walk, err := mapdata.ParseWalkGrid(load(t, "KONUNG.1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	objects, graph := load(t, "OBJECTS.RES"), load(t, "GRAPH.RES")
+	tables, err := resfmt.NewExeTables(load(t, "konung.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.HeroModelFromGame(0, PlaceholderHeroPalette)
+	for _, p := range g.OnMap(1, walk.Blocked) {
+		for dir := 0; dir < 8; dir++ {
+			q := p
+			q.Type, q.Variant = p.Type+1, dir
+			anim, err := g.LoadAnimation(q, objects, graph, tables)
+			if err != nil || len(anim) < 2 {
+				t.Errorf("entity %d (model %d animated %v) walk dir %d: %d steps, err %v", p.Index, p.Model, p.Animated(), dir, len(anim), err)
+				break
+			}
+		}
+	}
+}

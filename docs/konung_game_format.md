@@ -37,9 +37,9 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 |---|---|---|
 | `+0x00` | `int16` | first entity index |
 | `+0x08` | `uint16` | group fine-grid **row** (the party is placed around it, `0x00411B15`) |
-| `+0x0A`, `+0x0C`, `+0x0E` | `uint16` | not traced; row-like values (e.g. spider nest 152, 228, 228) |
+| `+0x0A`, `+0x0C`, `+0x0E` | `uint16` | `+0x0C` = wander rectangle max row (with `+0x08` as min, `0x0041F5D8`); `+0x0A`/`+0x0E` not traced |
 | `+0x10` | `uint16` | group fine-grid **column** |
-| `+0x12`, `+0x14`, `+0x16` | `uint16` | not traced; column-like values (34, 62, 62) |
+| `+0x12`, `+0x14`, `+0x16` | `uint16` | `+0x14` = wander rectangle max col (with `+0x10` as min); `+0x12`/`+0x16` not traced |
 | `+0x1B` | byte | map number (`KONUNG.N`) |
 | `+0x1C` | byte | entity count (consecutive from `+0x00`) |
 | `+0x1E` | byte | 0 = inactive. Bits `0x40`/`0x80` and the value range `0x41..0x50` select loader paths; meaning not decoded. |
@@ -99,6 +99,16 @@ Type 0 bodies wear equipment drawn as overlay layers by `0x004281A4`, called rig
 Code: `resfmt.ExeTables` (reads the three exe tables from `konung.exe`), `resfmt.ComposeEquipment`, `Game.Overlays`. The port composites body and overlays into one image per step.
 
 `KONUNG.1` in `GAME.0`: villagers wear helmets, armour, axes and shields (e.g. villager 355: overlays 17, 9, 20, 0 by facing order). Volk's starting entity has items in slots 2, 6, 7. Only slot 2 is drawn (overlay 4); slots 6–7 are carried items. The new-game code does not overwrite the slots, so this is Volk's starting kit.
+
+## NPC wandering (partly traced)
+
+`0x0041F5D8(group, entity)` is the wander routine.
+
+* **Groups with `+0x1E` bit `0x40`** use the group rectangle: rows = words `+0x08`..`+0x0C`, cols = `+0x10`..`+0x14`. The target is the centre, shifted on both axes by `rand() % (span/4)` when that is at least 2 cells; one coin flip decides + or − for both axes. If that cell is blocked, the routine scans forward (column first, wrapping rows) to the first free walk-grid cell. It writes the target to entity `+0x0C`/`+0x0E` and ORs `0x48` into entity `+2`.
+* **Other groups** (e.g. the village, `+0x1E` = `0x80`) take a follow-the-leader branch (`0x0041FA5D`): members more than 10 cells from the group's first entity move to a formation slot near it, using the same offset table (`0x0045FF79`) as the party code.
+* `KONUNG.1` village group 27 has the rectangle rows 36–136, cols 24–50, which contains all its members.
+
+Port (`gamestate.WanderTarget`, `Group.WanderArea`, `internal/game` `npc`): every non-player group with a valid rectangle wanders individually inside it with this target rule; the leader-following branch is not ported. NPCs walk like the hero (one cell per walk cycle, walk = idle type + 1) and pause 2–8 s between walks. The pause is a presentation choice; the scheduler and AI states that call `0x0041F5D8` are not traced. Characters reserve the cell they step into, so they don't overlap.
 
 ## Placement of entities without coordinates
 

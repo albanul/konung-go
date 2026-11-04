@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	"math/rand/v2"
 	"os"
 	"sort"
 
@@ -59,10 +60,12 @@ type startScene struct {
 	camX, camY     int
 	tick           int
 
-	hero     *hero // nil when the player does not start on this map
-	walk     *mapdata.WalkGrid
-	occupied map[mapdata.Cell]bool // cells held by NPCs and creatures
-	follow   bool                  // camera follows the hero (toggle with F)
+	hero   *walker // nil when the player does not start on this map
+	npcs   []*npc  // every other character; those in a valid group area wander
+	walk   *mapdata.WalkGrid
+	occ    map[mapdata.Cell]bool // cells held or being entered by a character
+	follow bool                  // camera follows the hero (toggle with F)
+	rng    *rand.Rand
 }
 
 // loadStartScene builds the scene for map mapNumber: terrain, decorations
@@ -122,8 +125,9 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 		tiles:       make([]*ebiten.Image, len(rawTiles)),
 		shadowLayer: ebiten.NewImage(ScreenWidth, ScreenHeight),
 		walk:        walk,
-		occupied:    map[mapdata.Cell]bool{},
+		occ:         map[mapdata.Cell]bool{},
 		follow:      true,
+		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
 	}
 	// Only upload tiles the map references; slot 304 is a large non-tile image.
 	useTile := func(slot int) {
@@ -181,31 +185,41 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 			depth:  sp.Depth,
 		})
 	}
-	// Characters and creatures, each with its idle loop. The player (group
-	// 0's first entity) is controllable and drawn separately.
+	// Characters and creatures are walkers with lazily loaded idle/walk
+	// loops. The player (group 0's first entity) is controllable; NPCs whose
+	// group has a wander rectangle roam inside it.
 	camX, camY := s.worldW/2, s.worldH/2
 	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
 	uploadSprite := func(sp *resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image) { return upload(sp.Image, sp.Shadow) }
+	logErr := func(err error) { log.Printf("%s: %v", gamePath, err) }
+	reserve := func(c mapdata.Cell) bool {
+		if s.occ[c] {
+			return false
+		}
+		s.occ[c] = true
+		return true
+	}
+	release := func(c mapdata.Cell) { delete(s.occ, c) }
 	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
+		cell := mapdata.Cell{Row: p.Row, Col: p.Col}
+		s.occ[cell] = true
+		w := walker{
+			cell: cell, dir: mapdata.Direction(p.Variant & 7), phase: p.Index * 5,
+			load:    entityLoader(game, p, objectsData, graphData, tables, uploadSprite, logErr),
+			reserve: reserve, release: release,
+		}
 		if p.Group == 0 && p.Index == game.Groups[0].First {
-			if s.hero, err = loadHero(game, p, objectsData, graphData, tables, uploadSprite); err != nil {
-				return nil, err
-			}
+			w.blocked, w.searchCap = s.blocked, pathSearchLimit
+			s.hero = &w
 			camX, camY = gamestate.WorldPos(p.Row, p.Col)
 			continue
 		}
-		s.occupied[mapdata.Cell{Row: p.Row, Col: p.Col}] = true
-		anim, err := game.LoadAnimation(p, objectsData, graphData, tables)
-		if err != nil {
-			log.Printf("%s: %v", gamePath, err)
-			continue
-		}
-		o := sceneObject{phase: p.Index * 5, depth: anim[0].Y + anim[0].Sprite.Image.Bounds().Dy()}
-		for _, f := range anim {
-			img, sh := upload(f.Sprite.Image, f.Sprite.Shadow)
-			o.frames = append(o.frames, sceneFrame{img: img, shadow: sh, x: f.X, y: f.Y, sx: f.SX, sy: f.SY})
-		}
-		s.objects = append(s.objects, o)
+		n := &npc{walker: w, rng: s.rng.IntN, wait: s.rng.IntN(npcPauseMin + npcPauseRange)}
+		area, wanders := game.Groups[p.Group].WanderArea()
+		n.area = area
+		n.searchCap = npcSearchCap
+		n.blocked = func(c mapdata.Cell) bool { return !wanders || !area.Contains(c.Row, c.Col) || s.blocked(c) }
+		s.npcs = append(s.npcs, n)
 	}
 	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
 	s.centerOn(camX, camY)
@@ -222,10 +236,10 @@ func (s *startScene) clampCamera() {
 	s.camY = max(0, min(s.camY, s.worldH-ScreenHeight))
 }
 
-// blocked reports cells the hero cannot enter: walk-grid obstacles, cells
-// outside the map, and cells occupied by NPCs or creatures.
+// blocked reports cells a character cannot path through: walk-grid
+// obstacles, cells outside the map, and cells other characters hold.
 func (s *startScene) blocked(c mapdata.Cell) bool {
-	if s.walk.Blocked(c.Row, c.Col) || s.occupied[c] {
+	if s.walk.Blocked(c.Row, c.Col) || s.occ[c] {
 		return true
 	}
 	x, y := mapdata.CellCenter(c)
@@ -240,9 +254,15 @@ func (s *startScene) Update() {
 			s.follow = !s.follow
 		}
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-			s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY), s.blocked)
+			s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY))
 		}
 		s.hero.update()
+	}
+	for _, n := range s.npcs {
+		n.think()
+		n.update()
+	}
+	if s.hero != nil {
 		if s.follow {
 			x, y := s.hero.position()
 			s.centerOn(int(x), int(y))
@@ -304,33 +324,44 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	for i := range s.objects {
 		drawShadow(s.objects[i].frame(s.tick))
 	}
-	var heroFrame *sceneFrame
-	heroDepth := 0
-	if s.hero != nil {
-		f := s.hero.frame(s.tick)
-		heroFrame, heroDepth = &f, f.y+f.img.Bounds().Dy()
-		drawShadow(heroFrame)
+	// Characters move, so they are depth-sorted each frame and merged into
+	// the static objects' order.
+	var chars []sceneFrame
+	addChar := func(w *walker) {
+		if f, ok := w.frame(s.tick); ok && s.visible(f.x-64, f.y-64, f.img.Bounds().Dx()+128, f.img.Bounds().Dy()+128) {
+			chars = append(chars, f)
+			drawShadow(&chars[len(chars)-1])
+		}
 	}
+	if s.hero != nil {
+		addChar(s.hero)
+	}
+	for _, n := range s.npcs {
+		addChar(&n.walker)
+	}
+	depth := func(f *sceneFrame) int { return f.y + f.img.Bounds().Dy() }
+	sort.SliceStable(chars, func(i, j int) bool { return depth(&chars[i]) < depth(&chars[j]) })
 	op := &ebiten.DrawImageOptions{}
 	op.ColorScale.Scale(0, 0, 0, 0.5)
 	screen.DrawImage(s.shadowLayer, op)
 
-	// Objects and entities are depth-sorted by their bottom edge; the moving
-	// hero is inserted where its own bottom edge falls.
+	// Static objects are depth-sorted by their bottom edge; characters are
+	// merged in where their own bottom edge falls.
 	drawFrame := func(f *sceneFrame) {
 		if s.visible(f.x, f.y, f.img.Bounds().Dx(), f.img.Bounds().Dy()) {
 			drawAt(screen, f.img, f.x-s.camX, f.y-s.camY)
 		}
 	}
+	ci := 0
 	for i := range s.objects {
-		if heroFrame != nil && s.objects[i].depth > heroDepth {
-			drawFrame(heroFrame)
-			heroFrame = nil
+		for ci < len(chars) && depth(&chars[ci]) < s.objects[i].depth {
+			drawFrame(&chars[ci])
+			ci++
 		}
 		drawFrame(s.objects[i].frame(s.tick))
 	}
-	if heroFrame != nil {
-		drawFrame(heroFrame)
+	for ; ci < len(chars); ci++ {
+		drawFrame(&chars[ci])
 	}
 	if s.hero != nil {
 		state := "off"
