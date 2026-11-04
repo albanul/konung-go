@@ -104,6 +104,9 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0041C750`, `0x0041B244`, `0x0041B898`, `0x0041AC1C`, `0x0041AF48`, `0x0041ADE4`, `0x00418364` | routines | Recompute stats from enchantments; stat getter; carried weight; armour; attack; bow damage; can-use check | [character window](konung_character_window.md#derived-values) |
 | `0x00458590`, `0x004623B8` | data | Enchantment table (16 B); special-property table (64 B) | [character window](konung_character_window.md#derived-values) |
 | `0x0046573C`–`0x00465874`, `0x0045AE20` | data | Character window layout rows (640/800 pairs); titles | [character window](konung_character_window.md) |
+| `0x0041E210`, `0x00429194`, `0x00424918`, `0x0041E500`, `0x0041E778`, `0x004246F8`, `0x00425104`, `0x0041B164` | routines | Character window item moves: lift; return; bag insert; equipment box; jewellery box; bag drop; cursor by category; item weight | [character window](konung_character_window.md#moving-items) |
+| `0x00A3E520`–`0x00A3E578`, `0x00A3E790` | globals | Held item, source and backups; cursor mode / sprite | [character window](konung_character_window.md#moving-items) |
+| `0x0042F9B8`, `0x00A3E84C` | routine, global | Status-line message; its 12-pass counter | [character window](konung_character_window.md#moving-items) |
 | `0x0042C914`, `0x0043FD18` | routines | Bag cell tint; palette tint | [character window](konung_character_window.md#bag-strip-0x0042f50c) |
 | `0x004290AC`, `0x0042DBBC` | routines | Press a HUD button for one loop pass; window draw dispatcher (table `0x0042F4C8`, index = arg + 1) | [interface](konung_interface_res.md) |
 | `0x0046281C`, `0x00462B1C` | data | Combat-stance equipment draw order: 4 actions × 8 facings × 6 `int32` (bow-drawn variant) | [GAME.N](konung_game_format.md#equipment-overlays-verified) |

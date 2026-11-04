@@ -43,7 +43,7 @@ Payload sizes exclude each block's 8-byte header.
 | 9 | `0x222B2` | 854 | `32 × 32` | Blue starburst |
 | 10 | `0x22610` | 464 | `32 × 32` | Larger standalone sword |
 
-The screenshot's plain blade cursor visually matches sprite 4. Sprite 1 is a cursor variant with a crossed-swords marker; using it as the general mouse pointer makes that marker appear next to the blade. The marker meanings are visual descriptions only; their runtime semantics have not been traced in the executable.
+The screenshot's plain blade cursor visually matches sprite 4. Sprite 1 is a cursor variant with a crossed-swords marker. **The cursor is sprite number `0x00A3E790`** over the HUD and windows (`0x00428AC0`): 4 = empty hand; while an item is held in the character window 0 (armour), 2 (bow, arrows), 8 (herbs), 9 (jewellery, misc), 10 (melee weapons) ([character window](konung_character_window.md#moving-items)). The other markers' map semantics are not traced.
 
 The sprite numbers, dimensions, payload lengths, offsets, and visible image contents above were checked against the resource bytes by decoding the leading Type 5 blocks. The runtime meaning of each pictured marker is still unknown. An external [Konung GRAPH.RES extractor source](https://www.ctpax-x.org/index.php?goto=files&show=147&view=sources/kngrpres.c) independently supports the 256×256 palette-before-blocks layout.
 

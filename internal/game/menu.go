@@ -13,11 +13,13 @@ const (
 	ScreenHeight           = 600
 	menuItems              = 6
 	swordCursorSpriteIndex = 4
+	cursorSprites          = 11
 )
 
 type Menu struct {
 	background  *ebiten.Image
 	sword       *ebiten.Image
+	cursors     [cursorSprites]*ebiten.Image // GRAPH.RES Type 5 sprites 0–10
 	buttons     [menuItems][2]*ebiten.Image
 	selected    int
 	buttonRects [menuItems]rect
@@ -85,6 +87,13 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		sword:      ebiten.NewImageFromImage(swordFrame),
 		world:      world,
 	}
+	for i := range m.cursors {
+		img, err := loadGraphSprite(graphPath, i)
+		if err != nil {
+			return nil, err
+		}
+		m.cursors[i] = ebiten.NewImageFromImage(img)
+	}
 	for i := range menuItems {
 		m.buttons[i][0] = ebiten.NewImageFromImage(frames[3+i*2])
 		m.buttons[i][1] = ebiten.NewImageFromImage(frames[4+i*2])
@@ -141,7 +150,11 @@ func (m *Menu) Draw(screen *ebiten.Image) {
 	if m.inWorld && m.world != nil {
 		m.world.Draw(screen)
 		mx, my := ebiten.CursorPosition()
-		drawAt(screen, m.sword, mx-1, my-1)
+		cur := m.sword
+		if n := m.world.cursorSprite(); n >= 0 && n < cursorSprites {
+			cur = m.cursors[n]
+		}
+		drawAt(screen, cur, mx-1, my-1)
 		return
 	}
 	screen.DrawImage(m.background, nil)

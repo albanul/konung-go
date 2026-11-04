@@ -2,7 +2,7 @@
 
 Window 3: the character sheet with equipment, jewellery, stats and the bag strip. Opened and closed with **I** or HUD button 6 (the bag, hotspot 7). Both call `0x00424610`, which works when no window or window 3 is open (`0x00A3E740` = 0 or 3). It presses button 6 with image 13 (`0x004290AC(6, 13)`) and toggles the window. It shows the first selected character (`0x0083B93C[0]` → `0x00A3E688`), resets the bag scroll `0x00A3E840`, then draws the window (`0x0042DBBC(2)`; the dispatcher's jump table at `0x0042F4C8` is indexed with *argument + 1*, so this is case 3, `0x0042E04C`) and the bag strip (`0x0042F50C(entity, 0)`).
 
-Status: drawing verified against code and rendered PNGs. Values verified against hand calculation for `GAME.0` entities 0 and 355. Dragging items (`0x00A3E7A0`) and equipping are not ported.
+Status: drawing verified against code and rendered PNGs. Values verified against hand calculation for `GAME.0` entities 0 and 355. [Moving items](#moving-items) between the bag, the equipment and the jewellery is ported; the in-hand box (hotspot 19, `0x00A3E7A0`) and item use are not.
 
 ## Window (`0x0042E04C`, 800×600)
 
@@ -37,6 +37,31 @@ Arrows: left at (139, 486), slot 0x12 (0x13 pressed); right at (780, 486), slot 
 
 **Cell tint (`0x0042C914`).** The first matching rule wins: the character can't use the item (`0x00418364`) → tint (24, 0, 0); item `+0xE` bit 0 → (15, 15, 0); enchanted (item `+1` ≥ 0) → (0, 12, 0). `0x0043FD18(r, g, b)` tints each 5-bit channel by n %: c + trunc((31 − c)·n/100); negative n darkens. `resfmt.TintPalette` ports it.
 
+## Moving items
+
+Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x00A3E730` ≠ 0): ids ≥ 120 first (bag arrows); then a bag cell when x > first-cell x and strip top < y < 555, returned as `(cell << 8) | 0x32`; then window ids 8–19 and 40–45. The click handler `0x00422864` dispatches:
+
+| Hotspot | Box | Handler |
+|---|---|---|
+| 8, 10, 11, 12 | helmet, shield, armour, bow | `0x0041E500(4 / 5 / 3 / 1)` |
+| 9 | hand (axe or blade) | `0x0041E500(slot)`, slot from `0x00422CB4` (`gamestate.HandSlot`): holding, category 0 → 0 else 2; empty hand, no axe → 2, axe mode → 0, blade present → 2, else 0 |
+| 13 | ammunition (`+0xCC`) | `0x0041E500(12)` |
+| 14–18 | jewellery `+0xB2`[0–4] | `0x0041E778(id)` |
+| 19 | in-hand box | `0x0041E96C` and item use (`0x0041DB64`, `0x00414E64`); not ported |
+| 40–45 | raise buttons (right column) | not ported |
+| bag cell | `+0x72`[(cell + scroll) & 31] | `0x0042342A` |
+
+**The hand** (`gamestate.Hand`): item `0x00A3E528`, source `0x00A3E524` (= source array length: 6 equipment, 32 bag, 5 jewellery, 1 ammunition), entity `0x00A3E520`, backups `0x00A3E52C` (equipment), `0x00A3E538` (bag), `0x00A3E578` (jewellery). Cursor mode `0x00A3E790` = 4 when empty; picking up sets it by category (`0x00425104`, table `0x00425170`): 0, 2 → 10 (large sword); 1, 12 → 2 (arrow); 3–5 → 0 (crate); 9 → 8 (globe with hand); others → 9 (starburst). Over the HUD and the window the cursor is GRAPH.RES Type 5 sprite number `0x00A3E790` (`0x00428AC0`).
+
+* **Lift** (`0x0041E210(e, n, item)`): find the item among the first *n* entries of the source and clear it. A bag item is removed and the bag closed up; the bag backup is the closed-up bag with the item appended after the last item.
+* **Return** (`0x00429194`): restore the equipment or jewellery backup; a bag item goes to the **front** of the bag (backup minus the appended item, shifted by one); ammunition is restored. The stance toggle, weapon select and window toggle call it first.
+* **Bag insert** (`0x00424918`): if any of the 32 slots is free, shift the bag right by one and store at index 0; otherwise fail without storing.
+* **Equipment** (`0x0041E500(slot)`): empty hand → lift the slot's item. Holding → if the entity is a creature or the item's category ≠ slot, return it; if the character can't use it (`0x00418364`), show «Предмет не доступен для использования» (`0x0045C17C`) and return it; otherwise the old item goes through bag insert (its result is ignored, so with a full bag the old item is lost), the new item is stored and `0x0041C750` recomputes the stats.
+* **Jewellery** (`0x0041E778`): box 0 takes category 6, boxes 1–2 category 7, boxes 3–4 category 8; unusable or wrong items return silently; otherwise as equipment.
+* **Bag** (`0x0042342A`): empty hand → lift the clicked item. Holding → `0x004246F8`: if carried weight + the item's weight (`0x0041B164`, same per-category rule as the bag) > max weight, «Превышен вес» (`0x0045C57C`); if the bag is full, «Мешок у тебя не резиновый!» (`0x0045BD7C`); either way the item returns. Otherwise it goes to the front of the bag. The clicked cell doesn't matter.
+
+**Messages** (`0x0042F9B8`): small font at (view left + 10, view bottom + 5), the status-line position; counter `0x00A3E84C` = 12 main-loop passes. The port shows them for 12 animation steps. Sounds (`0x0042A664`) are not ported.
+
 ## Derived values
 
 | Routine | Port | Rule |
@@ -54,10 +79,10 @@ Arrows: left at (139, 486), slot 0x12 (0x13 pressed); right at (780, 486), slot 
 
 ## Port
 
-`internal/game/inventory.go` (`charWindow`, `bagStrip`) draws the window after the HUD every frame. It has no click handling beyond the arrows. While it is open, clicks in the view don't move the hero and the hover status line is off. The game redraws windows only on change; whether the map keeps animating underneath is not traced.
+`internal/game/inventory.go` (`charWindow`, `bagStrip`) draws the window after the HUD every frame; `startScene.windowClick` routes clicks to `gamestate` (`ClickEquipment`, `ClickJewellery`, `ClickBag`, `Hand.Return`). The worn equipment is part of the walker's look, so the character's overlays update. While it is open, clicks in the view don't move the hero and the hover status line is off. The game redraws windows only on change; whether the map keeps animating underneath is not traced.
 
 ## Open questions
 
 * The raise column (`0x00410B08`: per-face stat caps `0x0045B10A`, costs `0x0045B010`), the XP-pool text, and the stance icon slots 0xA9/0xAA.
 * Item `+0xE` bit 0, `0x00A3E768`, `0x0041B4CC` (stat 9, `+0xC8`).
-* Dragging and equipping (`0x00A3E7A0`, hotspots 8–19 cover the doll boxes by position), and the background tiling flag `0x00A3E744` (`0x0043141C` tiles INTR slot 5).
+* The in-hand box (hotspot 19, `0x00A3E7A0`) and using items on characters (cursor modes 8/9), and the background tiling flag `0x00A3E744` (`0x0043141C` tiles INTR slot 5).

@@ -75,6 +75,9 @@ type startScene struct {
 	tables  *resfmt.ExeTables
 	font    *gameFont // small status-line font (resfmt.FontSmallVA)
 	inv     *charWindow
+	hand    gamestate.Hand // item being moved in the character window
+	msg     []byte         // status-line message (0x0042F9B8) and when it ends
+	msgEnd  int
 	hovered int // entity under the cursor in the last frame, -1 = none
 }
 
@@ -157,6 +160,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 		font:        newGameFont(smallFont),
 		hovered:     -1,
 		occ:         map[mapdata.Cell]bool{},
+		hand:        gamestate.NewHand(),
 		follow:      true,
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
 	}
@@ -327,11 +331,15 @@ func (s *startScene) updateControls(mx, my int) (clicked bool) {
 		button = buttonAt(s.tables, mx, my)
 		clicked = !inView(mx, my) || (s.inv.open && (spot == hotspotBagLeft || spot == hotspotBagRight))
 	}
+	// The stance, weapon and window routines first return a held item
+	// (0x00429194(1) at 0x004217BA, 0x00421948, 0x00424635).
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
+		s.hand.Return(hero)
 		gamestate.ToggleStance([]*gamestate.Entity{hero})
 		s.hud.press(hudStanceButton, gamestate.HUDButtonSlots(*hero)[hudStanceButton])
 	}
 	weapon := func(mode int) {
+		s.hand.Return(hero)
 		before := gamestate.HUDButtonSlots(*hero)[hudWeaponButton]
 		gamestate.SelectWeapon(hero, mode)
 		s.hud.press(hudWeaponButton, before) // 0x00421B9D presses the image shown so far
@@ -347,19 +355,70 @@ func (s *startScene) updateControls(mx, my int) (clicked bool) {
 		weapon(gamestate.WeaponCycle)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton {
+		s.hand.Return(hero)
 		s.inv.toggle()
 		s.hud.press(hudBagButton, hudBagImage)
 	}
-	if s.inv.open {
+	if s.inv.open && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		switch spot {
 		case hotspotBagLeft:
 			s.inv.scrollBy(*hero, -1, s.tick)
 		case hotspotBagRight:
 			s.inv.scrollBy(*hero, +1, s.tick)
+		default:
+			if s.windowClick(hero, mx, my, spot) {
+				clicked = true
+			}
 		}
 	}
 	s.hero.look = lookOf(*hero)
 	return clicked
+}
+
+// windowClick routes a click in the open character window like the
+// hotspot routine (0x004395E6) and the click handler (0x00422864): a bag
+// cell (below the strip top, right of the first cell), the doll boxes
+// 8–18 (hotspot 19, the in-hand box, is not ported). It reports whether the
+// click hit the window's controls.
+func (s *startScene) windowClick(hero *gamestate.Entity, mx, my, spot int) bool {
+	st := &s.inv.strip
+	msg := 0
+	switch {
+	case mx > st.x0 && my > st.y && my < viewBottom:
+		msg = s.game.ClickBag(&s.hand, hero, s.tables, (mx-st.x0)/st.cellW+s.inv.scroll)
+	case spot >= 8 && spot <= 13:
+		slot := [6]int{gamestate.EquipHelmet, -1, gamestate.EquipShield, gamestate.EquipArmour,
+			gamestate.WeaponBow, gamestate.EquipAmmo}[spot-8]
+		if slot < 0 {
+			slot = gamestate.HandSlot(&s.hand, *hero, s.game)
+		}
+		msg = s.game.ClickEquipment(&s.hand, hero, s.tables, slot)
+	case spot >= 14 && spot <= 18:
+		msg = s.game.ClickJewellery(&s.hand, hero, s.tables, spot-14)
+	default:
+		return false
+	}
+	if msg != 0 {
+		s.showMessage(s.tables.CString(msg))
+	}
+	return true
+}
+
+// messageTicks is how long a status-line message stays: 0x0042FA0C sets the
+// counter 0x00A3E84C to 12, decremented once per main-loop pass (0x0043774E);
+// the port counts animation steps.
+const messageTicks = 12 * ticksPerStep
+
+func (s *startScene) showMessage(m []byte) { s.msg, s.msgEnd = m, s.tick+messageTicks }
+
+// cursorSprite is the GRAPH.RES Type 5 cursor to draw: over the HUD and the
+// character window the game shows the hand's sprite (0x00A3E790, 0x00428AC0);
+// the pointer otherwise (the map cursor rules are not ported).
+func (s *startScene) cursorSprite() int {
+	if s.inv.open || s.hand.Holding() {
+		return s.hand.Cursor
+	}
+	return gamestate.CursorPointer
 }
 
 // centerOn puts world point (x, y) at the centre of the game view (the part
@@ -534,7 +593,9 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	if s.inv.open && len(s.party) > 0 {
 		s.inv.draw(screen, s.hud, s.game, s.tables, s.party[0])
 	}
-	if s.hovered >= 0 {
+	if s.tick < s.msgEnd {
+		s.font.drawLine(screen, s.msg, viewLeft+10, viewBottom+5)
+	} else if s.hovered >= 0 {
 		// The status line in the bottom bar (0x0043195C), small font.
 		s.font.drawWrapped(screen, s.game.StatusLine(s.entity(s.hovered), s.tables),
 			viewLeft+10, viewBottom+5, viewRight-viewLeft-15)

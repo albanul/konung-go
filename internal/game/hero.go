@@ -51,14 +51,16 @@ type walker struct {
 }
 
 // look is what selects an entity's frames besides kind and facing: its
-// animation set (+0, combat 0–5 or peaceful 6–11), stance and weapon.
+// animation set (+0, combat 0–5 or peaceful 6–11), stance, weapon and the
+// worn equipment.
 type look struct {
 	typ, weapon int
 	stance      bool
+	equipment   [6]int
 }
 
 func lookOf(e gamestate.Entity) look {
-	return look{typ: e.Type, weapon: e.WeaponMode, stance: e.InStance()}
+	return look{typ: e.Type, weapon: e.WeaponMode, stance: e.InStance(), equipment: e.Equipment}
 }
 
 type animKey struct {
