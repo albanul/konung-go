@@ -79,6 +79,7 @@ type Game struct {
 	Entities    []Entity
 	Settlements []Settlement // section 6: villages with their named-character posts
 	Piles       []Pile       // section 3: items lying on the ground
+	Exits       []MapExit    // section 4: map exits (teleports), see exits.go
 	items       []byte
 }
 
@@ -187,6 +188,7 @@ func Parse(data []byte) (*Game, error) {
 	}
 	g.Settlements = parseSettlements(data)
 	g.Piles = parsePiles(data)
+	g.Exits = parseExits(data)
 	return g, nil
 }
 

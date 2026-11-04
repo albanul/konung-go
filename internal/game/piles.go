@@ -14,8 +14,8 @@ import (
 // ends (0x004222BC → 0x004110EC).
 //
 // Port addition: the game re-checks the respawn timer only when a map loads.
-// The port has no map changes yet, so it re-runs the loader's rule every
-// game tick for this map's inactive piles; a picked nut or root comes back
+// The port also re-runs the loader's rule every game tick for this map's
+// inactive piles; a picked nut or root comes back
 // after gamestate.PileRespawnTicks.
 
 // gameTime is the game clock 0x00A3E770, one tick per AI tick.

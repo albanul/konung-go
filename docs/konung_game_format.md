@@ -25,7 +25,7 @@ All three installed files are 709,822 bytes, exactly the sum of six reads:
 | `0x00000` | `0x20000` | `0x0067AC34` | 8192 × 16-byte **items**; byte `+3` = item type |
 | `0x20000` | `0x1900` | `0x0069D1B4` | 200 × 32-byte **groups** |
 | `0x21900` | `0x7D00` | `0x0079EFDC` | 500 × `0x40` **items on the ground** (piles) — [ground items](konung_ground_items.md) |
-| `0x29600` | `0x109A` | `0x007AA2DC` | 250 × `0x11` **map exits** (count = records before the first with byte `+4` = 0). Byte `+3` = map; rectangle rows `+9`..`+0xD`, cols `+0xB`..`+0xF` (words) gets fine-grid flag `0x10` at map load (`0x0043D11B`). A party member ending a walk there (`0x00421BB8`) sets the next map `0x00A3E810 = −byte +4`, the party position to rows/cols words `+5`/`+7`, and party `+0xC` to byte `+2`. An extra condition on the current settlement (`0x00A3E6A8` `+0x3D`/`+0x3E`) is not decoded; map changes are not ported. |
+| `0x29600` | `0x109A` | `0x007AA2DC` | 250 × `0x11` **map exits** (teleports) — [map exits](#map-exits-verified) |
 | `0x2A69A` | `0x7D000` | `0x007AB378` | 2000 × 256-byte **entities** |
 | `0xA769A` | `0x5E24` | `0x00835B18` | 20 × `0x4B5` **settlements** with named-character posts ([village AI](#village-ai-verified-against-code-and-game0)) |
 
@@ -229,6 +229,31 @@ The user identified `KONUNG.1` as Volk's (Волк) initial location.
 
 Validation: `go test ./internal/gamestate` checks the player group, the 50 drawable entities on map 1, sprite decoding, and that spawned entities sit on distinct free cells. `go run ./cmd/map-render -game assets/Konung/GAME.0 -all output/maps` renders 987 `GAME.0` entities across all maps with no decode errors.
 
+## Map exits (verified)
+
+Section 4 holds 250 × `0x11`-byte records; the loader (`0x0043BCEF`) counts the records before the first with byte `+4` = 0 into `0x00A3E81C` (118 in `GAME.0` and `GAME.2`, 121 in `GAME.1`). Decoder: `gamestate.Game.Exits` (`exits.go`).
+
+| Offset | Type | Meaning |
+|---|---|---|
+| `+0x00`, `+0x01` | bytes | not traced (0 in every record of all three files) |
+| `+0x02` | int8 | arrival facing: copied to party group `+0x0C`, which the placement routine `0x004118DC` writes to the hero's `+0x01` (`0x00411A1D`) |
+| `+0x03` | byte | map the exit is on (`KONUNG.N`) |
+| `+0x04` | byte | target map |
+| `+0x05`, `+0x07` | uint16 | arrival fine-grid row, column (party group `+0x08`, `+0x10`) |
+| `+0x09`, `+0x0D` | uint16 | trigger rectangle rows, min..max inclusive |
+| `+0x0B`, `+0x0F` | uint16 | trigger rectangle columns, min..max inclusive |
+
+* **Teleport tiles.** 109 exits are single cells under a teleport decoration, `GRAPH.RES` tile 285 or 286 in `KONUNG.N` section 2, whose top-left is (−42, −21) ± 4 px from the exit cell's centre. The other 9 are larger areas (map edges, a gate) or use other tiles. `KONUNG.1` has three: (158, 4) → `KONUNG.3`, (155, 59) → `KONUNG.11`, (218, 17) → `KONUNG.42`. Some exits lead to the same map (in-map teleports).
+* **Map load** (`0x0043D11B`): every rectangle of the current map sets bit `0x1000` in the fine-grid word map `0x00505C70`.
+* **Trigger** (`0x00422346`): when a party member's walk ends on a cell with that bit and the pick-up intent is not set, `0x00421BB8` runs. It acts for the hero, or a member standing on the hero's destination (`+0x0C`/`+0x0E`), and takes the first exit in record order with `+3` = party map and the cell inside the rectangle. It skips exit *i* while the party is in settlement *i* (`0x00A3E6A8`), unless settlement byte `+0x40` < 0 or byte `+0x41` = 3 (meaning not decoded).
+* **Taking the exit** (`0x00421CCD`): `0x00A3E810 = −target`, party group `+0x08`/`+0x10` = arrival row/col, `+0x0C` = facing. The main loop (`0x00437799`) sees `0x00A3E810 < 0`: the same map only re-places the party (`0x004118DC`); another map saves the current one (`0x00436AD0`), loads the target (`0x0043C0FC`) and sets `0x00A3E7FC` (current map).
+* **Placement** (`0x004118DC`): the hero goes to the group cell when it is inside the map and free (occupant bits `0xFFF` = 0); the other members are placed around it.
+* **Travel by item** (`0x00422AD8`, click mode `0x00A3E740` = 5): uses up an item (`0x00421D24`) and takes the first exit whose target is the chosen map. Not ported.
+
+**Port** (`startScene.step`, `startScene.changeMap`, `gamestate.Game.ExitAt`, `Game.TakeExit`): a hero walk that ends on an exit without the pick-up intent writes the party back into the game, moves group 0 and rebuilds the scene for the target map. The hero is placed on the arrival cell or the nearest free one. Piles, the party, the held item, the game clock and speed carry over; other characters restart from `GAME.N` on every visit (the game's per-map save `0x00436AD0` is not ported), and the settlement gate is not applied.
+
+Validation: `go test ./internal/gamestate -run Exits` checks the count, the `KONUNG.1` exits, `TakeExit` + `OnMap` placement on `KONUNG.3`, and the 109 teleport tiles.
+
 ## Open questions
 
 * The character-creation screen: the hero template's palette (`0x00A3E65C`) and other fields.
@@ -237,5 +262,5 @@ Validation: `go test ./internal/gamestate` checks the player group, the 50 drawa
 * Group fields `+0x0A`, `+0x0E`, `+0x12`, `+0x16`, `+0x1D` (calm/alarm), `+0x1E` beyond bits `0x40` (creature AI) / `0x80` (village AI); the conditional spawn check at `0x00411DE4`.
 * The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation. Actions other than idle/walk (attacks, hits, death) are not ported; the combat stance and drawn weapons are.
 * Item record fields other than category and type (`+4`/`+8` condition is a hypothesis); the gear table's remaining fields; which jewellery box is which; combat animation types 2, 4, 5; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
-* `GAME.N` section 4 (map exits) fields `+0..+2`, `+6`, `+8`; settlement bytes outside the posts.
+* `GAME.N` section 4 (map exits) bytes `+0`, `+1`; the settlement gate bytes `+0x40`/`+0x41`; the per-map save `0x00436AD0` (NPC state across visits); travel by item (`0x00422AD8`). Settlement bytes outside the posts.
 * Creature AI `0x004123BC` (idle roaming, aggro, return home); the port uses a rectangle stand-in. Village alarm state (group `+0x1D` ≠ 0, `0x00416DA6`) and the `+4` bits `0x38` post path.

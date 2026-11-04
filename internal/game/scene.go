@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -49,6 +50,7 @@ func (o *sceneObject) frame(tick int) *sceneFrame {
 }
 
 type startScene struct {
+	assets         *sceneAssets
 	m              *mapdata.Map
 	tiles          []*ebiten.Image
 	tileMarginX    int
@@ -87,18 +89,101 @@ type startScene struct {
 	hovered    int                  // entity under the cursor in the last frame, -1 = none
 }
 
-// loadStartScene builds the scene for map mapNumber: terrain, decorations
-// and static objects from the KONUNG.N file, characters and creatures from
-// the GAME.N start state.
+// sceneAssets is what stays loaded across map changes: resource files, exe
+// tables, the HUD, fonts and the terrain tiles (uploaded on first use).
+type sceneAssets struct {
+	graph, objects []byte
+	mapDir         string // directory holding KONUNG.N
+	gamePath       string // for log messages
+	tables         *resfmt.ExeTables
+	hud            *hud
+	font           *gameFont // small status-line font (resfmt.FontSmallVA)
+	largeFont      *gameFont
+	rawTiles       []*image.RGBA
+	tiles          []*ebiten.Image
+}
+
+// loadStartScene loads the shared resources and the GAME.N start state and
+// builds the scene for map mapNumber.
 func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath string, gameNumber, mapNumber int) (*startScene, error) {
-	graphData, err := os.ReadFile(graphPath)
+	a := &sceneAssets{mapDir: filepath.Dir(mapPath), gamePath: gamePath}
+	var err error
+	if a.graph, err = os.ReadFile(graphPath); err != nil {
+		return nil, err
+	}
+	if a.objects, err = os.ReadFile(objectsPath); err != nil {
+		return nil, err
+	}
+	exeData, err := os.ReadFile(exePath)
 	if err != nil {
 		return nil, err
 	}
-	objectsData, err := os.ReadFile(objectsPath)
+	if a.tables, err = resfmt.NewExeTables(exeData); err != nil {
+		return nil, err
+	}
+	gameData, err := os.ReadFile(gamePath)
 	if err != nil {
 		return nil, err
 	}
+	game, err := gamestate.Parse(gameData)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", gamePath, err)
+	}
+	intrData, err := os.ReadFile(intrPath)
+	if err != nil {
+		return nil, err
+	}
+	if a.hud, err = newHUD(intrData, a.graph); err != nil {
+		return nil, fmt.Errorf("%s: %w", intrPath, err)
+	}
+	smallFont, err := a.tables.Font(resfmt.FontSmallVA)
+	if err != nil {
+		return nil, err
+	}
+	largeFont, err := a.tables.Font(resfmt.FontLargeVA)
+	if err != nil {
+		return nil, err
+	}
+	a.font, a.largeFont = newGameFont(smallFont), newGameFont(largeFont)
+	if a.rawTiles, err = mapdata.LoadTerrainTiles(a.graph); err != nil {
+		return nil, err
+	}
+	a.tiles = make([]*ebiten.Image, len(a.rawTiles))
+	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
+	return a.buildScene(game, mapNumber, nil)
+}
+
+// changeMap takes map exit x (0x00421CCD, then the main loop's map change at
+// 0x004377C6): the party's state goes back into the game, the party moves to
+// the exit's target and the scene is rebuilt for that map. The game also
+// saves the old map's state (0x00436AD0); the port keeps piles and the party
+// in s.game, but other characters restart from GAME.N on every visit.
+func (s *startScene) changeMap(x gamestate.MapExit) {
+	group := s.game.Groups[0]
+	saved := make([]gamestate.Entity, len(s.party))
+	for i, e := range s.party {
+		saved[i] = s.game.Entities[e.Index]
+		s.game.Entities[e.Index] = e
+	}
+	s.game.TakeExit(x)
+	ns, err := s.assets.buildScene(s.game, x.To, s)
+	if err != nil {
+		log.Printf("map exit %d to KONUNG.%d: %v", x.Index, x.To, err)
+		s.game.Groups[0] = group
+		for i, e := range saved {
+			s.game.Entities[e.Index] = saved[i]
+		}
+		return
+	}
+	*s = *ns
+}
+
+// buildScene builds the scene for map mapNumber: terrain, decorations and
+// static objects from the KONUNG.N file, characters and creatures from game.
+// prev, when set, is the scene being left: the clock, speed, camera mode,
+// held item and windows carry over.
+func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *startScene) (*startScene, error) {
+	mapPath := filepath.Join(a.mapDir, fmt.Sprintf("KONUNG.%d", mapNumber))
 	mapData, err := os.ReadFile(mapPath)
 	if err != nil {
 		return nil, err
@@ -119,51 +204,18 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	if err != nil {
 		return nil, err
 	}
-	exeData, err := os.ReadFile(exePath)
-	if err != nil {
-		return nil, err
-	}
-	tables, err := resfmt.NewExeTables(exeData)
-	if err != nil {
-		return nil, err
-	}
-	gameData, err := os.ReadFile(gamePath)
-	if err != nil {
-		return nil, err
-	}
-	game, err := gamestate.Parse(gameData)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", gamePath, err)
-	}
-	intrData, err := os.ReadFile(intrPath)
-	if err != nil {
-		return nil, err
-	}
-	hud, err := newHUD(intrData, graphData)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", intrPath, err)
-	}
-	smallFont, err := tables.Font(resfmt.FontSmallVA)
-	if err != nil {
-		return nil, err
-	}
-	largeFont, err := tables.Font(resfmt.FontLargeVA)
-	if err != nil {
-		return nil, err
-	}
-	rawTiles, err := mapdata.LoadTerrainTiles(graphData)
-	if err != nil {
-		return nil, err
-	}
+	graphData, objectsData, tables, gamePath := a.graph, a.objects, a.tables, a.gamePath
+	rawTiles := a.rawTiles
 	s := &startScene{
+		assets:      a,
 		m:           m,
-		tiles:       make([]*ebiten.Image, len(rawTiles)),
+		tiles:       a.tiles,
 		shadowLayer: ebiten.NewImage(ScreenWidth, ScreenHeight),
 		walk:        walk,
-		hud:         hud,
+		hud:         a.hud,
 		game:        game,
 		tables:      tables,
-		font:        newGameFont(smallFont),
+		font:        a.font,
 		hovered:     -1,
 		occ:         map[mapdata.Cell]bool{},
 		hand:        gamestate.NewHand(),
@@ -172,14 +224,22 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 		follow:      true,
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
 	}
-	s.inv = newCharWindow(hud, tables, newGameFont(largeFont), s.font)
+	if prev != nil {
+		s.inv, s.hand, s.follow, s.speed = prev.inv, prev.hand, prev.follow, prev.speed
+		s.tick, s.frame, s.msg, s.msgEnd = prev.tick, prev.frame, prev.msg, prev.msgEnd
+		s.shadowLayer = prev.shadowLayer
+	} else {
+		s.inv = newCharWindow(a.hud, tables, a.largeFont, a.font)
+	}
 	// Only upload tiles the map references; slot 304 is a large non-tile image.
 	useTile := func(slot int) {
-		if slot < 0 || slot >= len(rawTiles) || rawTiles[slot] == nil || s.tiles[slot] != nil {
+		if slot < 0 || slot >= len(rawTiles) || rawTiles[slot] == nil {
 			return
 		}
 		t := rawTiles[slot]
-		s.tiles[slot] = ebiten.NewImageFromImage(t)
+		if s.tiles[slot] == nil {
+			s.tiles[slot] = ebiten.NewImageFromImage(t)
+		}
 		s.tileMarginX = max(s.tileMarginX, t.Bounds().Dx())
 		s.tileMarginY = max(s.tileMarginY, t.Bounds().Dy())
 	}
@@ -234,7 +294,6 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	// run the ported village AI, creatures a rectangle-roaming stand-in (see
 	// npc).
 	camX, camY := s.worldW/2, s.worldH/2
-	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
 	if g0 := game.Groups[0]; g0.Map == mapNumber {
 		for k := 0; k < g0.Count; k++ {
 			s.party = append(s.party, game.Entities[g0.First+k])
@@ -619,14 +678,24 @@ func (s *startScene) Update() {
 }
 
 // step advances the world by one game tick at the port's 60 Hz rate:
-// characters, the pick-up on arrival, pile respawn and the NPC AI.
+// characters, the pick-up on arrival, map exits, pile respawn and the NPC AI.
 func (s *startScene) step() {
 	s.tick++
 	if s.hero != nil {
+		moving := s.hero.walking || len(s.hero.path) > 0
 		s.hero.update()
-		if s.pickIntent && !s.hero.walking && len(s.hero.path) == 0 {
+		stopped := !s.hero.walking && len(s.hero.path) == 0
+		switch {
+		case s.pickIntent && stopped:
 			s.pickIntent = false
 			s.arrive()
+		case moving && stopped:
+			// 0x00422346: a walk that ends without the pick-up intent on an
+			// exit cell takes the exit (0x00421BB8).
+			if x, ok := s.game.ExitAt(s.mapNumber, s.hero.cell.Row, s.hero.cell.Col); ok {
+				s.changeMap(x)
+				return
+			}
 		}
 	}
 	if s.tick%walkTicksPerStep == 0 {
