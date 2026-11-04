@@ -74,7 +74,8 @@ type startScene struct {
 	game    *gamestate.Game
 	tables  *resfmt.ExeTables
 	font    *gameFont // small status-line font (resfmt.FontSmallVA)
-	hovered int       // entity under the cursor in the last frame, -1 = none
+	inv     *charWindow
+	hovered int // entity under the cursor in the last frame, -1 = none
 }
 
 // loadStartScene builds the scene for map mapNumber: terrain, decorations
@@ -137,6 +138,10 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	if err != nil {
 		return nil, err
 	}
+	largeFont, err := tables.Font(resfmt.FontLargeVA)
+	if err != nil {
+		return nil, err
+	}
 	rawTiles, err := mapdata.LoadTerrainTiles(graphData)
 	if err != nil {
 		return nil, err
@@ -155,6 +160,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 		follow:      true,
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
 	}
+	s.inv = newCharWindow(hud, tables, newGameFont(largeFont), s.font)
 	// Only upload tiles the map references; slot 304 is a large non-tile image.
 	useTile := func(slot int) {
 		if slot < 0 || slot >= len(rawTiles) || rawTiles[slot] == nil || s.tiles[slot] != nil {
@@ -302,35 +308,58 @@ func (s *startScene) updateNPCs() {
 	}
 }
 
-// updateStance handles the combat-stance and weapon controls for the
-// selection, which in the port is the hero alone (the game's selection list
-// 0x0083B93C holds up to 10 party members): Space and the HUD stance button
-// call gamestate.ToggleStance (0x0042179C); keys 1/2/3 select the blade, the
-// axe/club and the bow, and the HUD weapon button cycles weapons
-// (gamestate.SelectWeapon, 0x0042192C).
-func (s *startScene) updateStance(mx, my int) {
+// updateControls handles the hero's HUD buttons and keys. The selection is
+// the hero alone (the game's selection list 0x0083B93C holds up to 10 party
+// members). Space and the HUD stance button call gamestate.ToggleStance
+// (0x0042179C); keys 1/2/3 select the blade, the axe/club and the bow, and
+// the HUD weapon button cycles weapons (gamestate.SelectWeapon, 0x0042192C);
+// I and the HUD bag button toggle the character window (0x00424610), whose
+// bag strip scrolls with hotspots 120/121. Each action presses its button
+// like the game (0x004290AC). It reports whether a click was used.
+func (s *startScene) updateControls(mx, my int) (clicked bool) {
 	if len(s.party) == 0 || s.party[0].Index != s.hero.entity {
-		return
+		return false
 	}
 	hero := &s.party[0]
-	button := -1
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && !inView(mx, my) {
+	button, spot := -1, 0
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		spot = s.tables.HUDHotspot800(mx, my)
 		button = buttonAt(s.tables, mx, my)
+		clicked = !inView(mx, my) || (s.inv.open && (spot == hotspotBagLeft || spot == hotspotBagRight))
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
 		gamestate.ToggleStance([]*gamestate.Entity{hero})
+		s.hud.press(hudStanceButton, gamestate.HUDButtonSlots(*hero)[hudStanceButton])
+	}
+	weapon := func(mode int) {
+		before := gamestate.HUDButtonSlots(*hero)[hudWeaponButton]
+		gamestate.SelectWeapon(hero, mode)
+		s.hud.press(hudWeaponButton, before) // 0x00421B9D presses the image shown so far
 	}
 	for key, mode := range map[ebiten.Key]int{
 		ebiten.Key1: gamestate.WeaponBlade, ebiten.Key2: gamestate.WeaponAxe, ebiten.Key3: gamestate.WeaponBow,
 	} {
 		if inpututil.IsKeyJustPressed(key) {
-			gamestate.SelectWeapon(hero, mode)
+			weapon(mode)
 		}
 	}
 	if button == hudWeaponButton {
-		gamestate.SelectWeapon(hero, gamestate.WeaponCycle)
+		weapon(gamestate.WeaponCycle)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton {
+		s.inv.toggle()
+		s.hud.press(hudBagButton, hudBagImage)
+	}
+	if s.inv.open {
+		switch spot {
+		case hotspotBagLeft:
+			s.inv.scrollBy(*hero, -1, s.tick)
+		case hotspotBagRight:
+			s.inv.scrollBy(*hero, +1, s.tick)
+		}
 	}
 	s.hero.look = lookOf(*hero)
+	return clicked
 }
 
 // centerOn puts world point (x, y) at the centre of the game view (the part
@@ -360,18 +389,20 @@ func (s *startScene) blocked(c mapdata.Cell) bool {
 
 func (s *startScene) Update() {
 	s.tick++
+	s.hud.now = s.tick
 	mx, my := ebiten.CursorPosition()
 	if s.hero != nil {
 		if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 			s.follow = !s.follow
 		}
-		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && inView(mx, my) {
+		clicked := s.updateControls(mx, my)
+		// While the character window covers the view, clicks don't move the hero.
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && inView(mx, my) && !clicked && !s.inv.open {
 			s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY))
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyH) && len(s.party) > 0 {
 			s.party[0] = debugDamage(s.party[0])
 		}
-		s.updateStance(mx, my)
 		s.hero.update()
 	}
 	s.updateNPCs()
@@ -489,14 +520,20 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		drawFrame(&chars[ci])
 	}
 	s.hovered = s.hitTest(chars, owners)
-	if s.hero != nil {
+	if s.inv.open {
+		s.hovered = -1 // the window covers the characters
+	}
+	if s.hero != nil && !s.inv.open {
 		state := "off"
 		if s.follow {
 			state = "on"
 		}
-		ebitenutil.DebugPrintAt(screen, "Click: move   Space: battle stance   1/2/3: blade/axe/bow   F: camera follow "+state+"   H: test damage   Esc: menu", viewLeft+8, viewBottom-20)
+		ebitenutil.DebugPrintAt(screen, "Click: move   Space: stance   1/2/3: blade/axe/bow   I: inventory   F: follow "+state+"   H: test damage   Esc: menu", viewLeft+8, viewBottom-20)
 	}
 	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
+	if s.inv.open && len(s.party) > 0 {
+		s.inv.draw(screen, s.hud, s.game, s.tables, s.party[0])
+	}
 	if s.hovered >= 0 {
 		// The status line in the bottom bar (0x0043195C), small font.
 		s.font.drawWrapped(screen, s.game.StatusLine(s.entity(s.hovered), s.tables),

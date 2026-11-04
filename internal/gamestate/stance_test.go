@@ -16,13 +16,17 @@ func TestInventoryAndItemNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := func(item int) string { return resfmt.CP866ToUTF8(tb.ItemTypeName(g.ItemType(item))) }
+	name := func(item int) string {
+		it, _ := g.Item(item)
+		return resfmt.CP866ToUTF8(tb.ItemName(it.Table(), it.Type))
+	}
 	volk := g.Entities[0]
 	if volk.Equipment != [6]int{0, 0, 1, 0, 0, 0} || name(1) != "Нож" || volk.WeaponMode != WeaponBlade {
 		t.Fatalf("Volk equipment %v (%q), weapon %d", volk.Equipment, name(1), volk.WeaponMode)
 	}
-	if volk.Bag[0] != 2 || name(2) != "Клееный лук" {
-		t.Fatalf("Volk bag %v, first %q", volk.Bag, name(volk.Bag[0]))
+	// The bag: half of the dragon amulet (misc table) and healing balms (herbs).
+	if volk.Bag[0] != 2 || name(2) != "Левая часть амулета Дракона" || name(3) != "Лечебный бальзам" {
+		t.Fatalf("Volk bag %v: %q, %q", volk.Bag, name(2), name(3))
 	}
 	// Weapon slots hold the weapon kinds: 0 axe/club, 1 bow, 2 blade.
 	for idx, want := range map[int][3]string{355: {"Дубина"}, 13: {1: "Пехотный лук"}, 10: {2: "Спата"}} {

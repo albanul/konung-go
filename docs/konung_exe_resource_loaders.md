@@ -98,7 +98,14 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x006A09F4` | buffer | 24 equipment overlay blocks (`GRAPH.RES` Type 0 blocks 3–26), `0x4D28` each | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
 | `0x0067AC34` | buffer | `GAME.N` items, 8192 × 16 bytes | [GAME.N](konung_game_format.md) |
 | `0x00459BEC`, `0x00462E1C`, `0x00465DCC` | data | Item type → overlay (64 B/type); slot draw order per facing; overlay palettes | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
-| `0x00459BB0` | data | Item type table, 64 B/type: CP866 name, 9 `int16` stats, overlay at `+0x3E` | [GAME.N](konung_game_format.md#inventory-and-items-verified) |
+| `0x00459BB0`, `0x00458110`, `0x004594B0`, `0x0046053C` | data | Item type tables (gear 64 B; jewellery, herbs, misc 128 B): name, icon, gear stats/overlay | [GAME.N](konung_game_format.md#inventory-and-items-verified) |
+| `0x0042C870` | routine | Item → icon INTR slot by category | [GAME.N](konung_game_format.md#inventory-and-items-verified) |
+| `0x00424610`, `0x0042E04C`, `0x0042F50C` | routines | Character window toggle (I, HUD bag); window draw (case 3 of `0x0042DBBC`); bag strip draw | [character window](konung_character_window.md) |
+| `0x0041C750`, `0x0041B244`, `0x0041B898`, `0x0041AC1C`, `0x0041AF48`, `0x0041ADE4`, `0x00418364` | routines | Recompute stats from enchantments; stat getter; carried weight; armour; attack; bow damage; can-use check | [character window](konung_character_window.md#derived-values) |
+| `0x00458590`, `0x004623B8` | data | Enchantment table (16 B); special-property table (64 B) | [character window](konung_character_window.md#derived-values) |
+| `0x0046573C`–`0x00465874`, `0x0045AE20` | data | Character window layout rows (640/800 pairs); titles | [character window](konung_character_window.md) |
+| `0x0042C914`, `0x0043FD18` | routines | Bag cell tint; palette tint | [character window](konung_character_window.md#bag-strip-0x0042f50c) |
+| `0x004290AC`, `0x0042DBBC` | routines | Press a HUD button for one loop pass; window draw dispatcher (table `0x0042F4C8`, index = arg + 1) | [interface](konung_interface_res.md) |
 | `0x0046281C`, `0x00462B1C` | data | Combat-stance equipment draw order: 4 actions × 8 facings × 6 `int32` (bow-drawn variant) | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
 | `0x0042179C` | routine | Toggle combat stance of the selection `0x0083B93C` (Space, HUD hotspot 2) | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |
 | `0x00421698` | routine | Whole party into combat stance (key A, HUD hotspot 5) | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |

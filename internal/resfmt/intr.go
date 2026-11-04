@@ -64,3 +64,18 @@ func (r *InterfaceRes) Image(slot int, palettes [][256]color.RGBA) (*image.RGBA,
 	}
 	return DecodeIndexedRLEFrame(src, &palettes[p])
 }
+
+// ImageTinted decodes a slot with its palette tinted by TintPalette, as the
+// bag cells are drawn (0x0042C914).
+func (r *InterfaceRes) ImageTinted(slot int, palettes [][256]color.RGBA, red, green, blue int) (*image.RGBA, error) {
+	src, pal, ok := r.Slot(slot)
+	if !ok {
+		return nil, fmt.Errorf("interface slot %d is empty", slot)
+	}
+	p := int(pal / paletteBytes)
+	if pal%paletteBytes != 0 || p >= len(palettes) {
+		return nil, fmt.Errorf("interface slot %d: palette offset %#x", slot, pal)
+	}
+	tinted := TintPalette(palettes[p], red, green, blue)
+	return DecodeIndexedRLEFrame(src, &tinted)
+}

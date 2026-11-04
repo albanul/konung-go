@@ -114,3 +114,14 @@ func TestLoadType5File_RealFile(t *testing.T) {
 		t.Errorf("expected frame 0 to be 640x480, got %dx%d", frames[0].Bounds().Dx(), frames[0].Bounds().Dy())
 	}
 }
+
+func TestTintPalette(t *testing.T) {
+	var p [256]color.RGBA
+	p[1] = color.RGBA{0, 255, 0, 255}
+	p[2] = color.RGBA{255, 0, 255, 0} // transparent key stays
+	out := TintPalette(p, 24, 0, 0)
+	// red channel 0 → trunc(31 · 0.24) = 7 → 7·255/31 = 57
+	if out[1] != (color.RGBA{57, 255, 0, 255}) || out[2] != p[2] {
+		t.Fatalf("tinted %v %v", out[1], out[2])
+	}
+}

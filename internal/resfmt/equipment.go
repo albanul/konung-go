@@ -16,8 +16,7 @@ const (
 	dgroupFile = 0x00038200
 	dgroupSize = 0x0015F000
 
-	itemTypeTableVA = 0x00459BEC // 64 bytes per item type; int16 at +2 = overlay index
-	itemTypeNameVA  = 0x00459BB0 // the same records from their start: +0 CP866 name, +0x3E overlay
+	itemTypeTableVA = 0x00459BEC // gear table (ItemTableGear) record +0x3C; int16 at +2 = overlay index
 	drawOrderVA     = 0x00462E1C // 8 facings x 6 int32 slot numbers (peaceful path)
 	combatOrderVA   = 0x0046281C // 4 actions x 8 facings x 6 int32 (combat stance)
 	bowOrderVA      = 0x00462B1C // same layout, combat stance with the bow drawn
@@ -58,15 +57,6 @@ func (t *ExeTables) DrawOrder(variant int) [6]int {
 		out[i] = int(int32(binary.LittleEndian.Uint32(b[i*4:])))
 	}
 	return out
-}
-
-// ItemTypeName returns the CP866 name of an item type (record start
-// 0x00459BB0 + type*64, the same records whose +0x3E word ItemOverlay reads).
-func (t *ExeTables) ItemTypeName(itemType int) []byte {
-	if itemType < 0 || itemType > 255 {
-		return nil
-	}
-	return t.CString(itemTypeNameVA + itemType*64)
 }
 
 // CombatDrawOrder returns the equipment slot draw order used while the

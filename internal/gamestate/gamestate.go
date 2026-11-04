@@ -53,6 +53,17 @@ type Entity struct {
 	NameIndex     int     // +0xD4: first name (resfmt.FirstNamesVA); set by hero selection for the hero
 	Nickname      int     // +0xD5: second name part (resfmt.NicknamesVA), 0 = none
 	Level         int     // +0x33: level shown in the status line
+	Gold          int     // +0x34 int32: «Золото» (character window)
+	FreeExp       int     // +0x38 int32: «Свободный опыт»
+	Experience    int     // +0x3C int32: «Опыт»
+	Fencing       int     // +0x40 word: «Фехтование» ×100
+	Marksmanship  int     // +0x44 word: «Меткость» ×100
+	BaseStats     [4]int  // words +0x5A, +0x60, +0x56, +0x64: base Хар, Сил, Лов, Вын («базовая» column)
+	Quiver        int     // +0xCC word: ammunition item in the box next to the bow (0 = empty)
+	ArmourBase    int     // +0x4E int16: armour without gear («Броня», 0x0041AC1C)
+	Bonus         [3]int  // +0xC4, +0xC6, +0xC8 int16: armour, attack and stat-9 bonuses written by Game.Recompute
+	BonusFlags    byte    // +0xD1: bits 0-2 = the three bonuses stack (1) or replace (0)
+	Enchants      [2]int  // +0xD2, +0xD3 int8: enchantments on the character itself (-1 = none)
 	Stats         [4]int  // words +0x58, +0x5E, +0x54, +0x62: Хар, Сил, Лов, Вын (status line, 0x00431A94)
 	Skills        [5]int  // words +0x48, +0x4C, +0x42, +0x46, +0x4A: healing, smithing, trade, building, curios
 	Dialogue      int     // +0xD0: dialogue opened on click (VA 0x004364F0); NoDialogue = none
@@ -78,6 +89,30 @@ func (g *Game) ItemType(i int) int {
 	}
 	return int(g.items[i*itemStride+3])
 }
+
+// Item is an item record (16 bytes, section 1) as far as it is understood.
+type Item struct {
+	Index    int
+	Category int  // +0: selects the type table (resfmt.ItemTableOf); 0xFF = free (0x004227A0)
+	Enchant  int  // +1 int8: enchantment (resfmt.Enchant), -1 = none
+	Special  int  // +2 int8: special property (resfmt.ItemSpecial), -1 = none
+	Type     int  // +3: record in that table
+	Count    int  // +4 int32: stack size of arrows (category 12); other items hold floats here
+	Flagged  bool // +0xE bit 0: enchantment ignored, cell tinted yellow (meaning not traced)
+}
+
+// Item returns item record i; ok is false for 0 (empty slot) or out of range.
+func (g *Game) Item(i int) (it Item, ok bool) {
+	if i <= 0 || (i+1)*itemStride > len(g.items) {
+		return Item{}, false
+	}
+	r := g.items[i*itemStride:]
+	return Item{Index: i, Category: int(r[0]), Enchant: int(int8(r[1])), Special: int(int8(r[2])), Type: int(r[3]),
+		Count: int(int32(binary.LittleEndian.Uint32(r[4:]))), Flagged: r[0xE]&1 != 0}, true
+}
+
+// Table returns the item's type table (resfmt.ItemTable*).
+func (it Item) Table() int { return resfmt.ItemTableOf(it.Category) }
 
 // Parse decodes a GAME.N file.
 func Parse(data []byte) (*Game, error) {
@@ -130,6 +165,17 @@ func Parse(data []byte) (*Game, error) {
 			NameIndex:     int(e[0xD4]),
 			Nickname:      int(e[0xD5]),
 			Level:         int(e[0x33]),
+			Gold:          int(int32(binary.LittleEndian.Uint32(e[0x34:]))),
+			FreeExp:       int(int32(binary.LittleEndian.Uint32(e[0x38:]))),
+			Experience:    int(int32(binary.LittleEndian.Uint32(e[0x3C:]))),
+			Fencing:       u16(e, 0x40),
+			Marksmanship:  u16(e, 0x44),
+			BaseStats:     [4]int{u16(e, 0x5A), u16(e, 0x60), u16(e, 0x56), u16(e, 0x64)},
+			Quiver:        u16(e, 0xCC),
+			ArmourBase:    int(int16(binary.LittleEndian.Uint16(e[0x4E:]))),
+			Bonus:         [3]int{s16(e, 0xC4), s16(e, 0xC6), s16(e, 0xC8)},
+			BonusFlags:    e[0xD1],
+			Enchants:      [2]int{int(int8(e[0xD2])), int(int8(e[0xD3]))},
 			Stats:         [4]int{u16(e, 0x58), u16(e, 0x5E), u16(e, 0x54), u16(e, 0x62)},
 			Skills:        [5]int{u16(e, 0x48), u16(e, 0x4C), u16(e, 0x42), u16(e, 0x46), u16(e, 0x4A)},
 			Group:         grp,
@@ -146,6 +192,7 @@ func Parse(data []byte) (*Game, error) {
 const NoDialogue = 0xFF
 
 func u16(b []byte, off int) int { return int(binary.LittleEndian.Uint16(b[off:])) }
+func s16(b []byte, off int) int { return int(int16(binary.LittleEndian.Uint16(b[off:]))) }
 
 // Animated reports whether the entity uses an animated OBJECTS.RES model.
 func (e Entity) Animated() bool { return e.Flags4&0x40 != 0 }

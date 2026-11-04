@@ -47,17 +47,17 @@ Decoder: `resfmt.ParseInterface`, `InterfaceRes.Slot`, `InterfaceRes.Image`. Tes
 * Button 0, weapon mode (hero `+0x12`): 0 → 8, 1 → 9, otherwise 16.
 * Button 1, stance: 10 if hero `+3` bit `0x04`, else 15.
 * Buttons 2–6 are fixed: 14, 11, 7, 12, 13.
-* A pressed button has bit `0x80` set and is drawn 2 px higher.
+* A pressed button has bit `0x80` set and is drawn 2 px higher. `0x004290AC(k, image)` stores `image | 0x80` and flags a redraw; the next main-loop pass (`0x0043792F`) calls `0x004290D8`, which restores all images from the hero, so a press lasts one loop pass. Presses: weapon select `(0, image shown so far)`, stance toggle `(1, 10 or 15)`, character window `(6, 13)`. The port holds a press for one animation step (`hud.press`; the loop rate is not traced). The game also plays sound 4 (`0x0042A664(4, …)`); the port has no audio.
 
 **Game view.** The frame leaves x 140–799, y 0–555 (800 mode) for the map (`0x00427C10`: `0x00A3E874`, `0x00A3E880`, `0x00A3E890`, `0x00A3E89C`).
 
-**Port.** The rules are in `gamestate` (`PortraitState`, `PortraitSlot`, `HPBar`, `HUDButtonSlots`, `Entity.HP`, `.Poison`, `.WeaponMode`, `.Dead`). Drawing is in `internal/game/hud.go`, 800×600 only. The camera centres on the view rectangle, clicks on the HUD don't move the hero, and the hero is always shown as selected. **H** is a debug key that takes 400 HP per press until combat exists. Of the button clicks, only weapon (hotspot 1) and stance (hotspot 2) are implemented.
+**Port.** The rules are in `gamestate` (`PortraitState`, `PortraitSlot`, `HPBar`, `HUDButtonSlots`, `Entity.HP`, `.Poison`, `.WeaponMode`, `.Dead`). Drawing is in `internal/game/hud.go`, 800×600 only. The camera centres on the view rectangle, clicks on the HUD don't move the hero, and the hero is always shown as selected. **H** is a debug key that takes 400 HP per press until combat exists. Of the button clicks, weapon (hotspot 1), stance (hotspot 2) and bag (hotspot 7) are implemented, with the pressed-button feedback.
 
 ## HUD hotspots (verified)
 
 Clicks are resolved through a run-length **hotspot map** in the exe, not through the button images. The view setup selects it (`0x00427B54` 640×480: rows `0x00457020`, runs `0x00452444`; `0x00427C10` 800×600: rows `0x004577A0`, runs `0x004543DC`; pointers `0x00A3E6AC` / `0x00A3E6B0`). Row *y* is an `int32` byte offset into the runs (−1 = empty row); the row is a list of `(id, length)` byte pairs, ending at a zero length. Lookup: `0x00439A28`; the main-screen dispatcher `0x004392F4` returns ids 1–7 directly (`0x00439584`).
 
-Ids in the 800×600 map: **1–7 = panel buttons 0–6** (bounding boxes match the `0x0045AF00` positions); **30–39 = portrait cells**; 40–45 (right side), 120/121 (bottom corners) and 8–19 (a centred block, possibly an overlay screen) are not identified. The click handler `0x00422864` switches on the id: 1 → weapon cycle `0x0042192C(−1)`, 2 → stance toggle `0x0042179C`, 5 → whole party into stance `0x00421698` ([GAME.N](konung_game_format.md#weapons-and-combat-stance-verified)).
+Ids in the 800×600 map: **1–7 = panel buttons 0–6** (bounding boxes match the `0x0045AF00` positions); **30–39 = portrait cells**; 120/121 = the bag strip arrows; 8–19 lie over the character window's doll boxes; 40–45 (right side) are not identified. The click handler `0x00422864` switches on the id: 1 → weapon cycle `0x0042192C(−1)`, 2 → stance toggle `0x0042179C`, 5 → whole party into stance `0x00421698` ([GAME.N](konung_game_format.md#weapons-and-combat-stance-verified)), 7 → character window `0x00424610`, 120/121 → bag strip scroll ([character window](konung_character_window.md)).
 
 Code: `resfmt.ExeTables.HUDHotspot800`, `game.buttonAt`. Validation: `resfmt.TestHUDHotspot800`.
 
@@ -96,4 +96,4 @@ Code: `resfmt.ExeTables.HUDHotspot800`, `game.buttonAt`. Validation: `resfmt.Tes
 
 ## Open questions
 
-* The alternate portrait table (`0x0062F3E0` / `0x0062F3D8`), the palette effects for types 2/8, and the actions of buttons 2–6 (hotspots 3–7) except 5; hotspots 8–19, 40–45, 120/121.
+* The alternate portrait table (`0x0062F3E0` / `0x0062F3D8`), the palette effects for types 2/8, and the actions of buttons 2–5 (hotspots 3–6) except 5; hotspots 40–45.

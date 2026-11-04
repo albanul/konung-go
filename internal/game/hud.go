@@ -32,11 +32,14 @@ var portraitCells = [10][2]int{
 var buttonPos = [7][2]int{{3, 340}, {1, 374}, {72, 372}, {1, 455}, {78, 457}, {1, 514}, {70, 514}}
 
 // Panel buttons with a ported action. The HUD click handler (0x00422864)
-// sends hotspot 1 (button 0) to the weapon routine 0x0042192C(-1) and
-// hotspot 2 (button 1) to the stance toggle 0x0042179C.
+// sends hotspot 1 (button 0) to the weapon routine 0x0042192C(-1), hotspot 2
+// (button 1) to the stance toggle 0x0042179C and hotspot 7 (button 6) to the
+// character window toggle 0x00424610.
 const (
 	hudWeaponButton = 0
 	hudStanceButton = 1
+	hudBagButton    = 6 // hotspot 7 → 0x00424610, the I key's routine
+	hudBagImage     = 13
 )
 
 // buttonAt returns the panel button under screen point (x, y), or -1, from
@@ -52,7 +55,21 @@ type hud struct {
 	res      *resfmt.InterfaceRes
 	palettes [][256]color.RGBA
 	cache    map[int]*ebiten.Image
+
+	// pressed buttons: 0x004290AC(k, image) stores image|0x80, drawn 2 px
+	// higher (0x0042DA9D); the next main-loop pass restores the images from
+	// the hero (0x004290D8, called from 0x0043795F). The port holds a press
+	// for pressTicks updates; the game's loop rate is not traced.
+	pressed [7]struct{ img, until int }
+	tinted  map[tintKey]*ebiten.Image
+	now     int
 }
+
+// pressTicks is how long a pressed button stays down (one animation step).
+const pressTicks = ticksPerStep
+
+// press shows button k pressed with image img, like 0x004290AC.
+func (h *hud) press(k, img int) { h.pressed[k].img, h.pressed[k].until = img, h.now+pressTicks }
 
 func newHUD(intr, graph []byte) (*hud, error) {
 	res, err := resfmt.ParseInterface(intr)
@@ -81,6 +98,28 @@ func (h *hud) slot(n int) *ebiten.Image {
 	return out
 }
 
+// slotTinted returns slot n decoded with a tinted palette (resfmt.TintPalette).
+func (h *hud) slotTinted(n int, tint [3]int) *ebiten.Image {
+	key := tintKey{n, tint}
+	if img, ok := h.tinted[key]; ok {
+		return img
+	}
+	var out *ebiten.Image
+	if img, err := h.res.ImageTinted(n, h.palettes, tint[0], tint[1], tint[2]); err == nil {
+		out = toEbiten(img)
+	}
+	if h.tinted == nil {
+		h.tinted = map[tintKey]*ebiten.Image{}
+	}
+	h.tinted[key] = out
+	return out
+}
+
+type tintKey struct {
+	slot int
+	tint [3]int
+}
+
 func (h *hud) draw(dst *ebiten.Image, n, x, y int) {
 	if img := h.slot(n); img != nil {
 		drawAt(dst, img, x, y)
@@ -100,6 +139,10 @@ func (h *hud) Draw(dst *ebiten.Image, party []gamestate.Entity, selected func(k 
 	h.draw(dst, gamestate.HUDFrameSlot, 0, 0)
 	if len(party) > 0 {
 		for k, n := range gamestate.HUDButtonSlots(party[0]) {
+			if p := h.pressed[k]; h.now < p.until {
+				h.draw(dst, p.img, buttonPos[k][0], buttonPos[k][1]-2)
+				continue
+			}
 			h.draw(dst, n, buttonPos[k][0], buttonPos[k][1])
 		}
 	}

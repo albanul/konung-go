@@ -62,9 +62,13 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 | `+0x50` | `int16` | non-zero while poisoned (HP bar colour) |
 | `+0x66` | 6 × `uint16` | **equipment**: item indices for slots 0–5 (0 = empty), drawn as overlays |
 | `+0x72` | 32 × `uint16` | **bag**: carried item indices (0 = empty) |
-| `+0xB2` | 5 × `uint16` | five more item indices, meaning not traced |
+| `+0xB2` | 5 × `uint16` | **jewellery**, drawn from the jewellery table; by box position probably necklace, two bracelets, two rings |
+| `+0x4E` | `int16` | armour without gear ([character window](konung_character_window.md#derived-values)) |
+| `+0xC4`, `+0xC6`, `+0xC8`, `+0xD1` | `int16` ×3, byte | enchantment bonuses (armour, attack, stat 9) and their stack flags, written by `0x0041C750` |
+| `+0xCC` | `uint16` | **ammunition** item (the box next to the bow) |
+| `+0xD2`, `+0xD3` | `int8` | enchantments on the character (−1 = none) |
 | `+0x5C` | `int16` | **HP**; 1600 = full (HUD bar divides by `0x640`); portrait state thresholds 1200/800/400 ([HUD](konung_interface_res.md)) |
-| `+0x54`, `+0x58`, `+0x5E`, `+0x62` | `uint16` | stats Лов, Хар, Сил, Вын (status line of party members) |
+| `+0x54`, `+0x58`, `+0x5E`, `+0x62` | `uint16` | effective stats Лов, Хар, Сил, Вын (status line of party members); bases at `+0x56`, `+0x5A`, `+0x60`, `+0x64` (`0x0041C750`) |
 | `+0xD0` | byte | **dialogue ID** opened when the player clicks the entity (`0x004364F0`); `0xFF` = no dialogue |
 | `+0xD4` | byte | **first name** index (exe table `0x0045E77C`, 32 bytes each; [names](konung_interface_res.md#hover-status-line-verified)) |
 | `+0xD5` | byte | nickname index (`0x0045FCDC`), 0 = none |
@@ -101,7 +105,7 @@ Each (type, variant) has a record of `int16` words: `[count, frame index for ste
 
 ## Inventory and items (verified)
 
-Each entity owns its items directly: **6 equipment slots** at `+0x66`, a **32-item bag** at `+0x72` and **5 more slots** at `+0xB2` (all `uint16` item indices, 0 = empty). The item-release loop at `0x004227A0` walks exactly these three ranges and marks each item free (`item +0 = 0xFF`). No party-wide inventory has been seen.
+Each entity owns its items directly: **6 equipment slots** at `+0x66`, a **32-item bag** at `+0x72` and **5 jewellery slots** at `+0xB2` (all `uint16` item indices, 0 = empty). The item-release loop at `0x004227A0` walks exactly these three ranges and marks each item free (`item +0 = 0xFF`). No party-wide inventory has been seen.
 
 | Equipment slot | Content | Evidence |
 |---|---|---|
@@ -116,13 +120,25 @@ The slot meaning of 0–2 is verified by `0x0042192C` (mode *m* requires slot *m
 
 | Offset | Type | Meaning |
 |---|---|---|
-| `+0x00` | byte | **hypothesis:** item category. Equals the slot index for equipped items; bag items show 9 («Палица»), 11 (bows), 12 (arrows «медные стрелы»). `0xFF` = free (`0x004227A0`). |
+| `+0x00` | byte | **category**: selects the item type table (`0x0042C870`, below). Equals the slot index for equipped gear; 9 = herbs/potions, 11 = quest items, 12 = arrows. `0xFF` = free (`0x004227A0`). |
+| `+0x01` | `int8` | enchantment index (table `0x00458590`), −1 = none |
+| `+0x02` | `int8` | special property (table `0x004623B8`), −1 = none |
 | `+0x03` | byte | item type (index into the type table below), verified by `0x004281A4` |
-| `+0x04`, `+0x08` | `float32` | **hypothesis:** current / maximum condition (e.g. 16.0 / 16.0) |
+| `+0x04` | `int32` / `float32` | stack count for arrows (category 12, `0x0041B898`); other items: **hypothesis** current / maximum condition floats at `+4`/`+8` |
+| `+0x0E` | byte | bit 0: enchantment ignored and bag cell tinted yellow; meaning not traced |
 
-**Item type table `0x00459BB0 + type*64`.** `+0x00`: CP866 name (NUL-terminated); `+0x2C..+0x3D`: nine `int16` stats (not traced); `+0x3E`: overlay `k` (−1 = invisible), read by `0x004281A4` as `int16[0x00459BEE + type*64]`. Examples: 0x12 «Нож» (overlay 4), 0x15 «Дубина», 0x1A «Клееный лук», 0x22 «Доспех кожаный», 0x30 «Деревянный щит», 0x34 «Шлем кожаный». Code: `resfmt.ExeTables.ItemTypeName`, `ItemOverlay`.
+**Item type tables (verified).** The category picks the table, the type the record (`0x0042C870`). Every record starts with its CP866 name.
 
-`GAME.0`: Volk has only the knife equipped (slot 2) and carries a glued bow and five «Палица» in the bag. So keys 2 and 3 do nothing for him until a bow or axe is equipped; equipping needs the (not yet ported) inventory screen.
+| Categories | Table | Record | Icon (INTR slot) | Examples |
+|---|---|---|---|---|
+| 0–5, 12 | gear `0x00459BB0` | 64 B | `int16 +0x3A` | «Нож», «Дубина», «Доспех кожаный», «медные стрелы» |
+| 6–8 | jewellery `0x00458110` | 128 B | `int16 +0x7C` | «Ожерелье», «Браслет» |
+| 9 | herbs, potions `0x004594B0` | 128 B | `int16 +0x7C` | «Лечебный бальзам», «Белый корень» |
+| other | misc `0x0046053C` | 128 B | `int16 +0x7C` | «Левая часть амулета Дракона», «Труды Гиппократа» |
+
+Gear records also hold the damage or armour value (`uint16 +0x2C`), a required stat id and minimum (`+0x30`, `+0x32`), the weight in grams (`+0x38`; other tables `+0x7A`) and the equipment overlay `k` at `+0x3E` (−1 = invisible; `0x004281A4` reads it as `int16[0x00459BEE + type*64]` by type alone). The character window uses the gear table for equipment and the jewellery table for the `+0xB2` items regardless of category. Code: `resfmt.ItemTableOf`, `ExeTables.ItemName`, `ItemIcon`, `ItemOverlay`; `gamestate.Game.Item`.
+
+`GAME.0`: Volk has only the knife equipped (slot 2); his bag holds «Левая часть амулета Дракона» and five «Лечебный бальзам». So keys 2 and 3 do nothing for him until he gets an axe or a bow.
 
 ## Weapons and combat stance (verified)
 
@@ -219,6 +235,6 @@ Validation: `go test ./internal/gamestate` checks the player group, the 50 drawa
 * Exact runtime spawn positions for groups whose entities have no coordinates.
 * Group fields `+0x0A`, `+0x0E`, `+0x12`, `+0x16`, `+0x1D` (calm/alarm), `+0x1E` beyond bits `0x40` (creature AI) / `0x80` (village AI); the conditional spawn check at `0x00411DE4`.
 * The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation. Actions other than idle/walk (attacks, hits, death) are not ported; the combat stance and drawn weapons are.
-* Item record fields other than the type byte (`+0` category and `+4`/`+8` condition are hypotheses); the nine `int16` stats in the item type table (damage, weight, price?); the five slots at `+0xB2`; combat animation types 2, 4, 5; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
+* Item record fields other than category and type (`+4`/`+8` condition is a hypothesis); the gear table's remaining fields; which jewellery box is which; combat animation types 2, 4, 5; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
 * The other three `GAME.N` sections (items, groups, entities and settlements are decoded); settlement bytes outside the posts.
 * Creature AI `0x004123BC` (idle roaming, aggro, return home); the port uses a rectangle stand-in. Village alarm state (group `+0x1D` ≠ 0, `0x00416DA6`) and the `+4` bits `0x38` post path.

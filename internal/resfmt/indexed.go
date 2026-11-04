@@ -120,3 +120,38 @@ func DecodeIndexedRLELegacyFrame(src []byte, palette *[256]color.RGBA) (*image.R
 	}
 	return img, nil
 }
+
+// TintPalette applies the game's palette tint 0x0043FD18(r, g, b) to an RGB555
+// palette (expanded to RGBA by RGB555Palette): per 5-bit channel c and
+// percentage n ≥ 0, c' = c + trunc((31 − c)·n·0.01); n < 0 darkens,
+// c' = trunc((1 − |n|·0.01)·c). The game builds lookup tables with float32
+// arithmetic at runtime (0x0043ADF1); the transparent key is kept.
+func TintPalette(p [256]color.RGBA, r, g, b int) [256]color.RGBA {
+	tint := func(v uint8, n int) uint8 {
+		c := (int(v)*31 + 127) / 255
+		var step float32
+		for range abs(n) {
+			step += 0.01
+		}
+		if n >= 0 {
+			c += int(float32(31-c) * step)
+		} else {
+			c = int((1 - step) * float32(c))
+		}
+		return uint8(c * 255 / 31)
+	}
+	for i := range p {
+		if p[i].A == 0 {
+			continue
+		}
+		p[i].R, p[i].G, p[i].B = tint(p[i].R, r), tint(p[i].G, g), tint(p[i].B, b)
+	}
+	return p
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
