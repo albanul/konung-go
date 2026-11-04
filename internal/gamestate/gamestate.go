@@ -46,15 +46,17 @@ type Entity struct {
 	Step          int    // +0x10: animation step (the variant +0x01 is the facing direction)
 	Model         int    // +0xD6 (signed): OBJECTS slot or GRAPH Type 0 block
 	PaletteOffset uint32 // +0xD8
+	Dialogue      int    // +0xD0: dialogue opened on click (VA 0x004364F0); NoDialogue = none
 	Group         int    // owning group index
 	Slots         [8]int // +0x66: item indices per equipment slot (0 = empty); slots 0..5 are drawn
 }
 
 // Game holds the decoded groups (index 0..199) and entities.
 type Game struct {
-	Groups   []Group
-	Entities []Entity
-	items    []byte
+	Groups      []Group
+	Entities    []Entity
+	Settlements []Settlement // section 6: villages with their named-character posts
+	items       []byte
 }
 
 // ItemType returns byte +3 of item record i, the item type that selects the
@@ -109,12 +111,17 @@ func Parse(data []byte) (*Game, error) {
 			Step:          int(e[0x10]),
 			Model:         int(int8(e[0xD6])),
 			PaletteOffset: binary.LittleEndian.Uint32(e[0xD8:]),
+			Dialogue:      int(e[0xD0]),
 			Group:         grp,
 			Slots:         slots(e[0x66:]),
 		})
 	}
+	g.Settlements = parseSettlements(data)
 	return g, nil
 }
+
+// NoDialogue is the +0xD0 value of entities that cannot be talked to.
+const NoDialogue = 0xFF
 
 // Animated reports whether the entity uses an animated OBJECTS.RES model.
 func (e Entity) Animated() bool { return e.Flags4&0x40 != 0 }

@@ -98,6 +98,18 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x006A09F4` | buffer | 24 equipment overlay blocks (`GRAPH.RES` Type 0 blocks 3–26), `0x4D28` each | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
 | `0x0067AC34` | buffer | `GAME.N` items, 8192 × 16 bytes | [GAME.N](konung_game_format.md) |
 | `0x00459BEC`, `0x00462E1C`, `0x00465DCC` | data | Item type → overlay (64 B/type); slot draw order per facing; overlay palettes | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
+| `0x00421DA4` | routine | Per-tick NPC AI dispatcher: kind `0x40` → `0x004123BC` (creatures, not traced), `0x80` → `0x00416058` (village), else party | [GAME.N](konung_game_format.md#npc-ai-village-ai-traced) |
+| `0x00416058`, `0x00416934` | routines | Village AI: per-group loop; per-villager decision (post, or random walk at 25 % / 50 %) | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
+| `0x00413A84` | routine | Village random step target (quadrant, ranges `0x00A3E818`/`0x00A3E7DC`) | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
+| `0x0041182C` | routine | Entity → post slot (1-based, 0 = none) in its map's settlement | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
+| `0x004142D4` | routine | Set an entity's move target `(e, row, col, state)` | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
+| `0x004116CC` | routine | AI budget: < 3 path searches this tick (`0x00A3E720`), round-robin after `0x00A3E690` | [GAME.N](konung_game_format.md#npc-ai-village-ai-traced) |
+| `0x00835B18`, `0x00A3E6A8` | buffer, global | Settlements (`GAME.N` section 6, 20 × `0x4B5`); current map's settlement | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
+| `0x00433AF8` | routine | Dismiss party member into the settlement's village group | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
+| `0x0041F5D8` | routine | Party/return-to-home-area target `(group, entity)` | [GAME.N](konung_game_format.md#partyreturn-routine-0x0041f5d8group-entity-partly-traced) |
+| `0x0041F11C` | routine | Party AI step; calls `0x0041F5D8` only when entity `+2` bit `0x20` is set (call site `0x00422415`) | [GAME.N](konung_game_format.md#partyreturn-routine-0x0041f5d8group-entity-partly-traced) |
+| `0x00414AB4` | routine | Entity goes idle: sets `+2` bit `0x40`; also `0x20` when the entity's group (`+5`) is the hero's | [GAME.N](konung_game_format.md#partyreturn-routine-0x0041f5d8group-entity-partly-traced) |
+| `0x004364F0` | routine | Opens the clicked entity's dialogue (entity `+0xD0`, `0xFF` = none; callers `0x00423A41`, `0x00423B6E`, `0x00423D93`) | [GAME.N](konung_game_format.md) |
 | `0x00722D2C`, `0x007145B4` | buffers | Animated `OBJECTS.RES` metadata (`0x3228` per slot); Type 0 model metadata (`0x4D28` per block) | [GAME.N](konung_game_format.md) |
 | `0x00671440`, `0x00664C40` | buffers | `LIGHTS.N` data: `0x3200` bytes then `0xC800` bytes; both zero-filled if the file is missing | map loader `0x0043C23C`–`0x0043C2BC` |
 | `0x00A3E6F8`, `0x00A3E6FC` | globals | Screen origin X/Y used by the terrain pass | terrain draw pass |

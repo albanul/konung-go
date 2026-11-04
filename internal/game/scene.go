@@ -61,7 +61,8 @@ type startScene struct {
 	tick           int
 
 	hero   *walker // nil when the player does not start on this map
-	npcs   []*npc  // every other character; those in a valid group area wander
+	npcs   []*npc  // every other character (see npcMode)
+	aiNext int     // round-robin start of the village AI's path budget
 	walk   *mapdata.WalkGrid
 	occ    map[mapdata.Cell]bool // cells held or being entered by a character
 	follow bool                  // camera follows the hero (toggle with F)
@@ -186,8 +187,9 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 		})
 	}
 	// Characters and creatures are walkers with lazily loaded idle/walk
-	// loops. The player (group 0's first entity) is controllable; NPCs whose
-	// group has a wander rectangle roam inside it.
+	// loops. The player (group 0's first entity) is controllable; villagers
+	// run the ported village AI, creatures a rectangle-roaming stand-in (see
+	// npc).
 	camX, camY := s.worldW/2, s.worldH/2
 	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
 	uploadSprite := func(sp *resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image) { return upload(sp.Image, sp.Shadow) }
@@ -214,16 +216,54 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 			camX, camY = gamestate.WorldPos(p.Row, p.Col)
 			continue
 		}
-		n := &npc{walker: w, rng: s.rng.IntN, wait: s.rng.IntN(npcPauseMin + npcPauseRange)}
-		area, wanders := game.Groups[p.Group].WanderArea()
-		n.area = area
+		n := &npc{walker: w, rng: s.rng.IntN}
 		n.searchCap = npcSearchCap
-		n.blocked = func(c mapdata.Cell) bool { return !wanders || !area.Contains(c.Row, c.Col) || s.blocked(c) }
+		gr := game.Groups[p.Group]
+		area, hasArea := gr.WanderArea()
+		n.area = area
+		switch {
+		case gr.VillageGroup() && hasArea:
+			n.mode = npcVillager
+			n.post, n.posted = game.PostOf(p.Entity)
+			n.moveAt = gamestate.VillageMoveThreshold(p.Entity)
+			n.blocked = s.blocked
+		case hasArea:
+			n.mode = npcRoamer
+			n.wait = s.rng.IntN(npcPauseMin + npcPauseRange)
+			n.blocked = func(c mapdata.Cell) bool { return !area.Contains(c.Row, c.Col) || s.blocked(c) }
+		default:
+			n.blocked = s.blocked
+		}
 		s.npcs = append(s.npcs, n)
 	}
 	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
 	s.centerOn(camX, camY)
 	return s, nil
+}
+
+// updateNPCs runs the AI and advances every NPC by one update. The village AI
+// runs once per game tick (one animation step, walkTicksPerStep updates),
+// like 0x00421DA4 in the game loop; at most VillagePathBudget villagers may
+// start a walk per tick, served round-robin (0x004116CC).
+func (s *startScene) updateNPCs() {
+	if len(s.npcs) > 0 && s.tick%walkTicksPerStep == 0 {
+		budget := gamestate.VillagePathBudget
+		for i := range s.npcs {
+			k := (s.aiNext + i) % len(s.npcs)
+			if n := s.npcs[k]; n.mode == npcVillager {
+				if used := n.villageTick(budget); used > 0 {
+					budget -= used
+					s.aiNext = k + 1
+				}
+			}
+		}
+	}
+	for _, n := range s.npcs {
+		if n.mode == npcRoamer {
+			n.roamTick()
+		}
+		n.update()
+	}
 }
 
 func (s *startScene) centerOn(x, y int) {
@@ -258,10 +298,7 @@ func (s *startScene) Update() {
 		}
 		s.hero.update()
 	}
-	for _, n := range s.npcs {
-		n.think()
-		n.update()
-	}
+	s.updateNPCs()
 	if s.hero != nil {
 		if s.follow {
 			x, y := s.hero.position()

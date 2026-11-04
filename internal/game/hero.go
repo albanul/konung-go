@@ -180,24 +180,74 @@ func entityLoader(game *gamestate.Game, p gamestate.Placed, objects, graph []byt
 	}
 }
 
-// npc wanders inside its group's rectangle: it picks a target with the
-// game's rule (gamestate.WanderTarget), walks there, then pauses. The pause
-// length is a presentation choice; the original scheduler is not traced.
+// npcMode selects an NPC's behaviour, following the group dispatch of the AI
+// tick at VA 0x00421DA4.
+type npcMode int
+
+const (
+	npcStill    npcMode = iota // no usable behaviour: stays put
+	npcVillager                // village group (kind 0x80): ported AI 0x00416934
+	npcRoamer                  // creature group (kind 0x40): approximation, see npc
+)
+
+// npc is a non-player character.
+//
+// Villagers run the game's village AI once per AI tick while idle: a posted
+// villager (elder, merchant, healer…) returns to its post cell and turns to
+// the post's facing; any other villager rolls rand()%100 and, at or above its
+// threshold, walks to a gamestate.VillageStepTarget.
+//
+// Creatures use a stand-in: the group-rectangle rule of 0x0041F5D8 with a
+// 2–8 s pause. Their own AI (0x004123BC) is not traced.
 type npc struct {
 	walker
-	area gamestate.Area
-	wait int
-	rng  func(int) int
+	mode   npcMode
+	area   gamestate.Area
+	post   gamestate.Post
+	posted bool
+	moveAt int // village roll threshold (gamestate.VillageMoveThreshold)
+	wait   int // roamer pause, in updates
+	rng    func(int) int
 }
 
 const (
-	npcPauseMin   = 120 // ticks (2 s)
+	npcPauseMin   = 120 // roamer pause: 2 s
 	npcPauseRange = 360 // + up to 6 s
 	npcSearchCap  = 4000
 )
 
-func (n *npc) think() {
-	if n.walking || len(n.path) > 0 {
+func (n *npc) idle() bool { return !n.walking && len(n.path) == 0 }
+
+// villageTick is one AI tick of 0x00416934 for an idle villager. budget is
+// the tick's remaining path searches; it returns the number used.
+func (n *npc) villageTick(budget int) int {
+	if !n.idle() || budget <= 0 {
+		return 0
+	}
+	if n.posted {
+		if at := (mapdata.Cell{Row: n.post.Row, Col: n.post.Col}); n.cell != at {
+			n.walkTo(at)
+			return 1
+		}
+		n.dir = mapdata.Direction(n.post.Facing & 7)
+		return 0
+	}
+	if n.rng(100) < n.moveAt {
+		return 0
+	}
+	blocked := func(r, c int) bool { return n.blocked(mapdata.Cell{Row: r, Col: c}) }
+	r, c, ok := gamestate.VillageStepTarget(n.cell.Row, n.cell.Col, n.area,
+		gamestate.VillageRowRange, gamestate.VillageColRange, n.rng, blocked)
+	if !ok {
+		return 0
+	}
+	n.walkTo(mapdata.Cell{Row: r, Col: c})
+	return 1
+}
+
+// roamTick runs every update for creatures (the stand-in described on npc).
+func (n *npc) roamTick() {
+	if !n.idle() {
 		return
 	}
 	if n.wait > 0 {

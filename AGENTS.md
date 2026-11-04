@@ -45,7 +45,7 @@ One line per file family. Details live in the linked documents; "verified" means
 | `GRAPH.RES` | 256 palettes → 11 Type 5 cursors → Type 1 terrain tile block (512-slot table) → 64 KiB gap → 27 Type 0 blocks (3 bodies + 24 equipment overlays) | verified except gap and Type 0 palette/dye | [GRAPH layout](docs/konung_graph_sprites.md) |
 | `OBJECTS.RES` | 512-slot table; slots 0–29 animated (Type 2), others static | verified | [start location](docs/konung_start_location.md), [exe loaders](docs/konung_exe_resource_loaders.md) |
 | `KONUNG.N` | 4 sections: terrain (160×80×2 tile bytes), 320×160 flag grid, flat decorations (16-byte records), static object placements (36-byte records) | verified except the flag grid | [map format](docs/konung_map_format.md) |
-| `GAME.N` | Start state: 6 sections incl. 200 entity groups (group 0 = player) and 2000 × 256-byte entities | groups/entities/sprites verified; spawn placement approximate; 4 sections open | [GAME.N](docs/konung_game_format.md) |
+| `GAME.N` | Start state: 6 sections incl. 200 entity groups (group 0 = player) and 2000 × 256-byte entities | groups/entities/sprites/settlements verified; spawn placement approximate; 3 sections open | [GAME.N](docs/konung_game_format.md) |
 | `LIGHTS.N` | Read by the map loader; used by an alternate terrain draw path | open | [map format](docs/konung_map_format.md) |
 | `SOUNDS.RES` | Type 1 header + 1000 `(offset,size)` entries, PCM | verified via CTPAX-X + bytes | [res format](docs/konung_res_format.md#soundsres--sounds_res) |
 
@@ -55,7 +55,7 @@ One line per file family. Details live in the linked documents; "verified" means
 |---|---|
 | `internal/resfmt` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, static OBJECTS entries and map objects with shadows (`LoadMapObject`), entity frames (`LoadEntitySprite`), equipment overlays (`ComposeEquipment`, exe tables via `ExeTables`), `GRAPH.RES` Type 0 frames, sound entries |
 | `internal/mapdata` | Engine-independent `KONUNG.N` parsing (terrain, decorations, object placements, walk grid), fine-grid geometry and A* pathfinding (`finegrid.go`), `GRAPH.RES` terrain tiles, projection, depth order, full-scene render |
-| `internal/gamestate` | Engine-independent `GAME.N` parsing: groups, entities, world positions, spawn placement, entity sprites |
+| `internal/gamestate` | Engine-independent `GAME.N` parsing: groups, entities, settlements/posts, world positions, spawn placement, entity sprites, NPC target rules (`village.go`, `wander.go`) |
 | `internal/game` | Ebitengine menu and New Game scene (camera, drawing); converts decoded `image.RGBA` to `ebiten.Image` |
 | `cmd/konung` | Game entry point |
 | `cmd/map-render` | `KONUNG.N` → PNG (terrain, decorations, shadows, objects, optional `GAME.N` characters via `-game assets/Konung/GAME.0`, `-terrain` for terrain only, `-all` for every map + `index.html`) |
@@ -102,7 +102,7 @@ $C sed -n '53935,54260p' /tmp/kn/text.asm | awk -F'\t' '{print $1, $3}'   # addr
 * The game is a 32-bit Windows x86 application. Treat multi-byte resource values as little-endian unless the field is specifically documented otherwise. Some block tags are stored big-endian; follow the per-format specification.
 * Do not guess an unknown format. Inspect references in `konung.exe`, trace the read/parse call sites, and validate the interpretation against the resource bytes.
 * When recording a finding, distinguish observed facts from hypotheses. Include file name, offset, size, indexing convention (0- vs 1-based), and a reproducible validation method. Remove or mark superseded statements; don't leave a stale claim next to the new one.
-* Keep the `KONUNG.N` filename-to-location mapping provisional unless verified (`KONUNG.1 = Old Camp` is unconfirmed). `KONUNG.1` is Volk's initial location (identified by the user). In the New Game scene everything is data-derived: map content from `KONUNG.1`, characters from `GAME.0`. Volk is controllable (click to move with A* on the fine grid, F toggles camera follow); NPCs wander inside their group rectangle using the traced target rule (`0x0041F5D8`). Approximations: spawn-group member positions, Volk's palette (placeholder 72), animation and walking speed. `GAME.N` N = hero model; start map = model*3+1 (Volk 0 → `KONUNG.1`, Dragomir 1 → `KONUNG.4`, Michail 2 → `KONUNG.7`). The New Game scene intentionally starts as Volk on `KONUNG.1`.
+* Keep the `KONUNG.N` filename-to-location mapping provisional unless verified (`KONUNG.1 = Old Camp` is unconfirmed). `KONUNG.1` is Volk's initial location (identified by the user). In the New Game scene everything is data-derived: map content from `KONUNG.1`, characters from `GAME.0`. Volk is controllable (click to move with A* on the fine grid, F toggles camera follow); Villagers run the traced village AI (`0x00416934`): posted characters (elder, merchant, healer… from the settlement records) hold their post; others take random steps inside the village rectangle. Creatures use a rectangle-roaming stand-in until their AI (`0x004123BC`) is traced. Approximations: spawn-group member positions, Volk's palette (placeholder 72), animation and walking speed. `GAME.N` N = hero model; start map = model*3+1 (Volk 0 → `KONUNG.1`, Dragomir 1 → `KONUNG.4`, Michail 2 → `KONUNG.7`). The New Game scene intentionally starts as Volk on `KONUNG.1`.
 * Konung supports both 15-bit RGB 555 and 16-bit RGB 565 paths. Verify masks and conversion behavior before assigning a pixel format. All decoded assets so far use RGB555 with magenta `0x7C1F` as the transparent key.
 * The cursor is `GRAPH.RES` Type 5 sprite 4 (plain blade); sprite 1 includes a crossed-swords marker.
 
@@ -117,7 +117,7 @@ $C sed -n '53935,54260p' /tmp/kn/text.asm | awk -F'\t' '{print $1, $3}'   # addr
 
 Highest-value unknowns, roughly in priority order:
 
-1. Character-creation screen: hero palette (`0x00A3E65C`) and template fields; the game's own movement code (speed, path rules), fighting animations and the combat overlay path; exact runtime spawn positions. See [GAME.N](docs/konung_game_format.md#open-questions).
+1. Character-creation screen: hero palette (`0x00A3E65C`) and template fields; creature AI `0x004123BC` (idle roaming, aggro, return home); the game's own movement code (speed, path rules), fighting animations and the combat overlay path; exact runtime spawn positions. See [GAME.N](docs/konung_game_format.md#open-questions).
 2. Type 0 model palette/dye selection and the model ID → character mapping. See [exe notes](docs/konung_exe_resource_loaders.md).
 3. `KONUNG.N` section 1 (320×160 flag grid): is it walkability?
 4. `LIGHTS.N` format and the lit terrain draw path at VA `0x004257A9`.

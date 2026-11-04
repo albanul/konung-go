@@ -27,7 +27,7 @@ All three installed files are 709,822 bytes, exactly the sum of six reads:
 | `0x21900` | `0x7D00` | `0x0079EFDC` | 500 × `0x40` records (loader post-processes entries with word `+0x12` ≠ 0 through `0x00439DF0`); not traced |
 | `0x29600` | `0x109A` | `0x007AA2DC` | 250 × `0x11` records; not traced |
 | `0x2A69A` | `0x7D000` | `0x007AB378` | 2000 × 256-byte **entities** |
-| `0xA769A` | `0x5E24` | `0x00835B18` | 20 × `0x4B5` records; not traced |
+| `0xA769A` | `0x5E24` | `0x00835B18` | 20 × `0x4B5` **settlements** with named-character posts ([village AI](#village-ai-verified-against-code-and-game0)) |
 
 ## Groups (32 bytes)
 
@@ -37,9 +37,9 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 |---|---|---|
 | `+0x00` | `int16` | first entity index |
 | `+0x08` | `uint16` | group fine-grid **row** (the party is placed around it, `0x00411B15`) |
-| `+0x0A`, `+0x0C`, `+0x0E` | `uint16` | `+0x0C` = wander rectangle max row (with `+0x08` as min, `0x0041F5D8`); `+0x0A`/`+0x0E` not traced |
+| `+0x0A`, `+0x0C`, `+0x0E` | `uint16` | `+0x0C` = group rectangle max row (with `+0x08` as min; `0x0041F5D8`, `0x00413A84`); `+0x0A`/`+0x0E` not traced |
 | `+0x10` | `uint16` | group fine-grid **column** |
-| `+0x12`, `+0x14`, `+0x16` | `uint16` | `+0x14` = wander rectangle max col (with `+0x10` as min); `+0x12`/`+0x16` not traced |
+| `+0x12`, `+0x14`, `+0x16` | `uint16` | `+0x14` = group rectangle max col (with `+0x10` as min); `+0x12`/`+0x16` not traced |
 | `+0x1B` | byte | map number (`KONUNG.N`) |
 | `+0x1C` | byte | entity count (consecutive from `+0x00`) |
 | `+0x1E` | byte | 0 = inactive. Bits `0x40`/`0x80` and the value range `0x41..0x50` select loader paths; meaning not decoded. |
@@ -55,6 +55,7 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 | `+0x08` | `uint16` | fine-grid row; `0` together with `+0x0A` = `0` means placed at runtime |
 | `+0x0A` | `uint16` | fine-grid column |
 | `+0x10` | byte | **animation step**, advanced by `0x00413DE4` until it reaches the count in `+0xD7` |
+| `+0xD0` | byte | **dialogue ID** opened when the player clicks the entity (`0x004364F0`); `0xFF` = no dialogue |
 | `+0xD6` | `int8` | model: `OBJECTS.RES` slot 0–29, or `GRAPH.RES` Type 0 block. **Earlier notes said `+0xD3`**; the code reads `dword[+0xD3] >> 24`, i.e. byte `+0xD6`. |
 | `+0xD8` | `uint32` | palette byte offset (per-entity dye), passed to `0x0043ED09` by the draw at `0x004272CB` |
 
@@ -100,15 +101,43 @@ Code: `resfmt.ExeTables` (reads the three exe tables from `konung.exe`), `resfmt
 
 `KONUNG.1` in `GAME.0`: villagers wear helmets, armour, axes and shields (e.g. villager 355: overlays 17, 9, 20, 0 by facing order). Volk's starting entity has items in slots 2, 6, 7. Only slot 2 is drawn (overlay 4); slots 6–7 are carried items. The new-game code does not overwrite the slots, so this is Volk's starting kit.
 
-## NPC wandering (partly traced)
+## NPC AI (village AI traced)
 
-`0x0041F5D8(group, entity)` is the wander routine.
+**Dispatcher `0x00421DA4`**, called once per game tick from the main loop (`0x00437854`/`0x00437888`, next to the animation step). It resets the path-search budget `0x00A3E720` and walks groups 0–199 that are active on the current map. Kind (`+0x1E`) bit `0x40` → creature AI `0x004123BC` (not traced). Otherwise bit `0x80` → village AI `0x00416058`. Otherwise → party AI (contains `0x0041F11C`).
 
-* **Groups with `+0x1E` bit `0x40`** use the group rectangle: rows = words `+0x08`..`+0x0C`, cols = `+0x10`..`+0x14`. The target is the centre, shifted on both axes by `rand() % (span/4)` when that is at least 2 cells; one coin flip decides + or − for both axes. If that cell is blocked, the routine scans forward (column first, wrapping rows) to the first free walk-grid cell. It writes the target to entity `+0x0C`/`+0x0E` and ORs `0x48` into entity `+2`.
-* **Other groups** (e.g. the village, `+0x1E` = `0x80`) take a follow-the-leader branch (`0x0041FA5D`): members more than 10 cells from the group's first entity move to a formation slot near it, using the same offset table (`0x0045FF79`) as the party code.
-* `KONUNG.1` village group 27 has the rectangle rows 36–136, cols 24–50, which contains all its members.
+**Budget `0x004116CC`.** An entity may think only while `0x00A3E720 < 3` (incremented by each path search) and while it comes after the last served entity (`0x00A3E690`), so members are served round-robin.
 
-Port (`gamestate.WanderTarget`, `Group.WanderArea`, `internal/game` `npc`): every non-player group with a valid rectangle wanders individually inside it with this target rule; the leader-following branch is not ported. NPCs walk like the hero (one cell per walk cycle, walk = idle type + 1) and pause 2–8 s between walks. The pause is a presentation choice; the scheduler and AI states that call `0x0041F5D8` are not traced. Characters reserve the cell they step into, so they don't overlap.
+### Village AI (verified against code and `GAME.0`)
+
+`0x00416058(group)` calls `0x00416934(entity)` for every idle member (`+2` bit `0x40`, not dead: type ≠ 3/9) within the budget. While the group is calm (group `+0x1D` = 0):
+
+1. **Women and children** (entity `+4` = `0x52` / `0x51`): roll `rand() % 100`; on 75–99, pick a random step target (`0x00413A84`) and walk (`0x004142D4(e, row, col, 8)`); otherwise stay idle.
+2. **Everyone else:** if combat stance `+3` bit `0x04` is set, clear it and switch to idle type 6. A post index from `+4` bits `0x38` is checked first (0 for every `GAME.0` villager; not ported). Then `0x0041182C` looks the entity up in the settlement's posts. **Posted:** if the entity is not on the post cell, walk there (nearest free cell, `0x00410FFC`). Otherwise turn to the post's facing (`0x004391BC`), then stay idle. **Not posted:** roll `rand() % 100`; on 50–99, take a random step target and walk.
+
+**Random step `0x00413A84`.** The base is the entity's cell when it lies inside the group rectangle (bounds inclusive), otherwise the rectangle centre. `rand() % 4` picks a quadrant (jump table `0x00413CE4`: 0 = −row −col, 1 = −row +col, 2 = +row −col, 3 = +row +col). The base moves by `rand() % (2·R)` rows and `rand() % (2·C)` columns in that direction (0 when the modulus is < 2). The result is accepted if it lies strictly inside the rectangle and the grid cell's occupant bits (`& 0xFFF`) are 0. Up to 10 tries; on success the target goes to `+0x0C`/`+0x0E` and `+2 = 0x48`. R = `0x00A3E818` and C = `0x00A3E7DC` come from the view size (`0x00427B54` / `0x00427C10`): 640×480 → R 17, C 7; 800×600 → R 20, C 9.
+
+**Settlements** (section 6, `0x00835B18`, 20 × `0x4B5`). The map loader picks the record whose `+3` equals the current map (`0x0043CAC6` → pointer `0x00A3E6A8`).
+
+| Offset | Type | Meaning |
+|---|---|---|
+| `+0x02` | byte | village group index |
+| `+0x03` | byte | map number (`KONUNG.N`); records 15–19 are empty |
+| `+0x3D0 + k*8`, k = 0..4 | 8 bytes | **post**: byte facing, byte dialogue ID (copy of entity `+0xD0`), `uint16` entity index (0 = empty), `uint16` row, `uint16` col |
+
+Other bytes are not traced (`+0x3D2` per slot is also tested by the dismiss path `0x00433AF8`). In every village, post 0 is the elder (unique dialogue) and posts 1–4 hold the role characters with dialogues 101, 103, 102 and 100, which recur in every village (merchant, healer, …; the ID-to-role mapping is not verified). Post cells and facings equal the entities' file position and variant. `KONUNG.1` = settlement 9, group 27: posts 355 (elder), 356, 357, 358; slot 4 is empty. Child 371 has its own dialogue but no post, so it roams.
+
+**Dismissing a party member** (`0x00433AF8`). The entity is copied into the next slot of the settlement's village group, gets `+5` = that group and `+2 = 0x60`, and the party count drops. That matches the observed behaviour: the dismissed member runs into the village and stays there.
+
+### Party/return routine `0x0041F5D8(group, entity)` (partly traced)
+
+It is reached only from `0x0041F11C` (AI step `0x00422415`), and only when entity `+2` bit `0x20` is set. That bit is set by `0x00414AB4` (idle, when the entity's group `+5` is the hero's) and by the party-join paths (`0x00422762`, `0x00432B21`, `0x00433B92`: `+2 = 0x60`).
+
+* **Group kind bit `0x40`:** the group rectangle (rows `+0x08`..`+0x0C`, cols `+0x10`..`+0x14`) is a home area. A member inside gets `+2 = 0x40` (bit `0x20` cleared). When all members are inside, group `+0x1D = 0x80` and the routine returns 0. A member outside gets the centre target, shifted on both axes by `rand() % (span/4)` when that is at least 2, with one coin flip for the sign. It then scans forward (column first, wrapping rows) to the first free cell. Target → `+0x0C`/`+0x0E`, `+2 |= 0x48`.
+* **Other groups (`0x0041FA5D`):** a member at least 10 cells from the group's first entity walks to a formation slot near it (offset table `0x0045FF79`); otherwise nothing happens.
+
+### Port
+
+`internal/game` `npc` with `npcMode`, and `gamestate` `Settlements`, `PostOf`, `VillageMoveThreshold`, `VillageStepTarget`. Village groups run the village AI above once per game tick (`walkTicksPerStep` updates), with the 3-search budget served round-robin and the 800×600 ranges. Paths are not limited to the rectangle; only targets are. Creature groups (kind bit `0x40`) with a usable rectangle use a **stand-in**: `gamestate.WanderTarget` (the centre rule above) with a 2–8 s pause, until `0x004123BC` is traced. Groups without a rectangle stand still. The party branch is not ported. Characters reserve the cell they step into, so they don't overlap.
 
 ## Placement of entities without coordinates
 
@@ -135,7 +164,8 @@ Validation: `go test ./internal/gamestate` checks the player group, the 50 drawa
 * The character-creation screen: the hero template's palette (`0x00A3E65C`) and other fields.
 * The game's animation tick rate. The scene uses 10 steps/s and offsets each entity's phase so neighbours don't move in lockstep; both are presentation choices.
 * Exact runtime spawn positions for groups whose entities have no coordinates.
-* Group fields `+0x0A..+0x0E`, `+0x12..+0x16`, `+0x1E`; the conditional spawn check at `0x00411DE4`.
+* Group fields `+0x0A`, `+0x0E`, `+0x12`, `+0x16`, `+0x1D` (calm/alarm), `+0x1E` beyond bits `0x40` (creature AI) / `0x80` (village AI); the conditional spawn check at `0x00411DE4`.
 * The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation. Actions other than idle/walk, and the combat overlay path (`+3` bit `0x04`, drawn weapons), are not ported.
 * Item record fields other than the type byte.
-* The other four `GAME.N` sections.
+* The other three `GAME.N` sections (items, groups, entities and settlements are decoded); settlement bytes outside the posts.
+* Creature AI `0x004123BC` (idle roaming, aggro, return home); the port uses a rectangle stand-in. Village alarm state (group `+0x1D` ≠ 0, `0x00416DA6`) and the `+4` bits `0x38` post path.

@@ -1,6 +1,7 @@
 package gamestate
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -145,6 +146,50 @@ func TestKonung1WalkAnimations(t *testing.T) {
 				t.Errorf("entity %d (model %d animated %v) walk dir %d: %d steps, err %v", p.Index, p.Model, p.Animated(), dir, len(anim), err)
 				break
 			}
+		}
+	}
+}
+
+func TestVillagePosts(t *testing.T) {
+	g, err := Parse(load(t, "GAME.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// KONUNG.1 village (group 27, settlement 9): the elder 355 and the role
+	// characters 356-358 are posted on their file cells; slot 4 is empty.
+	// Child 371 has its own dialogue but no post.
+	if !g.Groups[27].VillageGroup() || g.Groups[3].VillageGroup() || g.Groups[64].VillageGroup() {
+		t.Fatal("village group detection")
+	}
+	var posted []string
+	gr := g.Groups[27]
+	for k := 0; k < gr.Count; k++ {
+		e := g.Entities[gr.First+k]
+		if p, ok := g.PostOf(e); ok {
+			if p.Row != e.Row || p.Col != e.Col || p.Facing != e.Variant || p.Dialogue != e.Dialogue {
+				t.Errorf("entity %d post %+v does not match its record", e.Index, p)
+			}
+			posted = append(posted, fmt.Sprint(e.Index))
+		}
+	}
+	if fmt.Sprint(posted) != "[355 356 357 358]" {
+		t.Fatalf("posted villagers = %v", posted)
+	}
+	if VillageMoveThreshold(g.Entities[367]) != 75 || VillageMoveThreshold(g.Entities[359]) != 50 {
+		t.Fatal("move thresholds")
+	}
+	walk, err := mapdata.ParseWalkGrid(load(t, "KONUNG.1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := gr.WanderArea()
+	seed := 7
+	intn := func(n int) int { seed = seed*1103515245 + 12345; return int(uint(seed)>>16) % n }
+	for i := 0; i < 200; i++ {
+		e := g.Entities[359+i%8]
+		r, c, ok := VillageStepTarget(e.Row, e.Col, a, VillageRowRange, VillageColRange, intn, walk.Blocked)
+		if ok && (r <= a.RowMin || r >= a.RowMax || c <= a.ColMin || c >= a.ColMax || walk.Blocked(r, c)) {
+			t.Fatalf("target %d,%d outside the rectangle or blocked", r, c)
 		}
 	}
 }
