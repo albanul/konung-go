@@ -1,4 +1,4 @@
-package resource
+package resfmt
 
 import (
 	"bytes"
@@ -32,15 +32,15 @@ func TestDecodeRLEFrame_Synthetic(t *testing.T) {
 
 	// Row 0 data
 	var row0 bytes.Buffer
-	row0.WriteByte(0x81) // skip 1 (cmd = -1)
-	row0.WriteByte(2)    // 2 pixels
+	row0.WriteByte(0x81)                                     // skip 1 (cmd = -1)
+	row0.WriteByte(2)                                        // 2 pixels
 	binary.Write(&row0, binary.LittleEndian, uint16(0x7C00)) // Red (15-bit: R=31, G=0, B=0)
 	binary.Write(&row0, binary.LittleEndian, uint16(0x001F)) // Blue (15-bit: R=0, G=0, B=31)
-	row0.WriteByte(0)                                       // End of row
+	row0.WriteByte(0)                                        // End of row
 
 	// Row 1 data
 	var row1 bytes.Buffer
-	row1.WriteByte(3)                                       // 3 pixels
+	row1.WriteByte(3)                                        // 3 pixels
 	binary.Write(&row1, binary.LittleEndian, uint16(0x03E0)) // Green (15-bit: R=0, G=31, B=0)
 	binary.Write(&row1, binary.LittleEndian, uint16(0x03E0))
 	binary.Write(&row1, binary.LittleEndian, uint16(0x03E0))

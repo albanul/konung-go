@@ -2,7 +2,7 @@
 
 This records the verified layout of the `KONUNG.N` map files (terrain, flat decorations, static objects with shadows) and how the game draws them. Characters, NPCs and monsters come from `GAME.N`; see [the GAME.N notes](konung_game_format.md).
 
-Code: `internal/konungmap` (`Parse`, `ParseDecorations`, `ParsePlacements`, `LoadPlacedObjects`, `DrawOrder`, `RenderScene`), `resource.LoadMapObject`, `resource.DecodeShadowMask`. Tool: `cmd/map-render`.
+Code: `internal/mapdata` (`Parse`, `ParseDecorations`, `ParsePlacements`, `LoadPlacedObjects`, `DrawOrder`, `RenderScene`), `resfmt.LoadMapObject`, `resfmt.DecodeShadowMask`. Tool: `cmd/map-render`.
 
 ## File sections (observed)
 
@@ -34,7 +34,7 @@ y = originY + row * 0x20                          // 32 px
 
 Rows are drawn top to bottom and columns left to right. Layer 0 is drawn, then layer 1, both at the same position. The blit routine at `0x0043E242` treats `(x, y)` as the image's top-left corner (no hotspot) and clips against the viewport.
 
-Validation: `go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png` produces a 3886 × 3712 image (use `-terrain` for the terrain layer alone); its terrain is seamless: coast and sea along the top, a branching river, and a road on the right. `go test ./internal/konungmap` checks the extents and that every referenced tile decodes.
+Validation: `go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png` produces a 3886 × 3712 image (use `-terrain` for the terrain layer alone); its terrain is seamless: coast and sea along the top, a branching river, and a road on the right. `go test ./internal/mapdata` checks the extents and that every referenced tile decodes.
 
 `go run ./cmd/map-render -all output/site/maps` renders all 43 installed maps (terrain, decorations, shadows, objects) to `konung_NN.png` plus a browsable `index.html`. All of them parse and render without missing tiles or object decode errors. Extents range from 10 × 23 cells (`KONUNG.6`) to 80 × 67 (`KONUNG.36`, the full 80-column width).
 
@@ -102,7 +102,7 @@ Example: `KONUNG.1`'s first record is ID 117 at col 27, row 33, giving world (15
 * Object images are bucketed by bottom edge: `y + dy + height`, minus `height/4` if flag `0x08` is set. They are drawn in that order, interleaved with characters.
 * Full order: terrain → decorations → shadows (single 50% darkening) → depth-sorted objects and characters.
 
-Validation: the `KONUNG.1` render shows a palisaded village (log houses, a smithy, a building site, a well), trees with ground shadows, and a stone dolmen. All 43 maps render with no object decode errors. `go test ./internal/konungmap ./internal/resource` checks counts, the first records, offsets and depth order.
+Validation: the `KONUNG.1` render shows a palisaded village (log houses, a smithy, a building site, a well), trees with ground shadows, and a stone dolmen. All 43 maps render with no object decode errors. `go test ./internal/mapdata ./internal/resfmt` checks counts, the first records, offsets and depth order.
 
 ## Open questions
 

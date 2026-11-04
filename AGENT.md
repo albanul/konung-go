@@ -11,7 +11,7 @@ Use the existing findings as a starting point. Before reverse engineering anythi
 1. **Orient (≤ 5 min).** Find your row in the task map. Read only that doc plus the open questions. Don't re-derive anything a doc marks as verified.
 2. **Clarify scope** when a request could mean "faithful port" or "visual preview". Those differ by hours of RE work, so ask.
 3. **Trace, don't guess.** Find the loader (file-read buffer) → consumer (code that reads the buffer) → draw/parse routine. Record VAs as you go.
-4. **Prototype engine-free.** Decode in `internal/resource` or `internal/konungmap`, render to PNG with a small `cmd/` tool or a temporary test, and look at the image. Ebitengine can't run in the container (no display).
+4. **Prototype engine-free.** Decode in `internal/resfmt` or `internal/mapdata`, render to PNG with a small `cmd/` tool or a temporary test, and look at the image. Ebitengine can't run in the container (no display).
 5. **Integrate** into the Ebitengine package as a thin consumer.
 6. **Done means:**
    * `go build ./...`, `go vet` and `go test ./...` pass in the container.
@@ -25,13 +25,13 @@ Use the existing findings as a starting point. Before reverse engineering anythi
 
 | If you are working on… | Read first | Code |
 |---|---|---|
-| A resource file you haven't seen before | [Resource file overview](#resource-file-overview) below, then [RES formats](docs/konung_res_format.md) | `internal/resource/` |
-| Map terrain, decorations, static objects, shadows, camera/projection | [Map format](docs/konung_map_format.md) | `internal/konungmap/`, `cmd/map-render/` |
-| The New Game scene (map terrain/objects + GAME.0 characters) | [Menu & scene implementation](docs/konung_menu.md), [Start location](docs/konung_start_location.md) | `internal/konungmenu/startscene.go` |
-| Main menu, buttons, cursor | [Menu implementation](docs/konung_menu.md), [Menu RES catalog](docs/konung_menu_res.md) | `internal/konungmenu/menu.go`, `graph.go` |
-| `GRAPH.RES` (palettes, cursors, terrain tiles, Type 0 character models) | [GRAPH.RES layout and sprites](docs/konung_graph_sprites.md) | `konungmap.LoadTerrainTiles`, `resource.DecodeType0Frames`, `konungmenu/graph.go` |
-| `OBJECTS.RES` (buildings, animated objects) | [RES formats: OBJECTS](docs/konung_res_format.md#objectsres), [Start location: OBJECTS path](docs/konung_start_location.md#objectsres-image-path-and-object-lookup), [Sprite index](docs/konung_sprite_index.md) | `resource.DecodeStaticObject` |
-| Characters, NPCs, monsters, player start (`GAME.N`) | [GAME.N format](docs/konung_game_format.md) | `internal/konunggame/`, `resource.LoadEntitySprite` |
+| A resource file you haven't seen before | [Resource file overview](#resource-file-overview) below, then [RES formats](docs/konung_res_format.md) | `internal/resfmt/` |
+| Map terrain, decorations, static objects, shadows, camera/projection | [Map format](docs/konung_map_format.md) | `internal/mapdata/`, `cmd/map-render/` |
+| The New Game scene (map terrain/objects + GAME.0 characters) | [Menu & scene implementation](docs/konung_menu.md), [Start location](docs/konung_start_location.md) | `internal/game/scene.go` |
+| Main menu, buttons, cursor | [Menu implementation](docs/konung_menu.md), [Menu RES catalog](docs/konung_menu_res.md) | `internal/game/menu.go`, `cursor.go` |
+| `GRAPH.RES` (palettes, cursors, terrain tiles, Type 0 character models) | [GRAPH.RES layout and sprites](docs/konung_graph_sprites.md) | `mapdata.LoadTerrainTiles`, `resfmt.DecodeType0Frames`, `game/cursor.go` |
+| `OBJECTS.RES` (buildings, animated objects) | [RES formats: OBJECTS](docs/konung_res_format.md#objectsres), [Start location: OBJECTS path](docs/konung_start_location.md#objectsres-image-path-and-object-lookup), [Sprite index](docs/konung_sprite_index.md) | `resfmt.DecodeStaticObject` |
+| Characters, NPCs, monsters, player start (`GAME.N`) | [GAME.N format](docs/konung_game_format.md) | `internal/gamestate/`, `resfmt.LoadEntitySprite` |
 | Finding a sprite by appearance or ID | [Sprite index](docs/konung_sprite_index.md) + `docs/data/*.tsv` | `cmd/sprite-catalog/` |
 | Tracing code in `konung.exe` | [Executable loader notes](docs/konung_exe_resource_loaders.md), [RE workflow](#reverse-engineering-workflow) below | — |
 
@@ -53,17 +53,19 @@ One line per file family. Details live in the linked documents; "verified" means
 
 | Package / command | Responsibility |
 |---|---|
-| `internal/resource` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, static OBJECTS entries and map objects with shadows (`LoadMapObject`), entity frames (`LoadEntitySprite`), equipment overlays (`ComposeEquipment`, exe tables via `ExeTables`), `GRAPH.RES` Type 0 frames, sound entries |
-| `internal/konungmap` | Engine-independent `KONUNG.N` parsing (terrain, decorations, object placements), `GRAPH.RES` terrain tiles, projection, depth order, full-scene render |
-| `internal/konunggame` | Engine-independent `GAME.N` parsing: groups, entities, world positions, spawn placement, entity sprites |
-| `internal/konungmenu` | Ebitengine menu and New Game scene (camera, drawing); converts decoded `image.RGBA` to `ebiten.Image` |
+| `internal/resfmt` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, static OBJECTS entries and map objects with shadows (`LoadMapObject`), entity frames (`LoadEntitySprite`), equipment overlays (`ComposeEquipment`, exe tables via `ExeTables`), `GRAPH.RES` Type 0 frames, sound entries |
+| `internal/mapdata` | Engine-independent `KONUNG.N` parsing (terrain, decorations, object placements), `GRAPH.RES` terrain tiles, projection, depth order, full-scene render |
+| `internal/gamestate` | Engine-independent `GAME.N` parsing: groups, entities, world positions, spawn placement, entity sprites |
+| `internal/game` | Ebitengine menu and New Game scene (camera, drawing); converts decoded `image.RGBA` to `ebiten.Image` |
 | `cmd/konung` | Game entry point |
 | `cmd/map-render` | `KONUNG.N` → PNG (terrain, decorations, shadows, objects, optional `GAME.N` characters via `-game assets/Konung/GAME.0`, `-terrain` for terrain only, `-all` for every map + `index.html`) |
 | `cmd/sprite-catalog` | Extract all indexed images into an HTML gallery under `output/site/sprites/` |
 | `internal/sitenav` | Shared nav bar and landing page (`output/site/index.html`) that join the tools' HTML outputs into one site |
 | `cmd/res-parser` | Extract Type 5 frames from a RES file to PNG |
 
-Put new format decoders in an engine-independent package (`internal/resource` or a sibling such as `internal/konungmap`) with a test against the installed assets, and keep Ebitengine code a thin consumer. This keeps tools and tests runnable without a display.
+Each tool is its own binary under `cmd/`, but tools must not carry private copies of format logic. Shared block access lives in `internal/resfmt/blocks.go` (`ObjectBlock`, `Type0Blocks`, `FrameRanges`, `Palettes`). Package names carry no `konung` prefix (`resfmt`, `mapdata`, `gamestate`, `game`).
+
+Put new format decoders in an engine-independent package (`internal/resfmt` or a sibling such as `internal/mapdata`) with a test against the installed assets, and keep Ebitengine code a thin consumer. This keeps tools and tests runnable without a display.
 
 ## Environment and commands
 
@@ -76,7 +78,7 @@ $C go build ./... && $C go test ./...      # asset-backed tests skip if assets a
 $C go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png
 $C go run ./cmd/map-render -all output/site/maps   # every KONUNG.N + index.html
 $C go run ./cmd/sprite-catalog              # -> output/site/sprites; open output/site/index.html for both
-$C go run cmd/res-parser/main.go <resource.RES> <output_directory>
+$C go run cmd/res-parser/main.go <resfmt.RES> <output_directory>
 $C go run ./cmd/konung                      # needs a display; run on the host if the container has none
 ```
 
@@ -121,4 +123,4 @@ Highest-value unknowns, roughly in priority order:
 4. `LIGHTS.N` format and the lit terrain draw path at VA `0x004257A9`.
 5. The 64 KiB gap in `GRAPH.RES` at `0x1ED8B6`, and the second 8-byte table at VA `0x006324B8`.
 6. `KONUNG.N` ↔ in-game location names (`KONUNG.1` = Volk's start is known). Render all maps with `map-render -all` and compare them against screenshots or the walkthrough.
-7. `cmd/sprite-catalog` has its own Type 0 walker that duplicates `resource.DecodeType0Frames`; consolidate when touching it.
+7. `cmd/sprite-catalog` has its own Type 0 walker that duplicates `resfmt.DecodeType0Frames`; consolidate when touching it.

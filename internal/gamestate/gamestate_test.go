@@ -1,11 +1,11 @@
-package konunggame
+package gamestate
 
 import (
 	"os"
 	"testing"
 
-	"konung1.5/internal/konungmap"
-	"konung1.5/internal/resource"
+	"konung1.5/internal/mapdata"
+	"konung1.5/internal/resfmt"
 )
 
 func load(t *testing.T, name string) []byte {
@@ -35,7 +35,7 @@ func TestGame0Konung1(t *testing.T) {
 	}
 
 	mapData := load(t, "KONUNG.1")
-	walk, err := konungmap.ParseWalkGrid(mapData)
+	walk, err := mapdata.ParseWalkGrid(mapData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestGame0Konung1(t *testing.T) {
 		t.Fatalf("entities on map 1 = %d, want 50 (player + 49)", len(placed))
 	}
 	objects, graph := load(t, "OBJECTS.RES"), load(t, "GRAPH.RES")
-	tables, err := resource.NewExeTables(load(t, "konung.exe"))
+	tables, err := resfmt.NewExeTables(load(t, "konung.exe"))
 	if err != nil {
 		t.Fatal(err)
 	}

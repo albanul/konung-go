@@ -1,4 +1,4 @@
-package konungmenu
+package game
 
 import (
 	"fmt"

@@ -1,4 +1,4 @@
-package konungmenu
+package game
 
 import (
 	"encoding/binary"
@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"konung1.5/internal/resource"
+	"konung1.5/internal/resfmt"
 )
 
 // loadGraphSprite reads a Type 5 image after GRAPH.RES's 256x256 RGB555 palettes.
@@ -40,7 +40,7 @@ func loadGraphSprite(graphPath string, spriteIndex int) (image.Image, error) {
 			return nil, fmt.Errorf("read GRAPH.RES sprite %d: %w", i, err)
 		}
 		if i == spriteIndex {
-			img, err := resource.DecodeRLEFrame(data)
+			img, err := resfmt.DecodeRLEFrame(data)
 			if err != nil {
 				return nil, fmt.Errorf("decode GRAPH.RES sprite %d: %w", i, err)
 			}

@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"strings"
 
-	"konung1.5/internal/resource"
+	"konung1.5/internal/resfmt"
 	"konung1.5/internal/sitenav"
 )
 
@@ -122,7 +122,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	paletteData, err := resourcePalette(graph)
+	paletteData, err := resfmt.Palettes(graph)
 	if err != nil {
 		return err
 	}
@@ -294,30 +294,14 @@ func labelKey(namespace, id, frame string) string {
 	return namespace + "\x00" + id + "\x00" + frame
 }
 
-func resourcePalette(graph []byte) ([][256]color.RGBA, error) {
-	const paletteBytes = 256 * 256 * 2
-	if len(graph) < paletteBytes {
-		return nil, fmt.Errorf("GRAPH.RES palette table truncated")
-	}
-	palettes := make([][256]color.RGBA, 256)
-	for i := range palettes {
-		p, err := resource.RGB555Palette(graph[i*512 : (i+1)*512])
-		if err != nil {
-			return nil, err
-		}
-		palettes[i] = p
-	}
-	return palettes, nil
-}
-
 // extractGraphType0 preserves the validated Type 0 blocks and decodes their
 // indexed-RLE frames with a provisional preview palette. The block size
 // includes its 8-byte header; palette assignment still needs verification.
 func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA) ([]catalogItem, []string, error) {
-	const start = 0x1ee8b6
-	const type0MetadataBytes = 2960*2 + 1536*4 + 3840*2
-	if start+8 > len(graph) {
-		return nil, nil, fmt.Errorf("GRAPH Type 0 start is outside GRAPH.RES")
+	const type0MetadataBytes = resfmt.Type0DataOffset - 8 // payload metadata, excluding the 8-byte header
+	blocks, err := resfmt.Type0Blocks(graph)
+	if err != nil {
+		return nil, nil, err
 	}
 	dir := filepath.Join(out, "raw", "GRAPH.T0")
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -329,20 +313,9 @@ func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA) ([]
 	w := csv.NewWriter(&inventory)
 	w.Comma = '\t'
 	_ = w.Write([]string{"block_id", "file", "block_offset", "block_bytes", "payload_bytes", "type0_metadata_bytes", "remaining_payload_bytes", "offset_table_nonzero", "block_end", "decoded_frames", "decode_failures", "preview_palette"})
-	off := start
-	for id := 0; off < len(graph); id++ {
-		if len(graph)-off < 8 || binary.BigEndian.Uint32(graph[off:off+4]) != 0 {
-			return nil, nil, fmt.Errorf("GRAPH Type 0 block %d has invalid header at %#x", id, off)
-		}
-		size := uint64(binary.LittleEndian.Uint32(graph[off+4 : off+8]))
-		if size < 8 || size > uint64(len(graph)-off) {
-			return nil, nil, fmt.Errorf("GRAPH Type 0 block %d has invalid size %#x at %#x", id, size, off)
-		}
-		end := off + int(size)
+	for id, blk := range blocks {
+		off, size, end := blk.Offset, uint64(len(blk.Data)), blk.Offset+len(blk.Data)
 		payloadBytes := int(size) - 8
-		if payloadBytes < type0MetadataBytes {
-			return nil, nil, fmt.Errorf("GRAPH Type 0 block %d payload is smaller than known metadata layout", id)
-		}
 		// CTPAX-X's source describes a 1,536-entry uint32 offset table at
 		// byte 5,920 in the payload. Count nonzero slots as a sanity signal,
 		// while keeping the format hypothesis explicit in the inventory.
@@ -356,34 +329,20 @@ func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA) ([]
 		if err := os.WriteFile(filepath.Join(dir, name), graph[off:end], 0644); err != nil {
 			return nil, nil, err
 		}
-		dataStart := off + 8 + type0MetadataBytes
+		dataStart := off + resfmt.Type0DataOffset
 		dataBytes := payloadBytes - type0MetadataBytes
-		offsets := make([]uint32, 1536)
-		for i := range offsets {
-			offsets[i] = binary.LittleEndian.Uint32(graph[off+8+5920+i*4:])
-		}
-		for i := 0; i < len(offsets); i += 2 {
-			offsets[i], offsets[i+1] = offsets[i+1], offsets[i]
-		}
 		decodedFrames, decodeFailures := 0, 0
-		for i, frameIndex := 0, 0; i < len(offsets); i, frameIndex = i+2, frameIndex+1 {
-			frameStart := offsets[i]
-			if frameStart == ^uint32(0) {
-				break
-			}
-			frameEnd := uint32(dataBytes)
-			if i+2 < len(offsets) && offsets[i+2] != ^uint32(0) {
-				frameEnd = offsets[i+2]
-			}
+		for frameIndex, fr := range resfmt.FrameRanges(blk.Data[resfmt.Type0PairsOffset:resfmt.Type0DataOffset], dataBytes) {
+			frameStart, frameEnd := fr.Start, fr.End
 			if frameEnd <= frameStart || frameEnd > uint32(dataBytes) {
 				failures = append(failures, fmt.Sprintf("GRAPH.T0\t%d\tframe %d has invalid range %d..%d", id, frameIndex, frameStart, frameEnd))
 				decodeFailures++
 				continue
 			}
 			frameData := graph[dataStart+int(frameStart) : dataStart+int(frameEnd)]
-			img, err := resource.DecodeIndexedRLEFrame(frameData, &palettes[2])
+			img, err := resfmt.DecodeIndexedRLEFrame(frameData, &palettes[2])
 			if err != nil {
-				img, err = resource.DecodeIndexedRLELegacyFrame(frameData, &palettes[2])
+				img, err = resfmt.DecodeIndexedRLELegacyFrame(frameData, &palettes[2])
 			}
 			if err != nil {
 				failures = append(failures, fmt.Sprintf("GRAPH.T0\t%d\tframe %d: %v", id, frameIndex, err))
@@ -420,14 +379,10 @@ func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA) ([]
 			strconv.FormatUint(size, 10), strconv.Itoa(payloadBytes), strconv.Itoa(type0MetadataBytes),
 			strconv.Itoa(dataBytes), strconv.Itoa(nonzeroOffsets), hexOffset(uint64(end)), strconv.Itoa(decodedFrames), strconv.Itoa(decodeFailures), "2 (unverified)",
 		})
-		off = end
 	}
 	w.Flush()
 	if err := w.Error(); err != nil {
 		return nil, nil, err
-	}
-	if off != len(graph) {
-		return nil, nil, fmt.Errorf("GRAPH Type 0 blocks end at %#x, file ends at %#x", off, len(graph))
 	}
 	if err := os.WriteFile(filepath.Join(out, "type0.tsv"), inventory.Bytes(), 0644); err != nil {
 		return nil, nil, err
@@ -453,9 +408,9 @@ func decodeImageRow(row sourceRow, root string, graph []byte, palettes [][256]co
 		if err != nil || pal >= uint64(len(palettes)) {
 			return nil, fmt.Errorf("invalid palette index %q", row.palette)
 		}
-		img, err := resource.DecodeIndexedRLEFrame(graph[off:off+sz], &palettes[pal])
+		img, err := resfmt.DecodeIndexedRLEFrame(graph[off:off+sz], &palettes[pal])
 		if err != nil {
-			img, err = resource.DecodeIndexedRLELegacyFrame(graph[off:off+sz], &palettes[pal])
+			img, err = resfmt.DecodeIndexedRLELegacyFrame(graph[off:off+sz], &palettes[pal])
 			if err != nil {
 				return nil, err
 			}
@@ -488,7 +443,7 @@ func decodeImageRow(row sourceRow, root string, graph []byte, palettes [][256]co
 		data = file[off+8 : off+8+uint64(frameSize)]
 		payloadOffset = off + 8
 	}
-	img, err := resource.DecodeRLEFrame(data)
+	img, err := resfmt.DecodeRLEFrame(data)
 	if err != nil {
 		return nil, err
 	}
@@ -516,32 +471,17 @@ func decodeObject(row sourceRow, objects []byte, palettes [][256]color.RGBA) ([]
 	if err != nil || palIndex >= len(palettes) {
 		return nil, fmt.Errorf("invalid animation palette %d", palIndex)
 	}
-	// Type 2 stores paired image/shadow offsets. Swapping each pair puts the
-	// image offsets in the even slots, as in CTPAX-X's extractor.
-	offsets := make([]uint32, 1024)
-	for i := range offsets {
-		offsets[i] = binary.LittleEndian.Uint32(objects[base+0x728+i*4:])
-	}
-	for i := 0; i < len(offsets); i += 2 {
-		offsets[i], offsets[i+1] = offsets[i+1], offsets[i]
-	}
-	dataStart := uint32(0x3228)
+	// Type 2 stores paired (shadow, image) offsets; see resfmt.FrameRanges.
+	dataStart := uint32(resfmt.Type2DataOffset)
 	dataSize := uint32(size - headerSize)
 	var result []decodedFrame
-	for i := 0; i < len(offsets); i += 2 {
-		start := offsets[i]
-		if start == ^uint32(0) {
-			break
-		}
-		end := dataSize
-		if i+2 < len(offsets) && offsets[i+2] != ^uint32(0) {
-			end = offsets[i+2]
-		}
+	for _, fr := range resfmt.FrameRanges(objects[base+resfmt.Type2PairsOffset:base+resfmt.Type2PairsOffset+512*8], int(dataSize)) {
+		start, end := fr.Start, fr.End
 		if end <= start || end > dataSize {
 			return nil, fmt.Errorf("frame %d has invalid range %d..%d", len(result), start, end)
 		}
 		frame := objects[base+int(dataStart+start) : base+int(dataStart+end)]
-		img, err := resource.DecodeIndexedRLEFrame(frame, &palettes[palIndex])
+		img, err := resfmt.DecodeIndexedRLEFrame(frame, &palettes[palIndex])
 		if err != nil {
 			return nil, fmt.Errorf("frame %d: %w", len(result), err)
 		}
@@ -576,7 +516,7 @@ func decodeStaticObject(row sourceRow, objects []byte, palettes [][256]color.RGB
 		return decodedFrame{}, fmt.Errorf("object palette offset %d is out of range", paletteOffset)
 	}
 	data := objects[base+payloadOffset : base+size]
-	img, err := resource.DecodeIndexedRLEFrame(data, &palettes[paletteIndex])
+	img, err := resfmt.DecodeIndexedRLEFrame(data, &palettes[paletteIndex])
 	if err != nil {
 		return decodedFrame{}, err
 	}

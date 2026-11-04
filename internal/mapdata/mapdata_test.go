@@ -1,4 +1,4 @@
-package konungmap
+package mapdata
 
 import (
 	"os"

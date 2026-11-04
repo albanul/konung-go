@@ -1,5 +1,5 @@
 namespace	sprite_id	frame	label	confidence	reviewer	notes
-OBJECTS	1	*	giant ant	visual	agent	Seen in GAME.0 KONUNG.1 groups 105-109 (map object slot 0, palette 56); previous "orange/red effect" note was wrong. Entries 25-30 are byte-identical copies.
+OBJECTS	1	*	giant ant	visual	agent	Seen in GAME.0 KONUNG.1 groups 105-109 (map object slot 0, palette 56); previous orange/red effect note was wrong. Entries 25-30 are byte-identical copies.
 OBJECTS	13	*	giant spider	visual	agent	GAME.N KONUNG.1 group 3 (slot 12, palette 148); 4/8/16 in GAME.0/1/2.
 OBJECTS	15	*	village woman	visual	agent	GAME.N KONUNG.1 group 27 (slot 14), long dress, per-entity dye.
 OBJECTS	16	*	village child	visual	agent	GAME.N KONUNG.1 group 27 (slot 15).

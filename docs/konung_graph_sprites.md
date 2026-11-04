@@ -10,7 +10,7 @@
 | `0x1ED8B6` | 64 KiB, unidentified | — | [exe notes](konung_exe_resource_loaders.md) |
 | `0x1EE8B6` | 27 Type 0 blocks (BE tag 0, LE size including header) through EOF `0xDD559B`: blocks 0–2 = character bodies, 3–26 = equipment overlays | bodies → `0x007145B4`, overlays → `0x006A09F4`, stride `0x4D28` | [exe notes](konung_exe_resource_loaders.md#map-entity-and-warrior-model-initialization) |
 
-Indexed images (terrain, OBJECTS, Type 0) share one row-RLE format: `uint16 width, height`, `height × uint16` row byte sizes, then per row: a high-bit byte skips `n & 0x7F` transparent pixels, `0` ends the row, and otherwise `n` palette indices follow. Decoder: `resource.DecodeIndexedRLEFrame`. The executable's blit for these images is VA `0x0043E242`, which draws at the image's top-left corner.
+Indexed images (terrain, OBJECTS, Type 0) share one row-RLE format: `uint16 width, height`, `height × uint16` row byte sizes, then per row: a high-bit byte skips `n & 0x7F` transparent pixels, `0` ends the row, and otherwise `n` palette indices follow. Decoder: `resfmt.DecodeIndexedRLEFrame`. The executable's blit for these images is VA `0x0043E242`, which draws at the image's top-left corner.
 
 The rest of this document catalogs the leading Type 5 sprites.
 

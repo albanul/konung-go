@@ -1,11 +1,11 @@
-package konungmenu
+package game
 
 import (
 	"fmt"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
-	"konung1.5/internal/resource"
+	"konung1.5/internal/resfmt"
 )
 
 const (
@@ -42,7 +42,7 @@ var menuButtons800 = [menuItems][4]int{
 
 func New(resourcePath, graphPath string) (*Menu, error) {
 	ebiten.SetCursorMode(ebiten.CursorModeHidden)
-	frames, err := resource.LoadType5File(resourcePath)
+	frames, err := resfmt.LoadType5File(resourcePath)
 	if err != nil {
 		return nil, fmt.Errorf("load menu resource %q: %w", resourcePath, err)
 	}

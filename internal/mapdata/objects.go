@@ -1,4 +1,4 @@
-package konungmap
+package mapdata
 
 import (
 	"encoding/binary"
@@ -8,7 +8,7 @@ import (
 	"image/draw"
 	"sort"
 
-	"konung1.5/internal/resource"
+	"konung1.5/internal/resfmt"
 )
 
 const (
@@ -33,7 +33,7 @@ type Decoration struct {
 
 // Placement is a KONUNG.N section-3 record: a static OBJECTS.RES image.
 type Placement struct {
-	ID            int    // OBJECTS.RES slot = ID + 30 (resource.MapObjectSlot)
+	ID            int    // OBJECTS.RES slot = ID + 30 (resfmt.MapObjectSlot)
 	PaletteOffset uint32 // 0 = use the object header's palette
 	Col, Row      int    // fine-grid position
 	Flags         byte   // +0x22; bit 0x08 raises the depth-sort baseline by h/4
@@ -103,15 +103,15 @@ type ObjectKey struct {
 // using variant 0 (the loader picks a random variant only for headers with a
 // positive +0x18 field; frame animation is not ported). Objects that fail to
 // decode are reported in errs and left out of the map.
-func LoadPlacedObjects(placements []Placement, objects, graph []byte) (map[ObjectKey]*resource.MapObject, []error) {
-	out := map[ObjectKey]*resource.MapObject{}
+func LoadPlacedObjects(placements []Placement, objects, graph []byte) (map[ObjectKey]*resfmt.MapObject, []error) {
+	out := map[ObjectKey]*resfmt.MapObject{}
 	var errs []error
 	for _, p := range placements {
-		k := ObjectKey{resource.MapObjectSlot(p.ID), p.PaletteOffset}
+		k := ObjectKey{resfmt.MapObjectSlot(p.ID), p.PaletteOffset}
 		if _, done := out[k]; done {
 			continue
 		}
-		obj, err := resource.LoadMapObject(objects, graph, k.Slot, 0, p.PaletteOffset)
+		obj, err := resfmt.LoadMapObject(objects, graph, k.Slot, 0, p.PaletteOffset)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("object ID %d: %w", p.ID, err))
 		}
@@ -123,17 +123,17 @@ func LoadPlacedObjects(placements []Placement, objects, graph []byte) (map[Objec
 // SortedPlacement is a placement resolved to its image, in draw order.
 type SortedPlacement struct {
 	Placement
-	Object *resource.MapObject
+	Object *resfmt.MapObject
 	X, Y   int // world position of the image's top-left corner
 }
 
 // DrawOrder resolves placements and sorts them by the image's bottom edge
 // (minus h/4 when flag 0x08 is set), the depth key used by the object pass at
 // VA 0x00426A6B. Ties keep file order.
-func DrawOrder(placements []Placement, objs map[ObjectKey]*resource.MapObject) []SortedPlacement {
+func DrawOrder(placements []Placement, objs map[ObjectKey]*resfmt.MapObject) []SortedPlacement {
 	var out []SortedPlacement
 	for _, p := range placements {
-		o := objs[ObjectKey{resource.MapObjectSlot(p.ID), p.PaletteOffset}]
+		o := objs[ObjectKey{resfmt.MapObjectSlot(p.ID), p.PaletteOffset}]
 		if o == nil {
 			continue
 		}

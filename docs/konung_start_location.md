@@ -32,7 +32,7 @@ For the whole-file overview, see [GRAPH.RES layout](konung_graph_sprites.md#whol
 * Immediately after the nested header: 512 little-endian `(offset, paletteByteOffset)` entries. The image data starts after this table.
 * `paletteByteOffset / 512` selects one of the 256-color palettes in the initial palette table.
 * The indexed image uses the width/height, per-row byte sizes, and RLE commands documented by the external [CTPAX-X GRAPH extractor source](https://www.ctpax-x.org/index.php?goto=files&show=147&view=sources/kngrpres.c). A high-bit command skips transparent pixels; otherwise the command gives the count of following palette indices. Image byte length is derived from the next entry's image offset, or the enclosing block end for the last image.
-* The first 304 entries (0–303) decode as terrain images. Entry 304 has a valid index record but its image header reports `603 × 657`; it is not a map tile. Map terrain bytes are 1-based, so they address slots 0–254 (verified, see [map format](konung_map_format.md)). The decoder is `konungmap.LoadTerrainTiles`.
+* The first 304 entries (0–303) decode as terrain images. Entry 304 has a valid index record but its image header reports `603 × 657`; it is not a map tile. Map terrain bytes are 1-based, so they address slots 0–254 (verified, see [map format](konung_map_format.md)). The decoder is `mapdata.LoadTerrainTiles`.
 
 The nested block's recorded payload size is 1,880,262 bytes. These layout details were checked against the local file bytes and the extractor's source. They are separate from the leading Type 5 cursor sprites listed in [the GRAPH sprite catalog](konung_graph_sprites.md).
 
@@ -45,7 +45,7 @@ The external [CTPAX-X object extractor source](https://www.ctpax-x.org/index.php
 * Adjacent frame/shadow offsets are XOR-swapped in the stored table; the first image is decoded with the indexed RLE format. Palette assignments for the first 24 object entries are listed in the extractor source.
 * Transparent object pixels use RGB555 magenta `0x7C1F`.
 
-Entry 15 uses palette 152 and entry 16 uses palette 159. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes changes which object is selected. Static entries (≥ 30) have a `0x100`-byte header whose dword at `+20` is the palette byte offset; image data follows the header (`resource.DecodeStaticObject`). The scene reads `GRAPH.RES` and `OBJECTS.RES` directly, without extracted image files.
+Entry 15 uses palette 152 and entry 16 uses palette 159. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes changes which object is selected. Static entries (≥ 30) have a `0x100`-byte header whose dword at `+20` is the palette byte offset; image data follows the header (`resfmt.DecodeStaticObject`). The scene reads `GRAPH.RES` and `OBJECTS.RES` directly, without extracted image files.
 
 ## Remaining map and runtime work
 

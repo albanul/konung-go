@@ -1,4 +1,4 @@
-package resource
+package resfmt
 
 import (
 	"bytes"

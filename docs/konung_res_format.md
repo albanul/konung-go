@@ -44,19 +44,19 @@ Row commands (signed byte `cmd`):
 
 RGB555 → RGBA: `R = ((v>>10)&31)*255/31`, `G = ((v>>5)&31)*255/31`, `B = (v&31)*255/31`, `A = 255`. Evidence: the palette-correction routine at `0x00427D9C` handles 15/16-bit modes, and the brightest flame value `0x7EC4` decodes to R 31, G 22, B 4 (orange) only as 555. The game also has an RGB565 path, so verify masks before assuming a pixel format for new data.
 
-Decoder: `resource.DecodeRLEFrame`, `resource.LoadType5File`.
+Decoder: `resfmt.DecodeRLEFrame`, `resfmt.LoadType5File`.
 
 ## Indexed row-RLE (GRAPH terrain, OBJECTS, Type 0)
 
-Same header (`Width`, `Height`, `RowSizes`). Each row: a byte with the high bit set skips `n & 0x7F` transparent pixels, `0` ends the row, and otherwise `n` 8-bit palette indices follow. Palettes are 256 RGB555 words taken from the start of `GRAPH.RES` (palette `p` at byte `p*512`). The colour `0x7C1F` (magenta) is transparent. Decoders: `resource.DecodeIndexedRLEFrame` (plus a legacy fallback, `DecodeIndexedRLELegacyFrame`), `resource.RGB555Palette`.
+Same header (`Width`, `Height`, `RowSizes`). Each row: a byte with the high bit set skips `n & 0x7F` transparent pixels, `0` ends the row, and otherwise `n` 8-bit palette indices follow. Palettes are 256 RGB555 words taken from the start of `GRAPH.RES` (palette `p` at byte `p*512`). The colour `0x7C1F` (magenta) is transparent. Decoders: `resfmt.DecodeIndexedRLEFrame` (plus a legacy fallback, `DecodeIndexedRLELegacyFrame`), `resfmt.RGB555Palette`.
 
 ## `OBJECTS.RES`
 
-8-byte header, then 512 × `(offset, size)` entries at `0x8..0x1007`; offsets are relative to `0x1008`. 0-based slots 0–29 are animated Type 2 blocks; later slots are static images. See [start-location notes](konung_start_location.md#objectsres-image-path-and-object-lookup) and [exe loader](konung_exe_resource_loaders.md#objectsres-loader). Decoder for static entries: `resource.DecodeStaticObject`.
+8-byte header, then 512 × `(offset, size)` entries at `0x8..0x1007`; offsets are relative to `0x1008`. 0-based slots 0–29 are animated Type 2 blocks; later slots are static images. See [start-location notes](konung_start_location.md#objectsres-image-path-and-object-lookup) and [exe loader](konung_exe_resource_loaders.md#objectsres-loader). Decoder for static entries: `resfmt.DecodeStaticObject`.
 
 ## `SOUNDS.RES` / `Sounds_.res`
 
-8-byte header (tag 1 BE, data-section size LE), then exactly 1000 `(offset, size)` LE pairs. Offsets are relative to the data start at byte 8008. An unused entry is `FFFFFFFF FFFFFFFF`. Payloads are PCM: mono, 16-bit, 22,050 Hz, matching CTPAX-X `knsfxres.c`. Decoder: `resource.LoadSoundEntries`, `SoundEntry.WriteWAV`.
+8-byte header (tag 1 BE, data-section size LE), then exactly 1000 `(offset, size)` LE pairs. Offsets are relative to the data start at byte 8008. An unused entry is `FFFFFFFF FFFFFFFF`. Payloads are PCM: mono, 16-bit, 22,050 Hz, matching CTPAX-X `knsfxres.c`. Decoder: `resfmt.LoadSoundEntries`, `SoundEntry.WriteWAV`.
 
 ## `FLAMES.RES` frame groups
 
@@ -76,12 +76,12 @@ Content names are visual descriptions.
 
 | Data | Code |
 |---|---|
-| Type 5 frames and files | `internal/resource/rle.go` |
-| Indexed RLE, palettes | `internal/resource/indexed.go` |
-| Static OBJECTS entries, `GRAPH.RES` Type 0 frames | `internal/resource/objects.go` |
-| Sounds | `internal/resource/sound.go` |
-| `GRAPH.RES` leading Type 5 sprites | `internal/konungmenu/graph.go` |
-| `GRAPH.RES` terrain tiles, `KONUNG.N` terrain | `internal/konungmap/` |
+| Type 5 frames and files | `internal/resfmt/rle.go` |
+| Indexed RLE, palettes | `internal/resfmt/indexed.go` |
+| Static OBJECTS entries, `GRAPH.RES` Type 0 frames | `internal/resfmt/objects.go` |
+| Sounds | `internal/resfmt/sound.go` |
+| `GRAPH.RES` leading Type 5 sprites | `internal/game/cursor.go` |
+| `GRAPH.RES` terrain tiles, `KONUNG.N` terrain | `internal/mapdata/` |
 | Bulk extraction (all OBJECTS frames, Type 0 blocks) | `cmd/sprite-catalog` (has its own Type 0 walker) |
 
 There is no single CLI that extracts every mixed `GRAPH.RES` block yet.

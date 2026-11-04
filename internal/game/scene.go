@@ -1,4 +1,4 @@
-package konungmenu
+package game
 
 import (
 	"fmt"
@@ -9,9 +9,9 @@ import (
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"konung1.5/internal/konunggame"
-	"konung1.5/internal/konungmap"
-	"konung1.5/internal/resource"
+	"konung1.5/internal/gamestate"
+	"konung1.5/internal/mapdata"
+	"konung1.5/internal/resfmt"
 )
 
 const (
@@ -46,12 +46,12 @@ func (o *sceneObject) frame(tick int) *sceneFrame {
 }
 
 type startScene struct {
-	m              *konungmap.Map
+	m              *mapdata.Map
 	tiles          []*ebiten.Image
 	tileMarginX    int
 	tileMarginY    int
 	worldW, worldH int
-	decorations    []konungmap.Decoration
+	decorations    []mapdata.Decoration
 	objects        []sceneObject // objects and entities, in depth order
 	shadowLayer    *ebiten.Image
 	camX, camY     int
@@ -74,19 +74,19 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 	if err != nil {
 		return nil, err
 	}
-	m, err := konungmap.Parse(mapData)
+	m, err := mapdata.Parse(mapData)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", mapPath, err)
 	}
-	decorations, err := konungmap.ParseDecorations(mapData)
+	decorations, err := mapdata.ParseDecorations(mapData)
 	if err != nil {
 		return nil, err
 	}
-	placements, err := konungmap.ParsePlacements(mapData)
+	placements, err := mapdata.ParsePlacements(mapData)
 	if err != nil {
 		return nil, err
 	}
-	walk, err := konungmap.ParseWalkGrid(mapData)
+	walk, err := mapdata.ParseWalkGrid(mapData)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 	if err != nil {
 		return nil, err
 	}
-	tables, err := resource.NewExeTables(exeData)
+	tables, err := resfmt.NewExeTables(exeData)
 	if err != nil {
 		return nil, err
 	}
@@ -102,11 +102,11 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 	if err != nil {
 		return nil, err
 	}
-	game, err := konunggame.Parse(gameData)
+	game, err := gamestate.Parse(gameData)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", gamePath, err)
 	}
-	rawTiles, err := konungmap.LoadTerrainTiles(graphData)
+	rawTiles, err := mapdata.LoadTerrainTiles(graphData)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 	}
 	s.worldW, s.worldH = m.WorldSize()
 
-	objs, errs := konungmap.LoadPlacedObjects(placements, objectsData, graphData)
+	objs, errs := mapdata.LoadPlacedObjects(placements, objectsData, graphData)
 	for _, e := range errs {
 		log.Printf("%s: %v", mapPath, e)
 	}
@@ -164,7 +164,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 		}
 		return ei, es
 	}
-	for _, sp := range konungmap.ObjectSprites(konungmap.DrawOrder(placements, objs)) {
+	for _, sp := range mapdata.ObjectSprites(mapdata.DrawOrder(placements, objs)) {
 		img, sh := upload(sp.Image, sp.Shadow)
 		s.objects = append(s.objects, sceneObject{
 			frames: []sceneFrame{{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY}},
@@ -174,7 +174,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 	// Characters and creatures, each with its idle loop. Center the camera on
 	// the player (group 0's first entity) when it starts here.
 	camX, camY := s.worldW/2, s.worldH/2
-	game.HeroModelFromGame(gameNumber, konunggame.PlaceholderHeroPalette)
+	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
 	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
 		anim, err := game.LoadAnimation(p, objectsData, graphData, tables)
 		if err != nil {
@@ -188,7 +188,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 		}
 		s.objects = append(s.objects, o)
 		if p.Group == 0 && p.Index == game.Groups[0].First {
-			camX, camY = konunggame.WorldPos(p.Row, p.Col)
+			camX, camY = gamestate.WorldPos(p.Row, p.Col)
 		}
 	}
 	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
@@ -233,13 +233,13 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 	// Same order as the game's terrain pass (VA 0x0042562F): rows top to
 	// bottom, columns left to right, base layer then overlay layer.
-	rowMin := max(0, (s.camY-s.tileMarginY)/konungmap.CellHeight)
-	rowMax := min(konungmap.Rows-1, (s.camY+ScreenHeight)/konungmap.CellHeight)
-	colMin := max(0, (s.camX-s.tileMarginX)/konungmap.CellWidth)
-	colMax := min(konungmap.Cols-1, (s.camX+ScreenWidth)/konungmap.CellWidth)
+	rowMin := max(0, (s.camY-s.tileMarginY)/mapdata.CellHeight)
+	rowMax := min(mapdata.Rows-1, (s.camY+ScreenHeight)/mapdata.CellHeight)
+	colMin := max(0, (s.camX-s.tileMarginX)/mapdata.CellWidth)
+	colMax := min(mapdata.Cols-1, (s.camX+ScreenWidth)/mapdata.CellWidth)
 	for r := rowMin; r <= rowMax; r++ {
 		for c := colMin; c <= colMax; c++ {
-			x, y := konungmap.CellOrigin(r, c)
+			x, y := mapdata.CellOrigin(r, c)
 			for _, b := range s.m.Cells[r][c] {
 				if b != 0 && int(b) <= len(s.tiles) && s.tiles[b-1] != nil {
 					drawAt(screen, s.tiles[b-1], x-s.camX, y-s.camY)

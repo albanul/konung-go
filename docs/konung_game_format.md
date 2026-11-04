@@ -14,7 +14,7 @@ The new-game code (`0x00438F3F`–`0x004390D5`) copies the hero template into en
 
 Entity 0's model and palette in the files (model 1, palette 33 in all three) are placeholders that this code overwrites. The template's values come from the character-creation screen, which is not decoded. The port therefore uses model N (`Game.HeroModelFromGame`) with **placeholder palette 72**. Palettes 70–74 and 113–114 render model 0 cleanly; 33 does not.
 
-Code: `internal/konunggame` (`Parse`, `Game.OnMap`, `Game.HeroModelFromGame`, `WorldPos`, `Placed.LoadSprite`, `Placed.LoadAnimation`), `resource.LoadEntitySprite`, `resource.LoadEntityAnimation`. `cmd/map-render -game assets/Konung/GAME.0` draws them (Volk's game). By default `map-render` draws map content only, which keeps the site's map pages clean.
+Code: `internal/gamestate` (`Parse`, `Game.OnMap`, `Game.HeroModelFromGame`, `WorldPos`, `Placed.LoadSprite`, `Placed.LoadAnimation`), `resfmt.LoadEntitySprite`, `resfmt.LoadEntityAnimation`. `cmd/map-render -game assets/Konung/GAME.0` draws them (Volk's game). By default `map-render` draws map content only, which keeps the site's map pages clean.
 
 ## File layout (verified)
 
@@ -83,13 +83,13 @@ Type 0 bodies wear equipment drawn as overlay layers by `0x004281A4`, called rig
 * **Order.** With entity `+3` bit `0x04` clear, the slots are drawn in the order of `0x00462E1C + variant*0x18` (6 `int32`, e.g. facing 5: `3,2,5,4,1,0`). With the bit set (`0x004281B3`), action-dependent tables `0x0046281C`/`0x00462B1C` are used and the slot equal to entity byte `+0x12` (or 5) uses overlay `k+1`, apparently a drawn weapon. That path is not ported.
 * **Frame and position.** The overlay frame comes from the overlay block's own `(type, variant, step)` sequence. The position is world position + the body's per-step attachment point (`int16 x, y` at `body + 0x828 + type*0x180 + variant*0x30 + step*4`) + the overlay anchor's image dx/dy (`overlay + 0x2F28 + type*0x300 + variant*0x60 + step*8`, words `+4`/`+6`).
 
-Code: `resource.ExeTables` (reads the three exe tables from `konung.exe`), `resource.ComposeEquipment`, `Game.Overlays`. The port composites body and overlays into one image per step.
+Code: `resfmt.ExeTables` (reads the three exe tables from `konung.exe`), `resfmt.ComposeEquipment`, `Game.Overlays`. The port composites body and overlays into one image per step.
 
 `KONUNG.1` in `GAME.0`: villagers wear helmets, armour, axes and shields (e.g. villager 355: overlays 17, 9, 20, 0 by facing order). Volk's starting entity has items in slots 2, 6, 7. Only slot 2 is drawn (overlay 4); slots 6–7 are carried items. The new-game code does not overwrite the slots, so this is Volk's starting kit.
 
 ## Placement of entities without coordinates
 
-Entities with row = col = 0 are positioned at runtime around their group's position. The party code at `0x00411B8C` uses random formation offsets from tables near `0x0045FF79`. The port places them deterministically on the nearest free fine cells, using the `KONUNG.N` walk grid (`konungmap.WalkGrid.Blocked`). These positions are an **approximation**. The exact spawn routine for non-party groups is not traced.
+Entities with row = col = 0 are positioned at runtime around their group's position. The party code at `0x00411B8C` uses random formation offsets from tables near `0x0045FF79`. The port places them deterministically on the nearest free fine cells, using the `KONUNG.N` walk grid (`mapdata.WalkGrid.Blocked`). These positions are an **approximation**. The exact spawn routine for non-party groups is not traced.
 
 ## `KONUNG.1` (Volk's starting location) in `GAME.0`
 
@@ -105,7 +105,7 @@ The user identified `KONUNG.1` as Volk's (Волк) initial location.
 
 `GAME.1` and `GAME.2` are the other heroes' games. Their map-1 groups are similar, with more monsters (spiders 4 → 8 → 16), but those heroes start on `KONUNG.4` / `KONUNG.7`.
 
-Validation: `go test ./internal/konunggame` checks the player group, the 50 drawable entities on map 1, sprite decoding, and that spawned entities sit on distinct free cells. `go run ./cmd/map-render -game assets/Konung/GAME.0 -all output/maps` renders 987 `GAME.0` entities across all maps with no decode errors.
+Validation: `go test ./internal/gamestate` checks the player group, the 50 drawable entities on map 1, sprite decoding, and that spawned entities sit on distinct free cells. `go run ./cmd/map-render -game assets/Konung/GAME.0 -all output/maps` renders 987 `GAME.0` entities across all maps with no decode errors.
 
 ## Open questions
 

@@ -1,4 +1,4 @@
-package resource
+package resfmt
 
 import (
 	"encoding/binary"
@@ -46,16 +46,17 @@ func LoadEntitySprite(objects, graph []byte, m EntityModel) (*EntitySprite, erro
 	)
 	if m.Animated {
 		src = "OBJECTS.RES animated"
-		if m.Model < 0 || m.Model >= 30 || len(objects) < 8+30*8 {
+		if m.Model < 0 || m.Model >= AnimatedObjects {
 			return nil, fmt.Errorf("invalid animated object slot %d", m.Model)
 		}
-		off := binary.LittleEndian.Uint32(objects[8+m.Model*8:])
-		size := binary.LittleEndian.Uint32(objects[12+m.Model*8:])
-		base := 0x1008 + int(off)
-		if size < type2MetaBytes || uint64(base)+uint64(size) > uint64(len(objects)) {
-			return nil, fmt.Errorf("OBJECTS.RES slot %d has invalid range", m.Model)
+		b, _, err := ObjectBlock(objects, m.Model)
+		if err != nil {
+			return nil, err
 		}
-		block = objects[base : base+int(size)]
+		if len(b) < type2MetaBytes {
+			return nil, fmt.Errorf("OBJECTS.RES slot %d is too small for an animated object", m.Model)
+		}
+		block = b
 		t := m.Type
 		if t >= 6 { // 0x0041409A
 			t -= 6
@@ -111,27 +112,6 @@ func LoadEntitySprite(objects, graph []byte, m EntityModel) (*EntitySprite, erro
 	return s, nil
 }
 
-// type0Block returns GRAPH.RES Type 0 block n (0-based), header included.
-func type0Block(graph []byte, n int) ([]byte, error) {
-	if n < 0 {
-		return nil, fmt.Errorf("invalid Type 0 model %d", n)
-	}
-	off := Type0BlockStart
-	for i := 0; ; i++ {
-		if off+8 > len(graph) || binary.BigEndian.Uint32(graph[off:]) != 0 {
-			return nil, fmt.Errorf("GRAPH.RES Type 0 model %d not found", n)
-		}
-		size := int(binary.LittleEndian.Uint32(graph[off+4:]))
-		if size < type0MetaBytes || off+size > len(graph) {
-			return nil, fmt.Errorf("GRAPH.RES Type 0 block %d has invalid size", i)
-		}
-		if i == n {
-			return graph[off : off+size], nil
-		}
-		off += size
-	}
-}
-
 // AnimationLength returns the number of steps in the entity's current
 // type/variant sequence: the first word of its record, which precedes the
 // per-step frame indices (12 steps for the idle sets seen so far). The game
@@ -142,15 +122,17 @@ func AnimationLength(objects, graph []byte, m EntityModel) (int, error) {
 	var block []byte
 	var off, maxSteps int
 	if m.Animated {
-		if m.Model < 0 || m.Model >= 30 || len(objects) < 8+30*8 {
+		if m.Model < 0 || m.Model >= AnimatedObjects {
 			return 0, fmt.Errorf("invalid animated object slot %d", m.Model)
 		}
-		o := 0x1008 + int(binary.LittleEndian.Uint32(objects[8+m.Model*8:]))
-		size := int(binary.LittleEndian.Uint32(objects[12+m.Model*8:]))
-		if size < type2MetaBytes || o+size > len(objects) {
-			return 0, fmt.Errorf("OBJECTS.RES slot %d has invalid range", m.Model)
+		b, _, err := ObjectBlock(objects, m.Model)
+		if err != nil {
+			return 0, err
 		}
-		block = objects[o : o+size]
+		if len(b) < type2MetaBytes {
+			return 0, fmt.Errorf("OBJECTS.RES slot %d is too small for an animated object", m.Model)
+		}
+		block = b
 		t := m.Type
 		if t >= 6 {
 			t -= 6

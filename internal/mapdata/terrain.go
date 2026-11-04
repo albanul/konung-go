@@ -1,10 +1,10 @@
-// Package konungmap decodes KONUNG.N terrain layers and the GRAPH.RES terrain
+// Package mapdata decodes KONUNG.N terrain layers and the GRAPH.RES terrain
 // tiles they reference. It has no rendering-engine dependency so it can be used
 // by the Ebitengine scene and offline tools alike.
 //
 // The layout follows the map loader at VA 0x0043C0FC and the terrain renderer
 // at VA 0x0042562F in konung.exe; see docs/konung_map_format.md.
-package konungmap
+package mapdata
 
 import (
 	"encoding/binary"
@@ -12,7 +12,7 @@ import (
 	"image"
 	"image/draw"
 
-	"konung1.5/internal/resource"
+	"konung1.5/internal/resfmt"
 )
 
 const (
@@ -115,11 +115,11 @@ func LoadTerrainTiles(graph []byte) ([]*image.RGBA, error) {
 			continue
 		}
 		p := int(palOff / 512)
-		palette, err := resource.RGB555Palette(graph[p*512 : p*512+512])
+		palette, err := resfmt.RGB555Palette(graph[p*512 : p*512+512])
 		if err != nil {
 			return nil, err
 		}
-		img, err := resource.DecodeIndexedRLEFrame(graph[dataStart+int(off):dataStart+int(stop)], &palette)
+		img, err := resfmt.DecodeIndexedRLEFrame(graph[dataStart+int(off):dataStart+int(stop)], &palette)
 		if err != nil {
 			continue
 		}

@@ -17,9 +17,9 @@ import (
 	"strconv"
 	"strings"
 
-	"konung1.5/internal/konunggame"
-	"konung1.5/internal/konungmap"
-	"konung1.5/internal/resource"
+	"konung1.5/internal/gamestate"
+	"konung1.5/internal/mapdata"
+	"konung1.5/internal/resfmt"
 	"konung1.5/internal/sitenav"
 )
 
@@ -41,7 +41,7 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	tiles, err := konungmap.LoadTerrainTiles(graph)
+	tiles, err := mapdata.LoadTerrainTiles(graph)
 	if err != nil {
 		fail(err)
 	}
@@ -55,19 +55,19 @@ func main() {
 			if err != nil {
 				fail(err)
 			}
-			if r.game, err = konunggame.Parse(data); err != nil {
+			if r.game, err = gamestate.Parse(data); err != nil {
 				fail(err)
 			}
 			exe, err := os.ReadFile(*exePath)
 			if err != nil {
 				fail(err)
 			}
-			if r.tables, err = resource.NewExeTables(exe); err != nil {
+			if r.tables, err = resfmt.NewExeTables(exe); err != nil {
 				fail(err)
 			}
 			// The game opens GAME.<hero model>, so the player shows model N.
 			if n, err := strconv.Atoi(strings.TrimPrefix(filepath.Ext(*gamePath), ".")); err == nil {
-				r.game.HeroModelFromGame(n, konunggame.PlaceholderHeroPalette)
+				r.game.HeroModelFromGame(n, gamestate.PlaceholderHeroPalette)
 			}
 		}
 	}
@@ -94,8 +94,8 @@ type renderer struct {
 	graph, objects []byte
 	tiles          []*image.RGBA
 	terrainOnly    bool
-	game           *konunggame.Game
-	tables         *resource.ExeTables
+	game           *gamestate.Game
+	tables         *resfmt.ExeTables
 }
 
 type mapInfo struct {
@@ -112,36 +112,36 @@ func (r *renderer) renderOne(mapPath, outPath string) (mapInfo, error) {
 	if err != nil {
 		return mapInfo{}, err
 	}
-	m, err := konungmap.Parse(data)
+	m, err := mapdata.Parse(data)
 	if err != nil {
 		return mapInfo{}, fmt.Errorf("%s: %w", mapPath, err)
 	}
 	info := mapInfo{Name: filepath.Base(mapPath), File: filepath.Base(outPath), LastRow: m.LastRow, LastCol: m.LastCol}
 	var img *image.RGBA
 	if r.terrainOnly {
-		img = konungmap.Render(m, r.tiles)
+		img = mapdata.Render(m, r.tiles)
 	} else {
-		decorations, err := konungmap.ParseDecorations(data)
+		decorations, err := mapdata.ParseDecorations(data)
 		if err != nil {
 			return mapInfo{}, err
 		}
-		placements, err := konungmap.ParsePlacements(data)
+		placements, err := mapdata.ParsePlacements(data)
 		if err != nil {
 			return mapInfo{}, err
 		}
-		objs, errs := konungmap.LoadPlacedObjects(placements, r.objects, r.graph)
+		objs, errs := mapdata.LoadPlacedObjects(placements, r.objects, r.graph)
 		for _, e := range errs {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", mapPath, e)
 		}
-		sorted := konungmap.DrawOrder(placements, objs)
-		sprites := konungmap.ObjectSprites(sorted)
+		sorted := mapdata.DrawOrder(placements, objs)
+		sprites := mapdata.ObjectSprites(sorted)
 		info.Decorations, info.Objects, info.ObjectErrors = len(decorations), len(sorted), len(errs)
 		if r.game != nil {
 			n, err := strconv.Atoi(strings.TrimPrefix(filepath.Ext(mapPath), "."))
 			if err != nil {
 				return mapInfo{}, fmt.Errorf("%s: cannot derive map number from the extension", mapPath)
 			}
-			grid, err := konungmap.ParseWalkGrid(data)
+			grid, err := mapdata.ParseWalkGrid(data)
 			if err != nil {
 				return mapInfo{}, err
 			}
@@ -152,12 +152,12 @@ func (r *renderer) renderOne(mapPath, outPath string) (mapInfo, error) {
 					info.EntityErrors++
 					continue
 				}
-				sprites = append(sprites, konungmap.Sprite{Image: es.Image, X: x, Y: y, Shadow: es.Shadow, SX: sx, SY: sy, Depth: depth})
+				sprites = append(sprites, mapdata.Sprite{Image: es.Image, X: x, Y: y, Shadow: es.Shadow, SX: sx, SY: sy, Depth: depth})
 				info.Entities++
 			}
-			konungmap.SortSprites(sprites)
+			mapdata.SortSprites(sprites)
 		}
-		img = konungmap.RenderScene(m, r.tiles, decorations, sprites)
+		img = mapdata.RenderScene(m, r.tiles, decorations, sprites)
 	}
 	f, err := os.Create(outPath)
 	if err != nil {

@@ -1,13 +1,13 @@
-// Package konunggame decodes the GAME.N start-of-game state files: entity
+// Package gamestate decodes the GAME.N start-of-game state files: entity
 // groups (parties, villagers, monster packs) and the entities in them.
 // Layout follows the loader at VA 0x0043BB6C; see docs/konung_game_format.md.
-package konunggame
+package gamestate
 
 import (
 	"encoding/binary"
 	"fmt"
 
-	"konung1.5/internal/resource"
+	"konung1.5/internal/resfmt"
 )
 
 const (
@@ -206,8 +206,8 @@ func abs(v int) int {
 }
 
 // ModelSpec returns the art selector for an entity.
-func (e Entity) ModelSpec() resource.EntityModel {
-	return resource.EntityModel{
+func (e Entity) ModelSpec() resfmt.EntityModel {
+	return resfmt.EntityModel{
 		Animated: e.Animated(), Model: e.Model, Type: e.Type, Variant: e.Variant,
 		Step: e.Step, PaletteOffset: e.PaletteOffset,
 	}
@@ -216,10 +216,10 @@ func (e Entity) ModelSpec() resource.EntityModel {
 // LoadSprite decodes the entity's current frame and returns it positioned in
 // world pixels, with its depth key (image bottom edge).
 // t may be nil to skip equipment overlays.
-func (g *Game) LoadSprite(p Placed, objects, graph []byte, t *resource.ExeTables) (img *resource.EntitySprite, x, y, sx, sy, depth int, err error) {
-	img, err = resource.LoadEntitySprite(objects, graph, p.ModelSpec())
+func (g *Game) LoadSprite(p Placed, objects, graph []byte, t *resfmt.ExeTables) (img *resfmt.EntitySprite, x, y, sx, sy, depth int, err error) {
+	img, err = resfmt.LoadEntitySprite(objects, graph, p.ModelSpec())
 	if err == nil {
-		img, err = resource.ComposeEquipment(graph, img, p.ModelSpec(), g.Overlays(p.Entity, t), t)
+		img, err = resfmt.ComposeEquipment(graph, img, p.ModelSpec(), g.Overlays(p.Entity, t), t)
 	}
 	if err != nil {
 		return nil, 0, 0, 0, 0, 0, fmt.Errorf("entity %d: %w", p.Index, err)
@@ -231,20 +231,20 @@ func (g *Game) LoadSprite(p Placed, objects, graph []byte, t *resource.ExeTables
 
 // Frame is one animation step positioned in world pixels.
 type Frame struct {
-	Sprite       *resource.EntitySprite
+	Sprite       *resfmt.EntitySprite
 	X, Y, SX, SY int
 }
 
 // LoadAnimation decodes every step of the entity's current sequence, with
 // equipment overlays composed onto Type 0 bodies (t may be nil to skip them).
-func (g *Game) LoadAnimation(p Placed, objects, graph []byte, t *resource.ExeTables) ([]Frame, error) {
-	steps, err := resource.LoadEntityAnimation(objects, graph, p.ModelSpec())
+func (g *Game) LoadAnimation(p Placed, objects, graph []byte, t *resfmt.ExeTables) ([]Frame, error) {
+	steps, err := resfmt.LoadEntityAnimation(objects, graph, p.ModelSpec())
 	if err != nil {
 		return nil, fmt.Errorf("entity %d: %w", p.Index, err)
 	}
 	if overlays := g.Overlays(p.Entity, t); len(overlays) > 0 {
-		var prevBody *resource.EntitySprite
-		var prevOut *resource.EntitySprite
+		var prevBody *resfmt.EntitySprite
+		var prevOut *resfmt.EntitySprite
 		for i, body := range steps {
 			if prevBody != nil && body.Image == prevBody.Image && body.ImageDX == prevBody.ImageDX && body.ImageDY == prevBody.ImageDY {
 				steps[i] = prevOut // repeated step: reuse the composite
@@ -252,7 +252,7 @@ func (g *Game) LoadAnimation(p Placed, objects, graph []byte, t *resource.ExeTab
 			}
 			m := p.ModelSpec()
 			m.Step = i
-			out, err := resource.ComposeEquipment(graph, body, m, overlays, t)
+			out, err := resfmt.ComposeEquipment(graph, body, m, overlays, t)
 			if err != nil {
 				return nil, fmt.Errorf("entity %d: %w", p.Index, err)
 			}
@@ -304,7 +304,7 @@ func slots(b []byte) (out [8]int) {
 // Overlays returns the equipment overlay blocks to draw over a Type 0 body,
 // in the game's order for the entity's facing (VA 0x00428484: the path for
 // entity +3 bit 0x04 clear; the combat path with drawn weapons is not ported).
-func (g *Game) Overlays(e Entity, t *resource.ExeTables) []int {
+func (g *Game) Overlays(e Entity, t *resfmt.ExeTables) []int {
 	if t == nil || e.Animated() {
 		return nil
 	}

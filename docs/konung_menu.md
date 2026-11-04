@@ -4,22 +4,22 @@ This document records the current Konung menu implementation and the asset findi
 
 ## Source layout
 
-The executable entry point is under `cmd/konung/`; the implementation is an importable package under `internal/konungmenu/`:
+The executable entry point is under `cmd/konung/`; the implementation is an importable package under `internal/game/`:
 
 | File | Responsibility |
 |---|---|
 | `cmd/konung/main.go` | Resolve default asset paths, initialize Ebitengine, set fullscreen/window title/cursor mode, start the game loop |
-| `internal/konungmenu/menu.go` | Load menu frames, map button frames, handle keyboard/mouse input, draw the background/buttons/custom pointer |
-| `internal/konungmenu/graph.go` | Read Type 5 sprites from the mixed `GRAPH.RES` stream after its palette area |
-| `internal/konungmenu/startscene.go` | New Game scene: viewport-culled `KONUNG.1` terrain, decorations, shadow layer, depth-sorted objects, camera scrolling, GAME.0 characters/creatures |
-| `internal/konungmap/` | Engine-independent map/terrain decoding used by the scene and `cmd/map-render` |
-| `internal/konungmenu/resources.go` | Find assets by searching upward from the process working directory and source file location |
+| `internal/game/menu.go` | Load menu frames, map button frames, handle keyboard/mouse input, draw the background/buttons/custom pointer |
+| `internal/game/cursor.go` | Read Type 5 sprites from the mixed `GRAPH.RES` stream after its palette area |
+| `internal/game/scene.go` | New Game scene: viewport-culled `KONUNG.1` terrain, decorations, shadow layer, depth-sorted objects, camera scrolling, GAME.0 characters/creatures |
+| `internal/mapdata/` | Engine-independent map/terrain decoding used by the scene and `cmd/map-render` |
+| `internal/game/assets.go` | Find assets by searching upward from the process working directory and source file location |
 
 The executable uses `MENU800R.RES` and `GRAPH.RES` from `assets/Konung/`. It decodes the resources in memory; it does not need extracted PNG files.
 
 ## Menu resource mapping
 
-`MENU800R.RES` is loaded as a sequence of Type 5 frames using `internal/resource.LoadType5File`.
+`MENU800R.RES` is loaded as a sequence of Type 5 frames using `internal/resfmt.LoadType5File`.
 
 * Frame 0 is drawn as the full-screen background.
 * Frame 2 is a small blue UI marker. It is not the mouse pointer, and the current menu does not draw it separately.
@@ -72,7 +72,7 @@ Typical devcontainer invocation:
 podman exec -w /workspaces/konung1.5 <container_id> go run ./cmd/konung
 ```
 
-The extracted implementation is in `internal/konungmenu`, so functions used by the entry point are imported instead of relying on sibling source files. From `cmd/konung`, either form is supported:
+The extracted implementation is in `internal/game`, so functions used by the entry point are imported instead of relying on sibling source files. From `cmd/konung`, either form is supported:
 
 ```bash
 go build
