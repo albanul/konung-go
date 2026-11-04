@@ -27,6 +27,7 @@ const (
 // walk frames' per-step anchors carry the body toward the next cell; at the
 // end of the cycle it snaps to that cell. The hero and wandering NPCs share it.
 type walker struct {
+	entity  int // GAME.N entity index (name, status line)
 	cell    mapdata.Cell
 	path    []mapdata.Cell // path[0] is the cell being stepped into while walking
 	goal    mapdata.Cell

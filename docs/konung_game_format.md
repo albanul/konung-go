@@ -12,7 +12,7 @@ The new-game code (`0x00438F3F`–`0x004390D5`) copies the hero template into en
 | 1 | `GAME.1` | `KONUNG.4` | Dragomir (the user recognized model 1 as Dragomir) |
 | 2 | `GAME.2` | `KONUNG.7` | Michail (Михаил), per the user |
 
-Entity 0's model and palette in the files (model 1, palette 33 in all three) are placeholders that this code overwrites. The template's values come from the character-creation screen, which is not decoded. The port therefore uses model N (`Game.HeroModelFromGame`) with **placeholder palette 72**. Palettes 70–74 and 113–114 render model 0 cleanly; 33 does not.
+Entity 0's model, name and palette in the files (model 1, name 124 «Драгомир», palette 33 in all three) are placeholders that this code overwrites. **Hero selection (verified)** writes the name index `+0xD4` and the body model `+0xD6` together: Волк 10 / model 0 (`0x00438042`), Драгомир 124 / model 1 (`0x00437EC3`), Михаил 151 / model 2 (`0x00437F88`). The palette comes from the character-creation screen, which is not decoded. The port applies model and name (`Game.HeroModelFromGame`, `HeroNameIndex`) with **placeholder palette 72**. Palettes 70–74 and 113–114 render model 0 cleanly; 33 does not.
 
 Code: `internal/gamestate` (`Parse`, `Game.OnMap`, `Game.HeroModelFromGame`, `WorldPos`, `Placed.LoadSprite`, `Placed.LoadAnimation`), `resfmt.LoadEntitySprite`, `resfmt.LoadEntityAnimation`. `cmd/map-render -game assets/Konung/GAME.0` draws them (Volk's game). By default `map-render` draws map content only, which keeps the site's map pages clean.
 
@@ -55,10 +55,15 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 | `+0x08` | `uint16` | fine-grid row; `0` together with `+0x0A` = `0` means placed at runtime |
 | `+0x0A` | `uint16` | fine-grid column |
 | `+0x10` | byte | **animation step**, advanced by `0x00413DE4` until it reaches the count in `+0xD7` |
+| `+0x33` | byte | level (status line «Уров:») |
+| `+0x42`, `+0x46`, `+0x48`, `+0x4A`, `+0x4C` | `uint16` | skills: trade, building, healing, curios, smithing (status-line phrases above 30 / 4 / 100 / 10 / 4) |
 | `+0x12` | byte | weapon mode; selects HUD button 0 (`0x0042911A`); Volk = 2 |
 | `+0x50` | `int16` | non-zero while poisoned (HP bar colour) |
 | `+0x5C` | `int16` | **HP**; 1600 = full (HUD bar divides by `0x640`); portrait state thresholds 1200/800/400 ([HUD](konung_interface_res.md)) |
+| `+0x54`, `+0x58`, `+0x5E`, `+0x62` | `uint16` | stats Лов, Хар, Сил, Вын (status line of party members) |
 | `+0xD0` | byte | **dialogue ID** opened when the player clicks the entity (`0x004364F0`); `0xFF` = no dialogue |
+| `+0xD4` | byte | **first name** index (exe table `0x0045E77C`, 32 bytes each; [names](konung_interface_res.md#hover-status-line-verified)) |
+| `+0xD5` | byte | nickname index (`0x0045FCDC`), 0 = none |
 | `+0xD6` | `int8` | model: `OBJECTS.RES` slot 0–29, or `GRAPH.RES` Type 0 block. **Earlier notes said `+0xD3`**; the code reads `dword[+0xD3] >> 24`, i.e. byte `+0xD6`. |
 | `+0xD8` | `uint32` | palette byte offset (per-entity dye), passed to `0x0043ED09` by the draw at `0x004272CB` |
 

@@ -232,3 +232,32 @@ func TestPartyHUD(t *testing.T) {
 		t.Errorf("buttons %v", b)
 	}
 }
+
+func TestStatusLines(t *testing.T) {
+	g, err := Parse(load(t, "GAME.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe := load(t, "konung.exe")
+	tb, err := resfmt.NewExeTables(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.HeroModelFromGame(0, 0)
+	for _, c := range []struct {
+		i    int
+		want string
+	}{
+		{0, "Волк, Воин, Уров:1, Здор:100, воин дружины Хар:10 Сил:15 Лов:10 Вын:10"},
+		{355, "Бодрич, Купец, Уров:1, Здор:100, староста"},
+		{356, "Волеслав, Храбрец, Уров:1, Здор:100, знахарь"},
+		{359, "Исток, Воин, Уров:1, Здор:100"},
+		{367, "Велиславна"},
+		{536, "Путята, Охотник, Уров:3, Здор:100, искусный строитель"},
+		{921, "Гигантский Муравей, Уров:1, Здор:100"},
+	} {
+		if got := resfmt.CP866ToUTF8(g.StatusLine(g.Entities[c.i], tb)); got != c.want {
+			t.Errorf("entity %d: %q, want %q", c.i, got, c.want)
+		}
+	}
+}

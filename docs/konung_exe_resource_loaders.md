@@ -102,6 +102,12 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0042D574` | routine | Party portrait + HP bar draw for one entity (cells `0x0045AF70`) | [interface](konung_interface_res.md#party-hud-portrait-routine-0x0042d574-verified-against-code-and-data) |
 | `0x0042DA30`, `0x004290D8` | routines | HUD panel buttons: draw (positions `0x0045AF00`) / set slot bytes `0x00A3E090..96` | [interface](konung_interface_res.md) |
 | `0x0042DBD3` | code | HUD redraw: frame slot 3, buttons, portraits | [interface](konung_interface_res.md) |
+| `0x0042CA90` | routine | Entity name → buffer (creature / first-name / nickname tables `0x0045E3BC`, `0x0045E77C`, `0x0045FCDC`) | [interface](konung_interface_res.md#hover-status-line-verified) |
+| `0x0043195C` | routine | Hover status line in the bottom bar | [interface](konung_interface_res.md#hover-status-line-verified) |
+| `0x0043F89C` | routine | Cursor-over-opaque-pixel test for an RLE image at (x, y); sets the hover entity `0x00A3E6A0` | [interface](konung_interface_res.md#hover-status-line-verified) |
+| `0x0043F821`, `0x0042CBBC`, `0x00427A80` | routines | Text width; wrapped text draw (15 px lines); queue a text draw | [interface](konung_interface_res.md#hover-status-line-verified) |
+| `0x00592CFC`, `0x005A31F4` | data | Embedded fonts (large, small) | [interface](konung_interface_res.md#hover-status-line-verified) |
+| `0x00437EC3`, `0x00437F88`, `0x00438042` | code | Hero selection: writes name `+0xD4` and model `+0xD6` | [GAME.N](konung_game_format.md) |
 | `0x00427A0C` | routine | Queue a clipped indexed blit `(image, palette, x, y, xmin, ymin, xmax, ymax)` (32-byte records at `0x0069B8B4`) | [interface](konung_interface_res.md) |
 | `0x0051ECB4` | global | Pointer to the `GRAPH.RES` palette block; images add a palette byte offset to it | [interface](konung_interface_res.md) |
 | `0x00421DA4` | routine | Per-tick NPC AI dispatcher: kind `0x40` → `0x004123BC` (creatures, not traced), `0x80` → `0x00416058` (village), else party | [GAME.N](konung_game_format.md#npc-ai-village-ai-traced) |

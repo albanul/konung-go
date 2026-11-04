@@ -27,6 +27,7 @@ const (
 // Post is a settlement slot that pins a named villager (the elder and the
 // role characters) to a cell and facing: 8 bytes at settlement +0x3D0.
 type Post struct {
+	Slot     int // 1-based slot number (as returned by 0x0041182C)
 	Facing   int // +0: facing (variant numbering, 0 W .. 7 SW)
 	Dialogue int // +1: the entity's dialogue ID (+0xD0), a copy
 	Entity   int // +2 uint16: entity index; 0 = empty slot
@@ -50,6 +51,7 @@ func parseSettlements(data []byte) []Settlement {
 		for k := range s.Posts {
 			p := r[postOffset+k*8:]
 			s.Posts[k] = Post{
+				Slot:     k + 1,
 				Facing:   int(p[0]),
 				Dialogue: int(p[1]),
 				Entity:   int(binary.LittleEndian.Uint16(p[2:])),

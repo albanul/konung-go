@@ -70,6 +70,11 @@ type startScene struct {
 
 	hud   *hud
 	party []gamestate.Entity // group 0's entities (copies; [0] = hero) shown in the portrait grid
+
+	game    *gamestate.Game
+	tables  *resfmt.ExeTables
+	font    *gameFont // small status-line font (resfmt.FontSmallVA)
+	hovered int       // entity under the cursor in the last frame, -1 = none
 }
 
 // loadStartScene builds the scene for map mapNumber: terrain, decorations
@@ -128,6 +133,10 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", intrPath, err)
 	}
+	smallFont, err := tables.Font(resfmt.FontSmallVA)
+	if err != nil {
+		return nil, err
+	}
 	rawTiles, err := mapdata.LoadTerrainTiles(graphData)
 	if err != nil {
 		return nil, err
@@ -138,6 +147,10 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 		shadowLayer: ebiten.NewImage(ScreenWidth, ScreenHeight),
 		walk:        walk,
 		hud:         hud,
+		game:        game,
+		tables:      tables,
+		font:        newGameFont(smallFont),
+		hovered:     -1,
 		occ:         map[mapdata.Cell]bool{},
 		follow:      true,
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
@@ -223,7 +236,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 		cell := mapdata.Cell{Row: p.Row, Col: p.Col}
 		s.occ[cell] = true
 		w := walker{
-			cell: cell, dir: mapdata.Direction(p.Variant & 7), phase: p.Index * 5,
+			entity: p.Index, cell: cell, dir: mapdata.Direction(p.Variant & 7), phase: p.Index * 5,
 			load:    entityLoader(game, p, objectsData, graphData, tables, uploadSprite, logErr),
 			reserve: reserve, release: release,
 		}
@@ -389,9 +402,11 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	// Characters move, so they are depth-sorted each frame and merged into
 	// the static objects' order.
 	var chars []sceneFrame
+	var owners []int // entity index per chars entry
 	addChar := func(w *walker) {
 		if f, ok := w.frame(s.tick); ok && s.visible(f.x-64, f.y-64, f.img.Bounds().Dx()+128, f.img.Bounds().Dy()+128) {
 			chars = append(chars, f)
+			owners = append(owners, w.entity)
 			drawShadow(&chars[len(chars)-1])
 		}
 	}
@@ -402,7 +417,17 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		addChar(&n.walker)
 	}
 	depth := func(f *sceneFrame) int { return f.y + f.img.Bounds().Dy() }
-	sort.SliceStable(chars, func(i, j int) bool { return depth(&chars[i]) < depth(&chars[j]) })
+	order := make([]int, len(chars))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(i, j int) bool { return depth(&chars[order[i]]) < depth(&chars[order[j]]) })
+	sorted := make([]sceneFrame, len(chars))
+	sortedOwners := make([]int, len(chars))
+	for i, k := range order {
+		sorted[i], sortedOwners[i] = chars[k], owners[k]
+	}
+	chars, owners = sorted, sortedOwners
 	op := &ebiten.DrawImageOptions{}
 	op.ColorScale.Scale(0, 0, 0, 0.5)
 	screen.DrawImage(s.shadowLayer, op)
@@ -425,6 +450,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	for ; ci < len(chars); ci++ {
 		drawFrame(&chars[ci])
 	}
+	s.hovered = s.hitTest(chars, owners)
 	if s.hero != nil {
 		state := "off"
 		if s.follow {
@@ -433,6 +459,44 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, "Click: move   F: camera follow "+state+"   H: test damage   Esc: menu", viewLeft+8, viewBottom-20)
 	}
 	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
+	if s.hovered >= 0 {
+		// The status line in the bottom bar (0x0043195C), small font.
+		s.font.drawWrapped(screen, s.game.StatusLine(s.entity(s.hovered), s.tables),
+			viewLeft+10, viewBottom+5, viewRight-viewLeft-15)
+	}
+}
+
+// hitTest returns the entity whose drawn sprite has an opaque pixel under
+// the cursor, like the entity draw pass (0x0043F89C after each body blit,
+// result in 0x00A3E6A0): characters are tested in draw order, so the last
+// one drawn (front-most) wins; static objects don't block. -1 = none.
+func (s *startScene) hitTest(chars []sceneFrame, owners []int) int {
+	mx, my := ebiten.CursorPosition()
+	if !inView(mx, my) {
+		return -1
+	}
+	for i := len(chars) - 1; i >= 0; i-- {
+		f := &chars[i]
+		b := f.img.Bounds()
+		x, y := mx+s.camX-f.x+b.Min.X, my+s.camY-f.y+b.Min.Y
+		if image.Pt(x, y).In(b) {
+			if _, _, _, a := f.img.At(x, y).RGBA(); a != 0 {
+				return owners[i]
+			}
+		}
+	}
+	return -1
+}
+
+// entity returns the current state of an entity: the HUD copy for party
+// members (it carries HP changes), otherwise the GAME.N record.
+func (s *startScene) entity(i int) gamestate.Entity {
+	for _, e := range s.party {
+		if e.Index == i {
+			return e
+		}
+	}
+	return s.game.Entities[i]
 }
 
 // debugDamage is a test hook until combat exists: each press takes 400 HP

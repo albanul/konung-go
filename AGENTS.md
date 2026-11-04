@@ -29,7 +29,7 @@ Use the existing findings as a starting point. Before reverse engineering anythi
 | Map terrain, decorations, static objects, shadows, camera/projection | [Map format](docs/konung_map_format.md) | `internal/mapdata/`, `cmd/map-render/` |
 | The New Game scene (map terrain/objects + GAME.0 characters) | [Menu & scene implementation](docs/konung_menu.md), [Start location](docs/konung_start_location.md) | `internal/game/scene.go` |
 | Main menu, buttons, cursor | [Menu implementation](docs/konung_menu.md), [Menu RES catalog](docs/konung_menu_res.md) | `internal/game/menu.go`, `cursor.go` |
-| In-game HUD: portrait grid, HP bars, panel buttons (`INTR*R.RES`) | [Interface resources and HUD](docs/konung_interface_res.md) | `resfmt.ParseInterface`, `gamestate/portrait.go`, `internal/game/hud.go` |
+| In-game HUD: portrait grid, HP bars, panel buttons (`INTR*R.RES`), NPC names / hover status line, game fonts | [Interface resources and HUD](docs/konung_interface_res.md) | `resfmt.ParseInterface`, `resfmt/exetext.go`, `gamestate/portrait.go`, `gamestate/names.go`, `internal/game/hud.go`, `text.go` |
 | `GRAPH.RES` (palettes, cursors, terrain tiles, Type 0 character models) | [GRAPH.RES layout and sprites](docs/konung_graph_sprites.md) | `mapdata.LoadTerrainTiles`, `resfmt.DecodeType0Frames`, `game/cursor.go` |
 | `OBJECTS.RES` (buildings, animated objects) | [RES formats: OBJECTS](docs/konung_res_format.md#objectsres), [Start location: OBJECTS path](docs/konung_start_location.md#objectsres-image-path-and-object-lookup), [Sprite index](docs/konung_sprite_index.md) | `resfmt.DecodeStaticObject` |
 | Characters, NPCs, monsters, player start (`GAME.N`) | [GAME.N format](docs/konung_game_format.md) | `internal/gamestate/`, `resfmt.LoadEntitySprite` |
@@ -55,9 +55,9 @@ One line per file family. Details live in the linked documents; "verified" means
 
 | Package / command | Responsibility |
 |---|---|
-| `internal/resfmt` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, `INTR*R.RES` interface images (`ParseInterface`), static OBJECTS entries and map objects with shadows (`LoadMapObject`), entity frames (`LoadEntitySprite`), equipment overlays (`ComposeEquipment`, exe tables via `ExeTables`), `GRAPH.RES` Type 0 frames, sound entries |
+| `internal/resfmt` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, `INTR*R.RES` interface images (`ParseInterface`), exe strings/name tables and fonts (`exetext.go`), static OBJECTS entries and map objects with shadows (`LoadMapObject`), entity frames (`LoadEntitySprite`), equipment overlays (`ComposeEquipment`, exe tables via `ExeTables`), `GRAPH.RES` Type 0 frames, sound entries |
 | `internal/mapdata` | Engine-independent `KONUNG.N` parsing (terrain, decorations, object placements, walk grid), fine-grid geometry and A* pathfinding (`finegrid.go`), `GRAPH.RES` terrain tiles, projection, depth order, full-scene render |
-| `internal/gamestate` | Engine-independent `GAME.N` parsing: groups, entities, settlements/posts, world positions, spawn placement, entity sprites, NPC target rules (`village.go`, `wander.go`), party HUD rules (`portrait.go`) |
+| `internal/gamestate` | Engine-independent `GAME.N` parsing: groups, entities, settlements/posts, world positions, spawn placement, entity sprites, NPC target rules (`village.go`, `wander.go`), party HUD rules (`portrait.go`), names and status line (`names.go`) |
 | `internal/game` | Ebitengine menu, New Game scene (camera, drawing) and HUD (`hud.go`); converts decoded `image.RGBA` to `ebiten.Image` |
 | `cmd/konung` | Game entry point |
 | `cmd/map-render` | `KONUNG.N` → PNG (terrain, decorations, shadows, objects, optional `GAME.N` characters via `-game assets/Konung/GAME.0`, `-terrain` for terrain only, `-all` for every map + `index.html`) |
@@ -125,5 +125,5 @@ Highest-value unknowns, roughly in priority order:
 4. `LIGHTS.N` format and the lit terrain draw path at VA `0x004257A9`.
 5. The 64 KiB gap in `GRAPH.RES` at `0x1ED8B6`, and the second 8-byte table at VA `0x006324B8`.
 6. `KONUNG.N` ↔ in-game location names (`KONUNG.1` = Volk's start is known). Render all maps with `map-render -all` and compare them against screenshots or the walkthrough.
-7. HUD: Volk's portrait body model, button actions, the alternate portrait table `0x0062F3D8`. See [interface](docs/konung_interface_res.md#open-questions).
+7. HUD: button actions, the info window (`0x0042E04C`), the alternate portrait table `0x0062F3D8`. See [interface](docs/konung_interface_res.md#open-questions).
 8. `cmd/sprite-catalog` has its own Type 0 walker that duplicates `resfmt.DecodeType0Frames`; consolidate when touching it.

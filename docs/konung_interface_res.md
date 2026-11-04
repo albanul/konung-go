@@ -1,4 +1,4 @@
-# Interface resources (`INTR640R.RES`, `Intr800r.res`) and the party HUD
+# Interface resources (`INTR640R.RES`, `Intr800r.res`), the party HUD and the hover status line
 
 ## File layout (verified)
 
@@ -53,7 +53,39 @@ Decoder: `resfmt.ParseInterface`, `InterfaceRes.Slot`, `InterfaceRes.Image`. Tes
 
 **Port.** The rules are in `gamestate` (`PortraitState`, `PortraitSlot`, `HPBar`, `HUDButtonSlots`, `Entity.HP`, `.Poison`, `.WeaponMode`, `.Dead`). Drawing is in `internal/game/hud.go`, 800×600 only. The camera centres on the view rectangle, clicks on the HUD don't move the hero, and the hero is always shown as selected. **H** is a debug key that takes 400 HP per press until combat exists. Button clicks are not implemented.
 
+## Hover status line (verified)
+
+**Hover target.** At the start of each frame `0x0042AD18` clears `0x00A3E6A0`. Each entity's body is then blitted, followed by `0x0043F89C(image, x, y)`, which tests whether the cursor lies on an opaque pixel of that image; if so, `0x00A3E6A0` = entity (`0x00427309` / `0x00427404`). Characters are drawn in depth order, so the front-most one wins. Static objects don't block the test.
+
+**Display.** While no window is open (`0x00A3E740` = 0), `0x00424054` calls `0x0043195C(entity)`. That routine redraws the bottom bar from frame slot 3, builds the line in `0x00A3E120`, and draws it with the **small font** wrapped (`0x0042CBBC`) at (view left + 10, view bottom + 5), width view right − view left − 15. In 800 mode that is (150, 560), width 644, with 15 px lines.
+
+**Name (`0x0042CA90`).**
+* Creatures (`+4 & 0x7F` in `0x41`–`0x50`): creature table `0x0045E3BC` [f − `0x41`], 32 bytes each: Гигантский Муравей, Аспид, … Паук (12), …, Ядовитый паук (14), …
+* Everyone else, women and children included: first-name table `0x0045E77C` [`+0xD4`], plus `" "` + nickname table `0x0045FCDC` [`+0xD5`] when that byte is non-zero.
+
+**Line.**
+* Creatures: name + `0x0042C9F4` (`", Уров:" level(+0x33) ", Здор:" (HP+15)/16`).
+* Women and children (`+4 & 0x7F` ≥ `0x51`): the name only.
+* People: name + `", "` + class `0x0045AE20 + ((+4 & 7) − 1)·16` (Храбрец, Купец, Охотник, Вождь, Воин) + level/health, then:
+  * party members (group = the player's): `", воин дружины"`, `", отравлен"` if `+0x50` ≠ 0, then ` Хар:` +0x58, ` Сил:` +0x5E, ` Лов:` +0x54, ` Вын:` +0x62;
+  * hostile groups (group `+0x1D` bit `0x01`): `", враг"`;
+  * posted villagers: role `0x0046233C + (slot − 1)·16`: староста, знахарь, купец, кузнец, воевода;
+  * otherwise skill phrases: healing `+0x48` > 100, smithing `+0x4C` > 4, trade `+0x42` > 30, building `+0x46` > 4, curios `+0x4A` > 10.
+
+`KONUNG.1`: «Бодрич, Купец, Уров:1, Здор:100, староста», «Волеслав, Храбрец, …, знахарь», «Световик, …, купец», «Всеслав, …, кузнец», «Гигантский Муравей, Уров:1, Здор:100».
+
+**Fonts (embedded in DGROUP).** Large `0x00592CFC` (character window title) and small `0x005A31F4` (status line, dialogue).
+* Header: byte first character (`0x20`), byte count (209), `int16` advance for characters without a glyph (4); then count `uint32` glyph addresses.
+* The load-time relocation (`0x0043AA7F`) handles only count − 1 entries; the last entry is not a glyph.
+* Each glyph is a Type 5 RGB555 RLE frame (`0x0042809C` converts its pixels in place for 565 modes). Text is CP866; glyph = char − first; the advance is the glyph width (`0x0043F821`); glyphs are top-aligned.
+* Wrapping (`0x0042CBBC`) splits at spaces (each word keeps its space); a word whose addition reaches the width starts a new line.
+
+**Port.**
+* `resfmt`: `ExeTables.CString`, `TableString`, `Font`, `Font.Wrap`, `CP866ToUTF8`.
+* `gamestate`: `Name`, `Game.StatusLine`, the new `Entity` fields.
+* `internal/game`: `text.go` (glyph drawing) and `startScene.hitTest` (opaque-pixel test on the drawn character frames, last drawn wins).
+* Tests: `resfmt.TestExeTextAndFonts`, `gamestate.TestStatusLines`.
+
 ## Open questions
 
-* The hero portrait depends on the body model. The port forces Volk to model 0 (slots 215–219); his model in `GAME.0` is 1, and which model the character-creation screen sets is not traced.
 * The alternate portrait table (`0x0062F3E0` / `0x0062F3D8`), the palette effects for types 2/8, and the button actions.

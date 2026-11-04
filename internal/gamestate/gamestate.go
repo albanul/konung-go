@@ -49,6 +49,11 @@ type Entity struct {
 	HP            int    // +0x5C int16: health; HPFull (1600) = 100 %
 	Model         int    // +0xD6 (signed): OBJECTS slot or GRAPH Type 0 block
 	PaletteOffset uint32 // +0xD8
+	NameIndex     int    // +0xD4: first name (resfmt.FirstNamesVA); set by hero selection for the hero
+	Nickname      int    // +0xD5: second name part (resfmt.NicknamesVA), 0 = none
+	Level         int    // +0x33: level shown in the status line
+	Stats         [4]int // words +0x58, +0x5E, +0x54, +0x62: Хар, Сил, Лов, Вын (status line, 0x00431A94)
+	Skills        [5]int // words +0x48, +0x4C, +0x42, +0x46, +0x4A: healing, smithing, trade, building, curios
 	Dialogue      int    // +0xD0: dialogue opened on click (VA 0x004364F0); NoDialogue = none
 	Group         int    // owning group index
 	Slots         [8]int // +0x66: item indices per equipment slot (0 = empty); slots 0..5 are drawn
@@ -118,6 +123,11 @@ func Parse(data []byte) (*Game, error) {
 			Model:         int(int8(e[0xD6])),
 			PaletteOffset: binary.LittleEndian.Uint32(e[0xD8:]),
 			Dialogue:      int(e[0xD0]),
+			NameIndex:     int(e[0xD4]),
+			Nickname:      int(e[0xD5]),
+			Level:         int(e[0x33]),
+			Stats:         [4]int{u16(e, 0x58), u16(e, 0x5E), u16(e, 0x54), u16(e, 0x62)},
+			Skills:        [5]int{u16(e, 0x48), u16(e, 0x4C), u16(e, 0x42), u16(e, 0x46), u16(e, 0x4A)},
 			Group:         grp,
 			Slots:         slots(e[0x66:]),
 		})
@@ -128,6 +138,8 @@ func Parse(data []byte) (*Game, error) {
 
 // NoDialogue is the +0xD0 value of entities that cannot be talked to.
 const NoDialogue = 0xFF
+
+func u16(b []byte, off int) int { return int(binary.LittleEndian.Uint16(b[off:])) }
 
 // Animated reports whether the entity uses an animated OBJECTS.RES model.
 func (e Entity) Animated() bool { return e.Flags4&0x40 != 0 }
@@ -273,6 +285,11 @@ func (g *Game) LoadAnimation(p Placed, objects, graph []byte, t *resfmt.ExeTable
 	return out, nil
 }
 
+// HeroNameIndex is the first-name index the hero-selection code writes to
+// the hero's +0xD4 together with its body model +0xD6 (VA 0x00438042,
+// 0x00437EC3, 0x00437F88): model 0 Волк, 1 Драгомир, 2 Михаил.
+var HeroNameIndex = [3]int{10, 124, 151}
+
 // PlaceholderHeroPalette is used for the hero until the character-creation
 // palette is decoded: palette 72, one of the clean dyes for Type 0 model 0
 // (70-74, 113-114 render cleanly; the file's 33 suits model 1 only).
@@ -294,6 +311,9 @@ func (g *Game) HeroModelFromGame(n int, paletteOffset uint32) {
 	if i := g.Groups[0].First; i >= 0 && i < len(g.Entities) {
 		g.Entities[i].Model = n
 		g.Entities[i].Flags4 &^= 0x40
+		if n >= 0 && n < len(HeroNameIndex) {
+			g.Entities[i].NameIndex = HeroNameIndex[n]
+		}
 		if paletteOffset != 0 {
 			g.Entities[i].PaletteOffset = paletteOffset
 		}
