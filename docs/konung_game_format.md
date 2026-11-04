@@ -60,6 +60,19 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 
 World position (VA `0x00439BA0`, fine-cell centre): `x = col*58 + (row odd ? 29 : 58)`, `y = row*16 + 16`.
 
+## Animation types and facings (Type 0 bodies)
+
+Body records come in two sets of six types: 0–5, and 6–11 with the same layout. The peaceful set (6–11) is used by the villagers and Volk; animated objects fold types ≥ 6 back onto 0–5. Seen in body model 0's records and frames:
+
+| Type | Steps | Meaning |
+|---|---|---|
+| 6 (0) | 12, 6 frames held 2 steps each | idle |
+| 7 (1) | 12 distinct frames | **walk** (verified visually; the game scene uses it) |
+| 8 (2) | 7 | unknown (repeats frames; possibly hit/death) |
+| 9 (3), 10 (4), 11 (5) | 12 | unknown (possibly actions/attacks) |
+
+**Facing (variant):** 0 W, 1 NW, 2 N, 3 NE, 4 E, 5 SE, 6 S, 7 SW, i.e. clockwise from west. Identified visually from the walk frames, not from movement code. On the fine grid, the matching neighbour cells are: same row ±1 col (E/W, 58 px), row ±2 (N/S, 32 px), and row ±1 for the diagonals (±29, ±16 px; the column depends on row parity). See `mapdata.Neighbors`.
+
 ## Frame and anchor lookup (model initializer `0x00414078`)
 
 Each (type, variant) has a record of `int16` words: `[count, frame index for step 0, step 1, …]`. Animated objects have 19 words (up to 18 steps), Type 0 has 13 (up to 12). The idle sets seen so far have 12 steps that cycle 6 frames, each held for 2 steps, e.g. Type 0 block 1 type 6 variant 5: `12, 24,24, 25,25, … 29,29`. In the table below, `d` is the **step**. Earlier notes called it direction.
@@ -113,6 +126,6 @@ Validation: `go test ./internal/gamestate` checks the player group, the 50 drawa
 * The game's animation tick rate. The scene uses 10 steps/s and offsets each entity's phase so neighbours don't move in lockstep; both are presentation choices.
 * Exact runtime spawn positions for groups whose entities have no coordinates.
 * Group fields `+0x0A..+0x0E`, `+0x12..+0x16`, `+0x1E`; the conditional spawn check at `0x00411DE4`.
-* Actions other than the file's current type (walking, fighting), and the combat overlay path (`+3` bit `0x04`, drawn weapons).
+* The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation. Actions other than idle/walk, and the combat overlay path (`+3` bit `0x04`, drawn weapons), are not ported.
 * Item record fields other than the type byte.
 * The other four `GAME.N` sections.

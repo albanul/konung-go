@@ -91,3 +91,54 @@ func TestKonung1Objects(t *testing.T) {
 		}
 	}
 }
+
+func TestFineGrid(t *testing.T) {
+	for _, c := range []Cell{{86, 33}, {87, 33}, {0, 0}, {201, 12}} {
+		x, y := CellCenter(c)
+		if got := CellAt(x, y); got != c {
+			t.Errorf("CellAt(CellCenter(%v)) = %v", c, got)
+		}
+		for _, n := range Neighbors(c) {
+			nx, ny := CellCenter(n.Cell)
+			if d := DirectionTo(float64(x), float64(y), float64(nx), float64(ny)); d != n.Dir {
+				t.Errorf("neighbour %v of %v: DirectionTo = %d, table says %d", n.Cell, c, d, n.Dir)
+			}
+			dx, dy := nx-x, ny-y
+			if dx*dx+dy*dy > 58*58 {
+				t.Errorf("neighbour %v of %v is %d,%d px away", n.Cell, c, dx, dy)
+			}
+		}
+	}
+}
+
+func TestFindPathKonung1(t *testing.T) {
+	data, err := os.ReadFile("../../assets/Konung/KONUNG.1")
+	if err != nil {
+		t.Skip(err)
+	}
+	g, err := ParseWalkGrid(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocked := func(c Cell) bool { return g.Blocked(c.Row, c.Col) }
+	start := Cell{86, 33} // Volk's start
+	goal := NearestFree(Cell{184, 40}, blocked, 6)
+	path := FindPath(start, goal, blocked, 0)
+	if len(path) == 0 || path[len(path)-1] != goal {
+		t.Fatalf("no path from %v to %v", start, goal)
+	}
+	prev := start
+	for _, c := range path {
+		if blocked(c) {
+			t.Fatalf("path crosses blocked cell %v", c)
+		}
+		ok := false
+		for _, n := range Neighbors(prev) {
+			ok = ok || n.Cell == c
+		}
+		if !ok {
+			t.Fatalf("path step %v -> %v is not adjacent", prev, c)
+		}
+		prev = c
+	}
+}

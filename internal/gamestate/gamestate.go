@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"konung1.5/internal/mapdata"
 	"konung1.5/internal/resfmt"
 )
 
@@ -119,16 +120,8 @@ func Parse(data []byte) (*Game, error) {
 func (e Entity) Animated() bool { return e.Flags4&0x40 != 0 }
 
 // WorldPos converts a fine-grid row/col to the world pixel at the cell
-// centre (VA 0x00439BA0): x = col*58 + (row odd ? 29 : 58), y = row*16 + 16.
-func WorldPos(row, col int) (x, y int) {
-	x = col * 0x3A
-	if row&1 != 0 {
-		x += 0x1D
-	} else {
-		x += 0x3A
-	}
-	return x, row*0x10 + 0x10
-}
+// centre; see mapdata.CellCenter.
+func WorldPos(row, col int) (x, y int) { return mapdata.CellCenter(mapdata.Cell{Row: row, Col: col}) }
 
 // Placed is an entity with its resolved fine-grid position.
 type Placed struct {

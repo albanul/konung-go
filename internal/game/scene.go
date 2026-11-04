@@ -9,6 +9,8 @@ import (
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/resfmt"
@@ -56,6 +58,11 @@ type startScene struct {
 	shadowLayer    *ebiten.Image
 	camX, camY     int
 	tick           int
+
+	hero     *hero // nil when the player does not start on this map
+	walk     *mapdata.WalkGrid
+	occupied map[mapdata.Cell]bool // cells held by NPCs and creatures
+	follow   bool                  // camera follows the hero (toggle with F)
 }
 
 // loadStartScene builds the scene for map mapNumber: terrain, decorations
@@ -114,6 +121,9 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 		m:           m,
 		tiles:       make([]*ebiten.Image, len(rawTiles)),
 		shadowLayer: ebiten.NewImage(ScreenWidth, ScreenHeight),
+		walk:        walk,
+		occupied:    map[mapdata.Cell]bool{},
+		follow:      true,
 	}
 	// Only upload tiles the map references; slot 304 is a large non-tile image.
 	useTile := func(slot int) {
@@ -171,11 +181,20 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 			depth:  sp.Depth,
 		})
 	}
-	// Characters and creatures, each with its idle loop. Center the camera on
-	// the player (group 0's first entity) when it starts here.
+	// Characters and creatures, each with its idle loop. The player (group
+	// 0's first entity) is controllable and drawn separately.
 	camX, camY := s.worldW/2, s.worldH/2
 	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
+	uploadSprite := func(sp *resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image) { return upload(sp.Image, sp.Shadow) }
 	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
+		if p.Group == 0 && p.Index == game.Groups[0].First {
+			if s.hero, err = loadHero(game, p, objectsData, graphData, tables, uploadSprite); err != nil {
+				return nil, err
+			}
+			camX, camY = gamestate.WorldPos(p.Row, p.Col)
+			continue
+		}
+		s.occupied[mapdata.Cell{Row: p.Row, Col: p.Col}] = true
 		anim, err := game.LoadAnimation(p, objectsData, graphData, tables)
 		if err != nil {
 			log.Printf("%s: %v", gamePath, err)
@@ -187,9 +206,6 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath string, g
 			o.frames = append(o.frames, sceneFrame{img: img, shadow: sh, x: f.X, y: f.Y, sx: f.SX, sy: f.SY})
 		}
 		s.objects = append(s.objects, o)
-		if p.Group == 0 && p.Index == game.Groups[0].First {
-			camX, camY = gamestate.WorldPos(p.Row, p.Col)
-		}
 	}
 	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
 	s.centerOn(camX, camY)
@@ -206,9 +222,32 @@ func (s *startScene) clampCamera() {
 	s.camY = max(0, min(s.camY, s.worldH-ScreenHeight))
 }
 
+// blocked reports cells the hero cannot enter: walk-grid obstacles, cells
+// outside the map, and cells occupied by NPCs or creatures.
+func (s *startScene) blocked(c mapdata.Cell) bool {
+	if s.walk.Blocked(c.Row, c.Col) || s.occupied[c] {
+		return true
+	}
+	x, y := mapdata.CellCenter(c)
+	return x < 0 || y < 0 || x >= s.worldW || y >= s.worldH
+}
+
 func (s *startScene) Update() {
 	s.tick++
 	mx, my := ebiten.CursorPosition()
+	if s.hero != nil {
+		if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+			s.follow = !s.follow
+		}
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+			s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY), s.blocked)
+		}
+		s.hero.update()
+		if s.follow {
+			s.centerOn(int(s.hero.x), int(s.hero.y))
+			return
+		}
+	}
 	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) || mx < edgeScrollZone {
 		s.camX -= scrollSpeed
 	}
@@ -256,22 +295,48 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	}
 	// Shadows are unioned, then every covered pixel is halved once (0x0043E5DF).
 	s.shadowLayer.Clear()
-	for i := range s.objects {
-		f := s.objects[i].frame(s.tick)
+	drawShadow := func(f *sceneFrame) {
 		if f.shadow != nil && s.visible(f.sx, f.sy, f.shadow.Bounds().Dx(), f.shadow.Bounds().Dy()) {
 			drawAt(s.shadowLayer, f.shadow, f.sx-s.camX, f.sy-s.camY)
 		}
+	}
+	for i := range s.objects {
+		drawShadow(s.objects[i].frame(s.tick))
+	}
+	var heroFrame *sceneFrame
+	heroDepth := 0
+	if s.hero != nil {
+		f := s.hero.frame(s.tick)
+		heroFrame, heroDepth = &f, f.y+f.img.Bounds().Dy()
+		drawShadow(heroFrame)
 	}
 	op := &ebiten.DrawImageOptions{}
 	op.ColorScale.Scale(0, 0, 0, 0.5)
 	screen.DrawImage(s.shadowLayer, op)
 
-	// Objects and entities are depth-sorted by their bottom edge.
-	for i := range s.objects {
-		f := s.objects[i].frame(s.tick)
+	// Objects and entities are depth-sorted by their bottom edge; the moving
+	// hero is inserted where its own bottom edge falls.
+	drawFrame := func(f *sceneFrame) {
 		if s.visible(f.x, f.y, f.img.Bounds().Dx(), f.img.Bounds().Dy()) {
 			drawAt(screen, f.img, f.x-s.camX, f.y-s.camY)
 		}
+	}
+	for i := range s.objects {
+		if heroFrame != nil && s.objects[i].depth > heroDepth {
+			drawFrame(heroFrame)
+			heroFrame = nil
+		}
+		drawFrame(s.objects[i].frame(s.tick))
+	}
+	if heroFrame != nil {
+		drawFrame(heroFrame)
+	}
+	if s.hero != nil {
+		state := "off"
+		if s.follow {
+			state = "on"
+		}
+		ebitenutil.DebugPrintAt(screen, "Click: move   F: camera follow "+state+"   Esc: menu", 8, ScreenHeight-20)
 	}
 }
 

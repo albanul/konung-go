@@ -55,6 +55,22 @@ func TestGame0Konung1(t *testing.T) {
 	if g.Entities[0].Model != 0 {
 		t.Fatalf("hero model = %d, want 0 (Volk)", g.Entities[0].Model)
 	}
+	player := placed[0]
+	for _, e := range placed {
+		if e.Group == 0 {
+			player = e
+		}
+	}
+	for dir := 0; dir < 8; dir++ {
+		for _, typ := range []int{player.Type, player.Type + 1} { // idle 6, walk 7
+			q := player
+			q.Type, q.Variant = typ, dir
+			anim, err := g.LoadAnimation(q, objects, graph, tables)
+			if err != nil || len(anim) != 12 {
+				t.Errorf("hero type %d dir %d: %d steps, err %v", typ, dir, len(anim), err)
+			}
+		}
+	}
 	seen := map[[2]int]bool{}
 	for _, e := range placed {
 		if _, _, _, _, _, _, err := g.LoadSprite(e, objects, graph, tables); err != nil {

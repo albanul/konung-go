@@ -11,6 +11,7 @@ The executable entry point is under `cmd/konung/`; the implementation is an impo
 | `cmd/konung/main.go` | Resolve default asset paths, initialize Ebitengine, set fullscreen/window title/cursor mode, start the game loop |
 | `internal/game/menu.go` | Load menu frames, map button frames, handle keyboard/mouse input, draw the background/buttons/custom pointer |
 | `internal/game/cursor.go` | Read Type 5 sprites from the mixed `GRAPH.RES` stream after its palette area |
+| `internal/game/hero.go` | Controllable hero: idle/walk animations per facing, click-to-move path following |
 | `internal/game/scene.go` | New Game scene: viewport-culled `KONUNG.1` terrain, decorations, shadow layer, depth-sorted objects, camera scrolling, GAME.0 characters/creatures |
 | `internal/mapdata/` | Engine-independent map/terrain decoding used by the scene and `cmd/map-render` |
 | `internal/game/assets.go` | Find assets by searching upward from the process working directory and source file location |
@@ -50,7 +51,14 @@ Ebitengine's system cursor is hidden. The menu draws the game sprite at the curr
 
 The nearby cursor variants include a red barred-circle marker, parchment/speech marker, flame marker, and hand marker. Their appearances are catalogued, but their exact in-game meanings have not been confirmed by tracing the executable's cursor-selection logic.
 
-Selecting menu item 4 («Новая игра», New game) opens the `KONUNG.1` scene. It draws terrain, flat decorations, a screen-sized shadow layer (all shadows unioned, then drawn as 50% black once), and static objects plus `GAME.0` characters and creatures, sorted by bottom edge. Only on-screen items are drawn. Arrow keys, WASD, or the mouse within 8 px of a screen edge scroll the camera, which starts on the player and is clamped to the map. Characters and creatures play their idle loop, the current type/variant sequence. The step rate is 10 steps/s, and each entity is phase-offset; the original tick rate is not traced. The hero is Volk (Type 0 model 0) with a placeholder palette. `Escape` or `Backspace` returns to the menu.
+Selecting menu item 4 («Новая игра», New game) opens the `KONUNG.1` scene. It draws terrain, flat decorations, a screen-sized shadow layer (all shadows unioned, then drawn as 50% black once), and static objects plus `GAME.0` characters and creatures, sorted by bottom edge. Only on-screen items are drawn. NPCs and creatures play their idle loop at 10 steps/s, each phase-offset; the original tick rate is not traced.
+
+The player, Volk (Type 0 model 0, placeholder palette), is controllable (`internal/game/hero.go`):
+
+* **Left click** walks to the clicked spot, or to the nearest free cell when the spot is blocked. `mapdata.FindPath` runs A* on the fine grid's 8 neighbours, with costs in world pixels. It avoids walk-grid obstacles, NPC/creature cells and cells off the map. Clicking again while walking finishes the current step, then follows the new path.
+* The hero turns to face each step (`mapdata.DirectionTo`), plays the walk loop (body type 7, with equipment) while moving and the idle loop (type 6) when standing. He is depth-sorted live among objects and NPCs.
+* **F** toggles the camera following the hero; it is on by default. With follow off, the arrow keys, WASD or the mouse within 8 px of a screen edge scroll the camera. A hint line at the bottom shows the controls.
+* Walking speed is 1.6 px per update (96 px/s), a presentation choice; the original speed is not traced. NPCs don't move.
 
 ## Input behavior currently implemented
 
