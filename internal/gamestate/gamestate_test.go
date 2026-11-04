@@ -261,3 +261,21 @@ func TestStatusLines(t *testing.T) {
 		}
 	}
 }
+
+func TestSelectionMarker(t *testing.T) {
+	for hp, want := range map[int]int{1600: 178, 801: 178, 800: 126, 401: 126, 400: 172, 0: 172} {
+		if got := SelectionMarker(Entity{HP: hp}); got != want {
+			t.Errorf("HP %d: slot %d, want %d", hp, got, want)
+		}
+	}
+	// A full walk cycle (12 steps) carries the marker about one cell: E 58 px, S 32 px.
+	if dx, dy := SelectionOffset(4, 11, true); dx != -29+55 || dy != -16 {
+		t.Errorf("E step 11: %d,%d", dx, dy)
+	}
+	if dx, dy := SelectionOffset(6, 11, true); dx != -29 || dy != -16+27 {
+		t.Errorf("S step 11: %d,%d", dx, dy)
+	}
+	if dx, dy := SelectionOffset(5, 3, false); dx != -29 || dy != -16 {
+		t.Errorf("idle: %d,%d", dx, dy)
+	}
+}

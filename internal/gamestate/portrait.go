@@ -92,3 +92,55 @@ func HUDButtonSlots(hero Entity) [7]int {
 	}
 	return b
 }
+
+// Selection marker (0x00426146): every member of the selection list
+// 0x0083B93C gets an ellipse drawn flat under its feet, in the terrain pass
+// before the ground items. The colour follows HP (int16 +0x5C): ≤ 400 red
+// (INTR slot 172), ≤ 800 yellow (126), otherwise green (178).
+const (
+	selectionRed    = 172
+	selectionYellow = 126
+	selectionGreen  = 178
+)
+
+// SelectionMarker returns the INTR slot of e's selection ellipse.
+func SelectionMarker(e Entity) int {
+	switch {
+	case e.HP <= 400:
+		return selectionRed
+	case e.HP <= 800:
+		return selectionYellow
+	}
+	return selectionGreen
+}
+
+// SelectionOffset returns the marker's top-left relative to the entity's
+// cell centre: (−29, −16), moved along the facing while the entity walks
+// (type 7 or 1) by its animation step s (jump table 0x00426420): W/E 5·s,
+// N/S 2·s + s/2 vertically, diagonals 2·s + s/2 across and s + s/2 down/up.
+func SelectionOffset(facing, step int, walking bool) (dx, dy int) {
+	dx, dy = -29, -16
+	if !walking {
+		return dx, dy
+	}
+	long, short := 2*step+step/2, step+step/2
+	switch facing & 7 {
+	case 0: // W
+		dx -= 5 * step
+	case 1: // NW
+		dx, dy = dx-long, dy-short
+	case 2: // N
+		dy -= long
+	case 3: // NE
+		dx, dy = dx+long, dy-short
+	case 4: // E
+		dx += 5 * step
+	case 5: // SE
+		dx, dy = dx+long, dy+short
+	case 6: // S
+		dy += long
+	case 7: // SW
+		dx, dy = dx-long, dy+short
+	}
+	return dx, dy
+}

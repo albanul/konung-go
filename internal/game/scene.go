@@ -456,6 +456,23 @@ func (s *startScene) dropHeld(hero *gamestate.Entity) {
 	}
 }
 
+// drawSelection draws the selection ellipse under the hero (the port's
+// selection list), like 0x00426146: before the ground items, flat, coloured
+// by HP and following the walk animation.
+func (s *startScene) drawSelection(dst *ebiten.Image) {
+	if s.hero == nil || len(s.party) == 0 {
+		return
+	}
+	img := s.hud.slot(gamestate.SelectionMarker(s.party[0]))
+	if img == nil {
+		return
+	}
+	step := min(s.hero.stepT/walkTicksPerStep, s.hero.walkSteps()-1)
+	dx, dy := gamestate.SelectionOffset(int(s.hero.dir), step, s.hero.walking)
+	x, y := mapdata.CellCenter(s.hero.cell)
+	drawAt(dst, img, x+dx-s.camX, y+dy-s.camY)
+}
+
 // windowClick handles a left click on the character window's doll boxes
 // (hotspots 8–18, click handler 0x00422864; 19, the in-hand box, is not
 // ported) and returns a message VA or 0.
@@ -626,6 +643,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 			drawAt(screen, t, d.X-s.camX, d.Y-s.camY)
 		}
 	}
+	s.drawSelection(screen)
 	s.drawPiles(screen)
 	// Shadows are unioned, then every covered pixel is halved once (0x0043E5DF).
 	s.shadowLayer.Clear()

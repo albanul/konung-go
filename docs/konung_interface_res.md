@@ -38,6 +38,8 @@ Decoder: `resfmt.ParseInterface`, `InterfaceRes.Slot`, `InterfaceRes.Image`. Tes
 
 **Selection.** Members in the selection list `0x0083B93C` (10 entries, `0x00411708`) get slot 173 drawn over the portrait.
 
+**Selection ellipse on the map (`0x00426146`, verified).** In the terrain pass, before the ground items, each selected member gets a flat 56×32 ellipse drawn with its INTR palette (`0x0043E242`). The colour follows HP (`+0x5C`): ≤ 400 slot 172 (red), ≤ 800 slot 126 (yellow), otherwise slot 178 (green). The top-left is the entity's position (`+0xE8`, `+0xF0`, the cell centre) + (−29, −16). While the entity walks (type 7 or 1) it moves along the facing by the step s (`+0x10`), jump table `0x00426420`: W/E ∓5s; N/S ∓(2s + s/2); diagonals ±(2s + s/2) across and ±(s + s/2) up or down. Code: `gamestate.SelectionMarker`, `SelectionOffset`, `startScene.drawSelection` (the hero is the port's whole selection).
+
 **HP bar.** Only drawn when HP ≠ 0.
 * Height = HP · H / 1600, at least 1; H = 40 (800) / 32 (640), from `0x00462F34`.
 * Slot: `0xAF` if poisoned (`+0x50` ≠ 0); otherwise `0xB0` (red) at ≤ 400, `0xB1` (yellow) at ≤ 800, else `0xAE` (green).

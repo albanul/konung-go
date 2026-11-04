@@ -114,6 +114,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x007AA2DC`, `0x00421BB8` | buffer, routine | Map exits (`GAME.N` section 4); exit taken at walk end | [GAME.N](konung_game_format.md#file-layout-verified) |
 | `0x00A3E764`, `0x00A3E6DC` | globals | Game speed 0–2 (extra ticks per frame); mouse buttons (bit 0x01 left, 0x02 right) | [menu](konung_menu.md) |
 | `0x00423E26`, `0x00414E64`, `0x00415504`, `0x004371D2`, `0x004138C8` | routines | Right click on a bag cell; misc item use (shovel case 24); quick bag toggle; drop an item on the ground | [character window](konung_character_window.md#right-click-and-the-quick-bag), [ground items](konung_ground_items.md) |
+| `0x00426146`, `0x00426420` | code, data | Selection ellipses under selected members (INTR 172/126/178 by HP); walk offset jump table | [interface](konung_interface_res.md) |
 | `0x0042C914`, `0x0043FD18` | routines | Bag cell tint; palette tint | [character window](konung_character_window.md#bag-strip-0x0042f50c) |
 | `0x004290AC`, `0x0042DBBC` | routines | Press a HUD button for one loop pass; window draw dispatcher (table `0x0042F4C8`, index = arg + 1) | [interface](konung_interface_res.md) |
 | `0x0046281C`, `0x00462B1C` | data | Combat-stance equipment draw order: 4 actions × 8 facings × 6 `int32` (bow-drawn variant) | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
