@@ -244,7 +244,8 @@ func (s *startScene) Update() {
 		}
 		s.hero.update()
 		if s.follow {
-			s.centerOn(int(s.hero.x), int(s.hero.y))
+			x, y := s.hero.position()
+			s.centerOn(int(x), int(y))
 			return
 		}
 	}

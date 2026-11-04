@@ -56,9 +56,9 @@ Selecting menu item 4 («Новая игра», New game) opens the `KONUNG.1` s
 The player, Volk (Type 0 model 0, placeholder palette), is controllable (`internal/game/hero.go`):
 
 * **Left click** walks to the clicked spot, or to the nearest free cell when the spot is blocked. `mapdata.FindPath` runs A* on the fine grid's 8 neighbours, with costs in world pixels. It avoids walk-grid obstacles, NPC/creature cells and cells off the map. Clicking again while walking finishes the current step, then follows the new path.
-* The hero turns to face each step (`mapdata.DirectionTo`), plays the walk loop (body type 7, with equipment) while moving and the idle loop (type 6) when standing. He is depth-sorted live among objects and NPCs.
+* Like the original, the hero moves **one fine cell per walk cycle**. During a step he stays anchored on the cell he is leaving, and the walk frames' per-step anchors carry the body toward the next cell; at the end of the 12-step cycle he snaps to it. An earlier version also interpolated the position, which doubled the motion and made him jump back every cell. He faces each step via the grid's neighbour table, plays the walk loop (body type 7, with equipment) while moving and the idle loop (type 6) when standing, and is depth-sorted live among objects and NPCs. The camera follows a smoothed position.
 * **F** toggles the camera following the hero; it is on by default. With follow off, the arrow keys, WASD or the mouse within 8 px of a screen edge scroll the camera. A hint line at the bottom shows the controls.
-* Walking speed is 1.6 px per update (96 px/s), a presentation choice; the original speed is not traced. NPCs don't move.
+* Walking speed comes from the walk tick rate: `walkTicksPerStep` = 4 gives 0.8 s per cell (about 72 px/s east–west, 40 px/s north–south). The original tick rate is not traced. NPCs don't move.
 
 ## Input behavior currently implemented
 

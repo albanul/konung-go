@@ -67,7 +67,7 @@ Body records come in two sets of six types: 0–5, and 6–11 with the same layo
 | Type | Steps | Meaning |
 |---|---|---|
 | 6 (0) | 12, 6 frames held 2 steps each | idle |
-| 7 (1) | 12 distinct frames | **walk** (verified visually; the game scene uses it) |
+| 7 (1) | 12 distinct frames | **walk**. The anchor records carry one cell of displacement per cycle, e.g. facing E: image dx −14 → +32 over the 12 steps; S: dy −77 → −47; NE: (−16, −79) → (6, −93). Snapping to the next cell continues the motion seamlessly (E: last step +32, next cycle starts at 58 − 14 = +44, a normal step). So a walking character advances one fine cell per walk cycle. |
 | 8 (2) | 7 | unknown (repeats frames; possibly hit/death) |
 | 9 (3), 10 (4), 11 (5) | 12 | unknown (possibly actions/attacks) |
 
