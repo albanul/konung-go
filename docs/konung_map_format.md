@@ -34,6 +34,8 @@ Rows are drawn top to bottom and columns left to right. Layer 0 is drawn, then l
 
 Validation: `go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png` produces a seamless 3886 × 3712 terrain image: coast and sea along the top, a branching river, and a road on the right. `go test ./internal/konungmap` checks the extents and that every referenced tile decodes.
 
+`go run ./cmd/map-render -all output/maps` renders all 43 installed maps to `konung_NN.png` plus a browsable `index.html`. All of them parse and render without missing tiles. Extents range from 10 × 23 cells (`KONUNG.6`) to 80 × 67 (`KONUNG.36`, the full 80-column width).
+
 ## Open questions
 
 * Object/building/NPC placement (sections at `0x12C00` and `0x16A80`) and their draw order relative to terrain.

@@ -1,200 +1,98 @@
-# Исследование и формат ресурсов игры «Князь» (Konung: Legends of the North .RES)
+# Konung `.RES` formats
 
-В данном документе описан процесс обратной разработки (reverse engineering) исполняемого файла `konung.exe`, анализ структуры ресурсов `.RES` (в частности `FLAMES.RES`), выявленные форматы данных и инструкции по работе с парсером.
+Specification of the `.RES` container and image formats used by «Князь: Легенды лесной страны». Per-file catalogs live elsewhere: [menu frames](konung_menu_res.md), [GRAPH.RES layout](konung_graph_sprites.md), [map files](konung_map_format.md), [sprite index](konung_sprite_index.md).
 
----
+## Common block header
 
-## 1. Контекст и предыстория
+Every block starts with 8 bytes:
 
-Исходный парсер (`cmd/res-parser/main.go`) пытался прочитать `FLAMES.RES` как стандартный архивный файл (подобно PAK/TAR) со следующими предположениями:
-1. Заголовок архива содержит 4-байтовое число файлов в формате Big-Endian (`binary.BigEndian`).
-2. Далее следует таблица пар `Offset` и `Size` (также Big-Endian uint32).
-3. Затем по этим смещениям извлекаются файлы (например, `.tga`).
+| Field | Type | Notes |
+|---|---|---|
+| `Tag` | `uint32` **big-endian** | Block type: 0, 1, 2, 5, 8 observed |
+| `Size` | `uint32` little-endian | Payload length. For Type 5 it excludes the header; for `GRAPH.RES` Type 0 blocks it includes the header. Check per format. |
 
-### Почему это не сработало:
-* **Порядок байт (Endianness)**: Игра разработана под Windows / x86, все внутренние числа хранятся в **Little-Endian**.
-* **Случайное совпадение**: Первые 4 байта файла `FLAMES.RES` равны `00 00 00 05`. При чтении через `BigEndian` получилось число `5`, которое парсер ошибочно принял за количество файлов.
-* **Ошибка выхода за пределы (EOF)**: Следующие байты `fa 35 01 00` при чтении как BigEndian дали смещение `4 197 777 664` (более 4 ГБ). Попытка выполнить `Seek` в файле размером 1.5 МБ немедленно вызвала `EOF`.
-* **Природа файла**: `FLAMES.RES` — это **не архив с файлами**, а графический ресурс со спрайтами/кадрами анимаций огня.
+All other multi-byte values are little-endian (32-bit x86).
 
----
+**Pitfall:** `FLAMES.RES` starts with `00 00 00 05`. Read as a big-endian count, this looks like "5 files", and the next bytes then give a >4 GB offset. These files are not archives with a file table: Type 5 files are flat frame sequences.
 
-## 2. Процесс реверс-инжиниринга
+## File families
 
-### Шаг 1: Анализ структуры PE-файла (`konung.exe`)
-1. С помощью Python был распарсен PE-заголовок `konung.exe`:
-   * `ImageBase`: `0x400000`
-   * Секция кода `BEGTEXT`: RVA `0x10000`, смещение в файле `0x400`
-   * Секция данных `DGROUP`: RVA `0x50000`, смещение в файле `0x38200`
-2. Поиск строки `FLAMES.RES` обнаружил строку по виртуальному адресу (VA) `0x45077f` (рядом со строкой ошибки `"No file FLAMES.RES"` по адресу `0x45078a`).
-3. Поиск ссылок на адрес строки привёл к коду инициализации/загрузки по адресу `VA 0x43ba50` (смещение в файле `0x2be50`).
+| Tag | Files | Contents |
+|---|---|---|
+| 5 | `FLAMES.RES`, `MENU640R.RES`, `MENU800R.RES`, `SAVE640R.RES`, `SAVE800R.RES`, `NEWH640R.RES`, `NEWH800R.RES` | Sequential Type 5 RGB555 frames, no file header |
+| 1 | `SOUNDS.RES`, `MUSICS.RES`, `OBJECTS.RES`, `INTR640R.RES`, `Intr800r.res` | Containers with an offset/size table (layout differs per file; see below) |
+| — | `GRAPH.RES` (14.5 MB) | Starts with palettes (`00 00 E0 03`…), then mixed blocks. See [GRAPH.RES layout](konung_graph_sprites.md). |
 
-### Шаг 2: Дизассемблирование загрузчика `FLAMES.RES` (`0x43ba50`)
-Анализ инструкций показал следующий алгоритм:
-1. Открывается файл `FLAMES.RES`.
-2. Запускается цикл с счётчиком кадров:
-   ```x86asm
-   0x0043babe: cmp dword ptr [ebp-4], 0x4a   ; 0x4a = 74 кадра!
-   0x0043bac2: jge loop_end
-   ```
-3. Для каждого кадра вызывается чтение 8 байт:
-   ```x86asm
-   push 8
-   push 0x00a53994       ; буфер для 8-байтового заголовка кадра
-   push [ebp-8]          ; дескриптор файла
-   call fread
-   ```
-4. Второй 4-байтный dword заголовка (`[0x00a53998]`) содержит **размер сжатых данных кадра**:
-   ```x86asm
-   push dword ptr [0x00a53998] ; размер данных
-   push [ebp-12]               ; буфер для кадра
-   push [ebp-8]                ; дескриптор файла
-   call fread
-   ```
-5. Проверка по всему файлу подтвердила: 74 последовательных блока заголовков и сжатых данных в сумме дают ровно **1 533 070 байт** — точный размер файла `FLAMES.RES`.
+## Type 5 frame (RGB555 row-RLE)
 
-### Шаг 3: Анализ структуры кадра и функции отрисовки (`0x43d8e7`)
-В функции отрисовки спрайтов исследованы инструкции распаковки:
-1. Первые 4 байта данных кадра:
-   ```x86asm
-   movzx eax, word ptr [esi]   ; Width (uint16)
-   movzx edi, word ptr [esi+2] ; Height (uint16)
-   ```
-2. Далее следует таблица из `Height` 16-битных чисел (`[Height]uint16`), задающих размер упакованных данных для каждой горизонтальной строки.
-3. Далее идут сами данные строк. Алгоритм декодирования строки:
-   * Читается знаковый байт команды `cmd = int8(*src++)`:
-     * `cmd == 0`: Конец строки.
-     * `cmd < 0`: Прозрачный блок. Число пропускаемых пикселей: `cmd & 0x7F`.
-     * `cmd > 0`: Непрозрачный блок. Число пикселей: `cmd`. Следующие `cmd * 2` байт — 16-битные значения цветов пикселей.
+Loader evidence: `FLAMES.RES` loader at VA `0x0043BA50` reads an 8-byte header to `0x00A53994`, then `[0x00A53998]` bytes of frame data, for 74 frames (`cmp [ebp-4], 0x4A` at `0x0043BABE`). 74 header+payload pairs sum exactly to the 1,533,070-byte file. The decoder logic comes from the draw routine at VA `0x0043D8E7`.
 
-### Шаг 4: Определение формата цвета (RGB 555)
-Анализ функции коррекции палитры под 15/16-битные режимы (`0x427d9c`) и проверка значений цветов огня (максимальные значения `0x7EC4`):
-* `0x7EC4` в двоичном виде: `0 11111 10110 00100`
-  * Биты 14..10 (5 бит): Красный = 31 (`0x1F`) -> ярко-красный (255)
-  * Биты 9..5 (5 бит): Зелёный = 22 (`0x16`) -> оранжевый/жёлтый (180)
-  * Биты 4..0 (5 бит): Синий = 4 (`0x04`) -> слабый синий (32)
-* Итог: формат **RGB 555 (15 бит)**:
-  ```go
-  r := uint8(((val >> 10) & 0x1F) * 255 / 31)
-  g := uint8(((val >> 5) & 0x1F) * 255 / 31)
-  b := uint8((val & 0x1F) * 255 / 31)
-  ```
+Payload:
 
----
+| Field | Type | Notes |
+|---|---|---|
+| `Width` | `uint16` | pixels |
+| `Height` | `uint16` | pixels |
+| `RowSizes` | `[Height]uint16` | packed byte length of each row |
+| `PixelStream` | bytes | rows `0..Height-1`, decoded independently |
 
-## 3. Классификация файлов `.RES` в игре «Князь»
+Row commands (signed byte `cmd`):
 
-В ходе анализа каталога `assets/Konung/` выявлены следующие типы ресурсов:
+* `cmd == 0`: end of row.
+* `cmd < 0`: skip `cmd & 0x7F` transparent pixels.
+* `cmd > 0`: `cmd` opaque pixels follow as `uint16` RGB555 values.
 
-| Тип | Сигнатура первых 4 байт | Примеры файлов | Назначение |
-|---|---|---|---|
-| **Type 5 (Графика / Анимация)** | `00 00 00 05` | `FLAMES.RES`, `MENU640R.RES`, `MENU800R.RES`, `SAVE640R.RES`, `SAVE800R.RES`, `NEWH640R.RES`, `NEWH800R.RES` | Кадры интерфейса, меню и анимаций, сжатые по строкам RLE-алгоритмом с форматом пикселей RGB 555 |
-| **Type 1 (Контейнеры файлов)** | `00 00 00 01` | `SOUNDS.RES`, `MUSICS.RES`, `OBJECTS.RES`, `INTR640R.RES`, `Intr800r.res` | Архивы звуков, музыки и игровых объектов. Содержат таблицу смещений и размеров пар (`Size`, `Offset`) в Little-Endian |
-| **Ландшафтная графика** | `00 00 e0 03` | `GRAPH.RES` (14.5 МБ) | Наборы тайлов карты и земли |
+RGB555 → RGBA: `R = ((v>>10)&31)*255/31`, `G = ((v>>5)&31)*255/31`, `B = (v&31)*255/31`, `A = 255`. Evidence: the palette-correction routine at `0x00427D9C` handles 15/16-bit modes, and the brightest flame value `0x7EC4` decodes to R 31, G 22, B 4 (orange) only as 555. The game also has an RGB565 path, so verify masks before assuming a pixel format for new data.
 
-Подробная карта кадров `MENU640R.RES` и `MENU800R.RES` с offsets, размерами и прочитанными названиями кнопок приведена в [каталоге меню ресурсов](konung_menu_res.md).
+Decoder: `resource.DecodeRLEFrame`, `resource.LoadType5File`.
 
----
+## Indexed row-RLE (GRAPH terrain, OBJECTS, Type 0)
 
-## 3.1 `GRAPH.RES`
+Same header (`Width`, `Height`, `RowSizes`). Each row: a byte with the high bit set skips `n & 0x7F` transparent pixels, `0` ends the row, and otherwise `n` 8-bit palette indices follow. Palettes are 256 RGB555 words taken from the start of `GRAPH.RES` (palette `p` at byte `p*512`). The colour `0x7C1F` (magenta) is transparent. Decoders: `resource.DecodeIndexedRLEFrame` (plus a legacy fallback, `DecodeIndexedRLELegacyFrame`), `resource.RGB555Palette`.
 
-`GRAPH.RES` contains terrain graphics and mixed resource blocks; it is not a flat Type 5 stream. The confirmed palette layout and leading sprite inventory, including the sword cursor, are documented in the [GRAPH.RES sprite catalog](konung_graph_sprites.md).
+## `OBJECTS.RES`
 
----
+8-byte header, then 512 × `(offset, size)` entries at `0x8..0x1007`; offsets are relative to `0x1008`. 0-based slots 0–29 are animated Type 2 blocks; later slots are static images. See [start-location notes](konung_start_location.md#objectsres-image-path-and-object-lookup) and [exe loader](konung_exe_resource_loaders.md#objectsres-loader). Decoder for static entries: `resource.DecodeStaticObject`.
 
-## 4. Спецификация формата Type 5 (на примере `FLAMES.RES`)
+## `SOUNDS.RES` / `Sounds_.res`
 
-### Структура файла
-Файл состоит из N кадров, расположенных друг за другом без общего заголовка файла.
+8-byte header (tag 1 BE, data-section size LE), then exactly 1000 `(offset, size)` LE pairs. Offsets are relative to the data start at byte 8008. An unused entry is `FFFFFFFF FFFFFFFF`. Payloads are PCM: mono, 16-bit, 22,050 Hz, matching CTPAX-X `knsfxres.c`. Decoder: `resource.LoadSoundEntries`, `SoundEntry.WriteWAV`.
 
-```text
-+--------------------------------------------------------+
-| Кадр 0                                                 |
-|   - Заголовок (8 байт)                                 |
-|   - Данные кадра (CompressedSize байт)                 |
-+--------------------------------------------------------+
-| Кадр 1                                                 |
-|   ...                                                  |
-+--------------------------------------------------------+
-| Кадр N-1                                               |
-+--------------------------------------------------------+
-```
+## `FLAMES.RES` frame groups
 
-### Заголовок кадра (8 байт)
-| Поле | Тип | Размер | Описание |
-|---|---|---|---|
-| `Tag` | `uint32` (BE) | 4 байта | Всегда равен `5` (`0x00000005`) |
-| `Size` | `uint32` (LE) | 4 байта | Длина упакованных данных кадра в байтах |
+| Frames | Size | Content |
+|---|---|---|
+| 0–10 | 256 × 195 | Large bonfire |
+| 11–21 | 120 × 90 | Medium flame |
+| 22–32 | 100 × 130 | Torch, type 1 |
+| 33–43 | 93 × 130 | Torch, type 2 |
+| 44–54 | 100 × 130 | Torch, type 3 |
+| 55–59 | 38 × 31 | Candle / small flame |
+| 60–73 | 96 × 72 | Fire strip / hearth |
 
-### Данные кадра (`Size` байт)
-| Поле | Тип | Размер | Описание |
-|---|---|---|---|
-| `Width` | `uint16` (LE) | 2 байта | Ширина изображения в пикселях |
-| `Height` | `uint16` (LE) | 2 байта | Высота изображения в пикселях |
-| `RowSizes` | `[Height]uint16` (LE) | `Height * 2` байт | Длина упакованных данных для каждой строки |
-| `PixelStream` | `[]byte` | Переменная | Поток RLE-команд для строк `0 .. Height-1` |
+Content names are visual descriptions.
 
-### RLE-команды строки
-Каждая строка декодируется независимо. Читается знаковый байт `cmd` (`int8`):
-* `cmd == 0`: Конец текущей строки. Переход к следующей строке.
-* `cmd < 0`: Прозрачные пиксели. Количество: `cmd & 0x7F`. Смещение координаты `x += (cmd & 0x7F)`. В результирующем изображении альфа-канал равен `0`.
-* `cmd > 0`: Непрозрачные пиксели. Количество: `cmd`.
-  * Читаются следующие `cmd` значений `uint16` (Little-Endian).
-  * Значение переводится из 15-битного RGB 555 в 32-битный RGBA:
-    * $R = ((val \gg 10) \ \& \ 0x1F) \times 255 / 31$
-    * $G = ((val \gg 5) \ \& \ 0x1F) \times 255 / 31$
-    * $B = (val \ \& \ 0x1F) \times 255 / 31$
-    * $A = 255$
-  * `x += cmd`.
+## Code coverage
 
----
+| Data | Code |
+|---|---|
+| Type 5 frames and files | `internal/resource/rle.go` |
+| Indexed RLE, palettes | `internal/resource/indexed.go` |
+| Static OBJECTS entries, `GRAPH.RES` Type 0 frames | `internal/resource/objects.go` |
+| Sounds | `internal/resource/sound.go` |
+| `GRAPH.RES` leading Type 5 sprites | `internal/konungmenu/graph.go` |
+| `GRAPH.RES` terrain tiles, `KONUNG.N` terrain | `internal/konungmap/` |
+| Bulk extraction (all OBJECTS frames, Type 0 blocks) | `cmd/sprite-catalog` (has its own Type 0 walker) |
 
-## 5. Состав кадров в `FLAMES.RES`
+There is no single CLI that extracts every mixed `GRAPH.RES` block yet.
 
-В `FLAMES.RES` упаковано 74 кадра, разбитых на следующие анимации:
-
-1. **Кадры 0–10** (11 кадров): `256 × 195` — большой костёр.
-2. **Кадры 11–21** (11 кадров): `120 × 90` — среднее пламя.
-3. **Кадры 22–32** (11 кадров): `100 × 130` — факел (тип 1).
-4. **Кадры 33–43** (11 кадров): `93 × 130` — факел (тип 2).
-5. **Кадры 44–54** (11 кадров): `100 × 130` — факел (тип 3).
-6. **Кадры 55–59** (5 кадров): `38 × 31` — свеча / маленький огонёк.
-7. **Кадры 60–73** (14 кадров): `96 × 72` — полоса огня / очаг.
-
----
-
-## 6. Использование распаковщика (`cmd/res-parser`)
-
-Код распаковщика находится в файле [cmd/res-parser/main.go](../cmd/res-parser/main.go).
-
-### Запуск (в среде DevContainer или хост-системе с Go)
+## Tools
 
 ```bash
-# Распаковка анимации огня
-go run cmd/res-parser/main.go assets/Konung/FLAMES.RES output_flames
-
-# Распаковка экрана меню 640x480
-go run cmd/res-parser/main.go assets/Konung/MENU640R.RES output_menu640
-
-# Распаковка экрана загрузки/сохранения
-go run cmd/res-parser/main.go assets/Konung/SAVE640R.RES output_save640
+go run cmd/res-parser/main.go assets/Konung/FLAMES.RES output/flames     # Type 5 → frame_000.png …
+go run cmd/res-parser/main.go assets/Konung/MENU640R.RES output/menu640
 ```
 
-Кадры сохраняются в формате PNG с прозрачным фоном (`frame_000.png`, `frame_001.png`, ...).
+## External references
 
-## 7. Набор парсеров для дальнейшей работы
-
-Архив [CTPAX-X Konung tools](https://www.ctpax-x.org/index.php?goto=files&lang=en&show=147) содержит четыре исходных экстрактора: меню/Type 5, `GRAPH.RES`, `OBJECTS.RES` и `SOUNDS.RES` / `Sounds_.res`. В проекте покрытие сейчас такое:
-
-| Данные | Реализация | Примечание |
-|---|---|---|
-| Type 5 (меню, FLAMES, отдельные GRAPH кадры) | `internal/resource/rle.go` | Общий декодер кадров и последовательных Type 5 файлов. |
-| Ведущие GRAPH Type 5 спрайты | `internal/konungmenu/graph.go` | Читает смешанный GRAPH после 128 KiB палитр. Каталог проверенных кадров — [здесь](konung_graph_sprites.md). |
-| Indexed RLE | `internal/resource/indexed.go` | Общий декодер для GRAPH terrain, OBJECTS и Type 0. |
-| GRAPH terrain tiles, карты `KONUNG.N` | `internal/konungmap/` | Без зависимости от `ebiten`; см. [формат карт](konung_map_format.md) и `cmd/map-render`. |
-| Статические OBJECTS, кадры Type 0 | `internal/konungmenu/startscene.go` | Привязаны к `ebiten`; кандидаты на перенос в `internal/resource`. Полный индекс ресурсов — [здесь](konung_sprite_index.md). |
-| Звуковой каталог и WAV заголовки | `internal/resource/sound.go` | Читает 1000 записей и собирает PCM WAV (mono, 16-bit, 22050 Hz), как CTPAX-X `knsfxres.c`. |
-
-Таким образом, основные форматы для последующего чтения обнаружены и покрыты помощниками, включая отсутствовавший ранее sound archive reader. Полного CLI экстрактора всех `OBJECTS.RES` кадров и всех mixed-блоков `GRAPH.RES` в проекте пока нет: текущий код умеет разбирать нужные для сцены записи, а TSV индекс уже содержит инвентаризацию файлов. Источники CTPAX-X являются независимой сверкой структуры; при расширении общего экстрактора нужно валидировать блоки по установленным игровым данным.
-
-Для звукового ресурса заголовок занимает 8 байт: tag `uint32 BE` (1), размер секции данных `uint32 LE`. За ним идут ровно 1000 пар `(offset,size)` в `uint32 LE`; offset относителен к началу данных после каталога (байтовое смещение 8008). Неиспользуемая запись имеет `FFFFFFFF FFFFFFFF`. Полученный payload можно передать `SoundEntry.WriteWAV`.
+* [CTPAX-X Konung tools](https://www.ctpax-x.org/index.php?goto=files&lang=en&show=147): menu/Type 5, `GRAPH.RES`, `OBJECTS.RES`, and sound extractors. Use them as an independent cross-check, and validate any structure against the installed files.

@@ -45,7 +45,7 @@ The external [CTPAX-X object extractor source](https://www.ctpax-x.org/index.php
 * Adjacent frame/shadow offsets are XOR-swapped in the stored table; the first image is decoded with the indexed RLE format. Palette assignments for the first 24 object entries are listed in the extractor source.
 * Transparent object pixels use RGB555 magenta `0x7C1F`.
 
-Entry 15 uses palette 152 and entry 16 uses palette 159. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes changes which object is selected. Static entries (≥ 30) have a `0x100`-byte header whose dword at `+20` is the palette byte offset; image data follows the header (`decodeStaticObjectFrame`). The scene reads `GRAPH.RES` and `OBJECTS.RES` directly, without extracted image files.
+Entry 15 uses palette 152 and entry 16 uses palette 159. Entry IDs must use the table's first dword as the offset; shifting the table by four bytes changes which object is selected. Static entries (≥ 30) have a `0x100`-byte header whose dword at `+20` is the palette byte offset; image data follows the header (`resource.DecodeStaticObject`). The scene reads `GRAPH.RES` and `OBJECTS.RES` directly, without extracted image files.
 
 ## Remaining map and runtime work
 

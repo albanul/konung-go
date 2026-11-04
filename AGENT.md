@@ -6,6 +6,21 @@ This repository reimplements parts of the 1999 game «Князь: Легенды
 
 Use the existing findings as a starting point. Before reverse engineering anything, check the task map below and the referenced document; afterwards, record verified findings there so the work is not repeated.
 
+## Working loop (fast path)
+
+1. **Orient (≤ 5 min).** Find your row in the task map. Read only that doc plus the open questions. Don't re-derive anything a doc marks as verified.
+2. **Clarify scope** when a request could mean "faithful port" or "visual preview". Those differ by hours of RE work, so ask.
+3. **Trace, don't guess.** Find the loader (file-read buffer) → consumer (code that reads the buffer) → draw/parse routine. Record VAs as you go.
+4. **Prototype engine-free.** Decode in `internal/resource` or `internal/konungmap`, render to PNG with a small `cmd/` tool or a temporary test, and look at the image. Ebitengine can't run in the container (no display).
+5. **Integrate** into the Ebitengine package as a thin consumer.
+6. **Done means:**
+   * `go build ./...`, `go vet` and `go test ./...` pass in the container.
+   * A new decoder has an asset-backed test that skips when assets are missing.
+   * Docs are updated: the topic doc, plus the task map, resource overview, code map, open questions, and the [exe lookup table](docs/konung_exe_resource_loaders.md#known-routines-and-buffers) for new VAs.
+   * Superseded claims are removed.
+   * Temporary files are deleted.
+   * Nothing is committed unless the user asks.
+
 ## Task map: where to start
 
 | If you are working on… | Read first | Code |
@@ -14,8 +29,8 @@ Use the existing findings as a starting point. Before reverse engineering anythi
 | Map terrain, map sections, camera/projection | [Map format](docs/konung_map_format.md) | `internal/konungmap/`, `cmd/map-render/` |
 | The New Game scene (terrain + preview house/warrior) | [Menu & scene implementation](docs/konung_menu.md), [Start location](docs/konung_start_location.md) | `internal/konungmenu/startscene.go` |
 | Main menu, buttons, cursor | [Menu implementation](docs/konung_menu.md), [Menu RES catalog](docs/konung_menu_res.md) | `internal/konungmenu/menu.go`, `graph.go` |
-| `GRAPH.RES` (palettes, cursors, terrain tiles, Type 0 character models) | [GRAPH.RES layout and sprites](docs/konung_graph_sprites.md) | `internal/konungmap/`, `internal/konungmenu/` |
-| `OBJECTS.RES` (buildings, animated objects) | [Start location: OBJECTS path](docs/konung_start_location.md#objectsres-image-path-and-object-lookup), [Sprite index](docs/konung_sprite_index.md) | `decodeStaticObjectFrame` in `startscene.go` |
+| `GRAPH.RES` (palettes, cursors, terrain tiles, Type 0 character models) | [GRAPH.RES layout and sprites](docs/konung_graph_sprites.md) | `konungmap.LoadTerrainTiles`, `resource.DecodeType0Frames`, `konungmenu/graph.go` |
+| `OBJECTS.RES` (buildings, animated objects) | [RES formats: OBJECTS](docs/konung_res_format.md#objectsres), [Start location: OBJECTS path](docs/konung_start_location.md#objectsres-image-path-and-object-lookup), [Sprite index](docs/konung_sprite_index.md) | `resource.DecodeStaticObject` |
 | Finding a sprite by appearance or ID | [Sprite index](docs/konung_sprite_index.md) + `docs/data/*.tsv` | `cmd/sprite-catalog/` |
 | Tracing code in `konung.exe` | [Executable loader notes](docs/konung_exe_resource_loaders.md), [RE workflow](#reverse-engineering-workflow) below | — |
 
@@ -30,15 +45,15 @@ One line per file family. Details live in the linked documents; "verified" means
 | `OBJECTS.RES` | 512-slot table; slots 0–29 animated (Type 2), others static | verified | [start location](docs/konung_start_location.md), [exe loaders](docs/konung_exe_resource_loaders.md) |
 | `KONUNG.N` | 4 sections: terrain (160×80×2 tile bytes), 320×160 flag grid, 16-byte records, unknown | terrain verified; rest open | [map format](docs/konung_map_format.md) |
 | `LIGHTS.N` | Read by the map loader; used by an alternate terrain draw path | open | [map format](docs/konung_map_format.md) |
-| `SOUNDS.RES` | Type 1 header + 1000 `(offset,size)` entries, PCM | verified via CTPAX-X + bytes | [res format §7](docs/konung_res_format.md) |
+| `SOUNDS.RES` | Type 1 header + 1000 `(offset,size)` entries, PCM | verified via CTPAX-X + bytes | [res format](docs/konung_res_format.md#soundsres--sounds_res) |
 
 ## Code map
 
 | Package / command | Responsibility |
 |---|---|
-| `internal/resource` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, sound entries |
+| `internal/resource` | Engine-independent decoders: Type 5 RGB555 RLE, indexed RLE, RGB555 palettes, static OBJECTS entries, `GRAPH.RES` Type 0 frames, sound entries |
 | `internal/konungmap` | Engine-independent `KONUNG.N` terrain parsing, `GRAPH.RES` terrain tiles, projection, full-map render |
-| `internal/konungmenu` | Ebitengine menu and New Game scene (camera, OBJECTS/Type 0 decoding for the scene) |
+| `internal/konungmenu` | Ebitengine menu and New Game scene (camera, drawing); converts decoded `image.RGBA` to `ebiten.Image` |
 | `cmd/konung` | Game entry point |
 | `cmd/map-render` | `KONUNG.N` → PNG terrain render |
 | `cmd/sprite-catalog` | Extract all indexed images into an HTML gallery under `output/sprite-catalog/` |
@@ -55,6 +70,7 @@ podman ps                                   # find <container>
 C="podman exec -w /workspaces/konung1.5 <container>"
 $C go build ./... && $C go test ./...      # asset-backed tests skip if assets are missing
 $C go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png
+$C go run ./cmd/map-render -all output/maps        # every KONUNG.N + index.html
 $C go run ./cmd/sprite-catalog
 $C go run cmd/res-parser/main.go <resource.RES> <output_directory>
 $C go run ./cmd/konung                      # needs a display; run on the host if the container has none
@@ -88,7 +104,8 @@ $C sed -n '53935,54260p' /tmp/kn/text.asm | awk -F'\t' '{print $1, $3}'   # addr
 
 * Keep this file focused on project-wide instructions and the indexes above. Detailed specs, offsets, inventories, and investigation notes belong in `docs/`.
 * One topic per document. When a new resource or subsystem is understood, add a doc, a row to the task map and resource overview, and a line in [open questions](#open-questions).
-* Write new docs in English. `docs/konung_res_format.md` is still partly Russian.
+* Write docs in English. Lead with the spec (tables, offsets, decoder names) and keep investigation history to a short evidence line or a pitfall note.
+* Each doc's code references must name the current function or package; update them when code moves.
 
 ## Open questions
 
@@ -99,4 +116,5 @@ Highest-value unknowns, roughly in priority order:
 3. `KONUNG.N` section 1 (320×160 flag grid): is it walkability?
 4. `LIGHTS.N` format and the lit terrain draw path at VA `0x004257A9`.
 5. The 64 KiB gap in `GRAPH.RES` at `0x1ED8B6`, and the second 8-byte table at VA `0x006324B8`.
-6. `KONUNG.N` ↔ in-game location names.
+6. `KONUNG.N` ↔ in-game location names. Render all maps with `map-render -all` and compare them against screenshots or the walkthrough.
+7. `cmd/sprite-catalog` has its own Type 0 walker that duplicates `resource.DecodeType0Frames`; consolidate when touching it.

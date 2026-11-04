@@ -11,7 +11,7 @@ The executable entry point is under `cmd/konung/`; the implementation is an impo
 | `cmd/konung/main.go` | Resolve default asset paths, initialize Ebitengine, set fullscreen/window title/cursor mode, start the game loop |
 | `internal/konungmenu/menu.go` | Load menu frames, map button frames, handle keyboard/mouse input, draw the background/buttons/custom pointer |
 | `internal/konungmenu/graph.go` | Read Type 5 sprites from the mixed `GRAPH.RES` stream after its palette area |
-| `internal/konungmenu/startscene.go` | New Game scene: viewport-culled `KONUNG.1` terrain, camera scrolling, preview house/warrior, OBJECTS/Type 0 decoding |
+| `internal/konungmenu/startscene.go` | New Game scene: viewport-culled `KONUNG.1` terrain, camera scrolling, preview house/warrior (decoded by `internal/resource`) |
 | `internal/konungmap/` | Engine-independent map/terrain decoding used by the scene and `cmd/map-render` |
 | `internal/konungmenu/resources.go` | Find assets by searching upward from the process working directory and source file location |
 
