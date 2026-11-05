@@ -51,8 +51,75 @@ const (
 // tick (0x004116CC; the game shares 3 among all characters).
 const creatureBudget = 3
 
+// Attack order search range (0x0041FD74 for the party, +0x1E bit 0x20): the
+// leader's cell ± (W + W/2) with W = the view's height/32 + 3 rows and
+// width/116 + 4 cols (0x00427C8C, 800×600).
+var (
+	attackRangeRows = (viewBottom-viewTop+1)/32 + 3
+	attackRangeCols = (viewRight-viewLeft+1)/116 + 4
+)
+
+// attackOrder is the A key / HUD button 5 (0x00421698): return a held item,
+// press the button, and give every living party member the melee intent
+// without a target, entering the stance. The planner then picks the nearest
+// enemy (nearestEnemy). With the bow active the game sets the shoot intent
+// (+2 = 0x44); bows are not ported, so the order does nothing then.
+func (s *startScene) attackOrder(hero *gamestate.Entity) {
+	s.hand.Return(hero)
+	s.hud.press(hudAttackButton, hudAttackImage)
+	if hero.Dead() || s.hero.act == gamestate.ActDeath || hero.WeaponMode == gamestate.WeaponBow {
+		return
+	}
+	if !hero.InStance() {
+		gamestate.ToggleStance([]*gamestate.Entity{hero})
+	}
+	s.endFight()
+	s.hero.path = s.hero.path[:min(len(s.hero.path), 1)] // finish the step in progress
+	s.pickIntent = false
+	s.melee = true
+}
+
+// gatherOrder is the F key / HUD button 4 «Все ко мне» (0x004226C0): return a
+// held item, press the button, and set every living party member other than
+// the hero to +2 = 0x60 (idle, following the leader through 0x0041F5D8). The
+// port's party is the hero alone, so only the first two steps show; the
+// hero's own intents are left alone.
+func (s *startScene) gatherOrder(hero *gamestate.Entity) {
+	s.hand.Return(hero)
+	s.hud.press(hudGatherButton, hudGatherImage)
+}
+
+// nearestEnemy is 0x0041E384's search for a new target (0x0041FD74 for the
+// party, then 0x004203A0 / 0x004202A8): among groups other than the party on
+// this map that are not villages (unless alarmed) and not of kind 0x53, the
+// living member inside the attack range closest to the hero (gamestate.Dist).
+// -1 when there is none.
+func (s *startScene) nearestEnemy() int {
+	h := s.hero.cell
+	best, bestD := -1, 1<<30
+	for _, n := range s.npcs {
+		e := &s.game.Entities[n.entity]
+		if e.Group <= 0 || !alive(&n.walker, e) {
+			continue
+		}
+		g := s.game.Groups[e.Group]
+		if (g.Kind&0x80 != 0 && g.Alarm != gamestate.AlarmAttack) || g.Kind == 0x53 {
+			continue
+		}
+		dr, dc := n.cell.Row-h.Row, n.cell.Col-h.Col
+		if max(dr, -dr) > attackRangeRows+attackRangeRows/2 || max(dc, -dc) > attackRangeCols+attackRangeCols/2 {
+			continue
+		}
+		if d := gamestate.Dist(h.Row, h.Col, n.cell.Row, n.cell.Col); d < bestD {
+			best, bestD = n.entity, d
+		}
+	}
+	return best
+}
+
 // startFight makes the hero attack entity target (right click in stance).
 func (s *startScene) startFight(target int) {
+	s.melee = true
 	s.target = target
 	s.pickIntent = false
 	if tw, _ := s.combatant(target); tw != nil {
@@ -67,7 +134,7 @@ func (s *startScene) startFight(target int) {
 // endFight drops the hero's target and intent (a new walk order, the target
 // dead or gone).
 func (s *startScene) endFight() {
-	s.target = -1
+	s.target, s.melee = -1, false
 	if s.hero != nil {
 		s.hero.stopAt = nil
 		if s.hero.act == gamestate.ActAttack {
@@ -254,22 +321,36 @@ func (s *startScene) heroTick() {
 	if !alive(h, hero) || h.act == gamestate.ActFlinch {
 		return
 	}
+	if s.target >= 0 {
+		if tw, t := s.combatant(s.target); !alive(tw, t) {
+			s.target = -1 // 0x0041E384: look for another enemy
+			if h.act == gamestate.ActAttack {
+				h.act = 0
+			}
+		}
+	}
 	if s.target < 0 {
-		s.retaliate()
-		return
+		if !s.melee {
+			s.retaliate()
+			return
+		}
+		if h.walking {
+			return // the step in progress ends first
+		}
+		t := s.nearestEnemy()
+		if t < 0 {
+			s.endFight() // no enemy left: the intent ends (0x0041E453)
+			return
+		}
+		s.startFight(t)
 	}
 	tw, t := s.combatant(s.target)
-	if !alive(tw, t) {
-		s.endFight()
-		return
-	}
 	switch {
 	case h.act == gamestate.ActAttack:
 		if s.swing(h, hero, s.target, s.targetCell) {
+			h.act = 0 // killed or moved: next tick finds a new target or approaches again (0x0041F258)
 			if !alive(tw, t) {
-				s.endFight()
-			} else {
-				h.act = 0 // the target moved: approach again (0x0041F258)
+				s.target = -1
 			}
 		}
 	case h.walking || len(h.path) > 0:

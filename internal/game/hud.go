@@ -38,6 +38,10 @@ var buttonPos = [7][2]int{{3, 340}, {1, 374}, {72, 372}, {1, 455}, {78, 457}, {1
 const (
 	hudWeaponButton = 0
 	hudStanceButton = 1
+	hudGatherButton = 3 // hotspot 4 «Все ко мне (F)» → 0x004226C0, the F key's routine
+	hudGatherImage  = 11
+	hudAttackButton = 4 // hotspot 5 «Атаковать (A)» → 0x00421698, the A key's routine
+	hudAttackImage  = 7 // pressed image (0x004216C9)
 	hudBagButton    = 6 // hotspot 7 → 0x00424610, the I key's routine
 	hudBagImage     = 13
 )

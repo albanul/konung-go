@@ -11,7 +11,6 @@ import (
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
@@ -93,6 +92,8 @@ type startScene struct {
 	targetCell mapdata.Cell // the target's cell when last checked (+0x0C/+0x0E)
 	deadAt     int          // frame the hero was first seen dead (gameOver)
 	aiBudget   int          // creature path searches left this game tick
+	melee      bool         // hero's melee intent (+2 bit 0x01): keeps finding targets after a kill
+	hideHelp   bool         // F1 hides the key help (help.go)
 }
 
 // sceneAssets is what stays loaded across map changes: resource files, exe
@@ -462,6 +463,12 @@ func (s *startScene) updateControls(mx, my int) {
 	if button == hudWeaponButton {
 		weapon(gamestate.WeaponCycle)
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) || button == hudGatherButton {
+		s.gatherOrder(hero)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyA) || button == hudAttackButton {
+		s.attackOrder(hero)
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton {
 		s.hand.Return(hero)
 		s.inv.toggle()
@@ -698,8 +705,11 @@ func (s *startScene) Update() {
 	s.hud.now = s.frame
 	mx, my := ebiten.CursorPosition()
 	if s.hero != nil {
-		if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyC) { // port key; the game has none
 			s.follow = !s.follow
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
+			s.hideHelp = !s.hideHelp
 		}
 		s.updateSpeed()
 		s.updateControls(mx, my)
@@ -719,16 +729,16 @@ func (s *startScene) Update() {
 			return
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) || mx < edgeScrollZone {
+	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || mx < edgeScrollZone {
 		s.camX -= scrollSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || ebiten.IsKeyPressed(ebiten.KeyD) || mx >= ScreenWidth-edgeScrollZone {
+	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || mx >= ScreenWidth-edgeScrollZone {
 		s.camX += scrollSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyW) || my < edgeScrollZone {
+	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) || my < edgeScrollZone {
 		s.camY -= scrollSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) || ebiten.IsKeyPressed(ebiten.KeyS) || my >= ScreenHeight-edgeScrollZone {
+	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) || my >= ScreenHeight-edgeScrollZone {
 		s.camY += scrollSpeed
 	}
 	s.clampCamera()
@@ -875,12 +885,8 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	if s.inv.open {
 		s.hovered = -1 // the window covers the characters
 	}
-	if s.hero != nil && !s.inv.showStrip() {
-		state := "off"
-		if s.follow {
-			state = "on"
-		}
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("L/R click: move/take   Space: stance (R click: attack)   1/2/3: weapon   I, ~: bag   +/-: speed x%d   F: follow %s   Esc: menu", s.speed+1, state), viewLeft+8, viewBottom-20)
+	if s.hero != nil {
+		s.drawHelp(screen)
 	}
 	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
 	if s.inv.open && len(s.party) > 0 {

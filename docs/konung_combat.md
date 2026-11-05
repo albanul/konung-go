@@ -31,6 +31,18 @@ Entity `+0x00` is the action type, relative to the animation set: 0–5 in the c
 * **Retaliation** `0x0041EC0C`: an idle party member without an intent (`+2 & 9` = 0) scans its 8 neighbours. A neighbour of another group with `+2` bit `0x01` and target = it becomes its target; the member sets `+2 |= 2` and the stance, and swings back. Port: `startScene.retaliate` (hero only). Stationary creatures swing with `+2` = `0x02`, so they are not struck back automatically.
 * **Hero death** (`0x004376A8`): the main loop sees the hero's `+4` bit `0x80`, sets `0xA3E7F0` = 7, plays `GAMEOVER.FLM` (`0x0042B690(0x00450650)`) and leaves the game loop. The film is not among the installed files. The port returns to the main menu 2 s after the death (`startScene.gameOver`), and "New Game" starts again.
 
+## Attack order (verified)
+
+**A** or HUD button 5 «Атаковать (A)» (key switch `0x00437272`, VK `0x41` → `0x00436DB0`):
+
+* With `0x00A3E754` set (apparently Shift held: it is set and cleared around VK `0x10`), A selects every living party member.
+* Without Shift it runs `0x00421698`: sound 4, return a held item (`0x00429194(1)`), press button 4 with image 7 (`0x004290AC(4, 7)`). Each living party member then gets `+6` = 0, `+2` = `0x44` with the bow active (else `0x41`), `+0x14` = `0xFF`, and enters the stance (type − 6, `+3 |= 4`).
+* With no target, the planner's `0x0041E384` asks `0x0041FD74` for the enemy group. For the party (`+0x1E` bit `0x20`; group 0 has `0x20` in `GAME.0`) the search area is the leader's cell ± (W + W/2), with W = `0x00A3E818` rows and `0x00A3E7DC` cols. On 800×600 (`0x00427C8C`) these are the view's height/32 + 3 = 20 rows and width/116 + 4 = 9 cols.
+* Eligible groups: on the current map, not the party, `+0x1E` bit `0x80` clear (no village) unless alarmed, and `+0x1E` ≠ `0x53`. The group whose living member inside the area is closest to the leader wins. Then `0x004203A0` / `0x004202A8` pick that member.
+* When the target dies, the same search finds the next one. This also happens after a right-click attack, because the intent stays. With no enemy left, the intent ends (`+2 &= ~1`, `0x0041E456`).
+
+Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent). Bows are not ported, so with the bow active the order does nothing.
+
 ## Creature AI (verified)
 
 `0x004123BC(group)` runs for each creature group on the current map, once per game tick. The group has two rectangles: the **territory** (words `+0x08`..`+0x0C` rows, `+0x10`..`+0x14` cols; `Group.WanderArea`) and the **leash** (`+0x0A`..`+0x0E`, `+0x12`..`+0x16`; `Group.LeashArea`). The leash is usually larger.

@@ -194,3 +194,56 @@ func TestCreatureReturnsHome(t *testing.T) {
 		t.Fatalf("alarm %#x, ant at %v; want return and inside %+v", g.Groups[grp].Alarm, ant.cell, area)
 	}
 }
+
+// TestAttackOrderFindsNextEnemy is the A key: with the melee intent and no
+// target the hero takes the nearest enemy in range, kills it, takes the next
+// one, and drops the intent when none is left in range.
+func TestAttackOrderFindsNextEnemy(t *testing.T) {
+	gameData, err := os.ReadFile("../../assets/Konung/GAME.0")
+	if err != nil {
+		t.Skip("GAME.0 not available:", err)
+	}
+	exe, err := os.ReadFile("../../assets/Konung/konung.exe")
+	if err != nil {
+		t.Skip("konung.exe not available:", err)
+	}
+	g, err := gamestate.Parse(gameData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, err := resfmt.NewExeTables(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grp := g.Entities[921].Group
+	if g.Entities[922].Group != grp || g.Entities[923].Group != grp {
+		t.Skip("ants 921-923 not in one group")
+	}
+	heroCell := mapdata.Cell{Row: 100, Col: 40}
+	near := mapdata.Neighbors(heroCell)
+	cells := map[int]mapdata.Cell{921: near[0].Cell, 922: near[4].Cell, 923: {Row: 100, Col: 40 + attackRangeCols*2}}
+	occ := map[mapdata.Cell]bool{heroCell: true}
+	s := &startScene{game: g, tables: tb, byEntity: map[int]*npc{}, occ: occ, target: -1,
+		rng: rand.New(rand.NewPCG(7, 8))}
+	for i, c := range cells {
+		n := &npc{walker: walker{entity: i, cell: c}, target: -1} // calm: they don't move
+		s.npcs = append(s.npcs, n)
+		s.byEntity[i] = n
+		occ[c] = true
+	}
+	volk := g.Entities[g.Groups[0].First]
+	volk.Flags3 |= 0x04
+	s.party = []gamestate.Entity{volk}
+	s.hero = &walker{entity: volk.Index, cell: heroCell, blocked: func(c mapdata.Cell) bool { return occ[c] }}
+	s.melee = true
+	for i := 0; i < 5000 && s.melee; i++ {
+		s.heroTick()
+		for _, n := range s.npcs {
+			s.actTick(&n.walker, &g.Entities[n.entity], n)
+		}
+	}
+	if s.melee || !g.Entities[921].Dead() || !g.Entities[922].Dead() || g.Entities[923].Dead() {
+		t.Fatalf("intent %v; dead: 921 %v, 922 %v, 923 (out of range) %v", s.melee,
+			g.Entities[921].Dead(), g.Entities[922].Dead(), g.Entities[923].Dead())
+	}
+}
