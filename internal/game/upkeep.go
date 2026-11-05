@@ -131,6 +131,10 @@ func (s *startScene) villagerTick(n *npc) {
 	}
 	if g.Alarm != gamestate.AlarmAttack {
 		n.target, n.intent = -1, 0 // calm again: the village AI takes over
+		if e.InStance() {
+			gamestate.LeaveStance(e) // 0x00416934 drops the stance first
+			n.look = lookOf(*e)
+		}
 		return
 	}
 	heroOK := s.hero != nil && len(s.party) > 0 && alive(s.hero, &s.party[0])
@@ -152,7 +156,7 @@ func (s *startScene) villagerTick(n *npc) {
 	}
 	if !e.InStance() {
 		s.game.ReEquip(e) // 0x004105A0
-		e.Flags3 |= 0x04
+		gamestate.EnterStance(e)
 		n.look = lookOf(*e)
 		return
 	}

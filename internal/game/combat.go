@@ -47,8 +47,9 @@ const (
 	intentWalk      = 0x08 // walk order: going home (0x004142D4 flags 8)
 )
 
-// creatureBudget is the path searches the creature AI may start per game
-// tick (0x004116CC; the game shares 3 among all characters).
+// creatureBudget is the path searches the combat AI (creatures and alarmed
+// villagers) may start per game tick (0x004116CC; the game shares 3 among
+// all characters).
 const creatureBudget = 3
 
 // Attack order search range (0x0041FD74 for the party, +0x1E bit 0x20): the
@@ -211,13 +212,24 @@ func (s *startScene) combatTick() {
 	if s.hero != nil && len(s.party) > 0 {
 		s.heroTick()
 	}
+	// Path searches are shared round-robin (0x004116CC with the last served
+	// entity 0x00A3E690): the pass starts after the last member that used
+	// one, so members whose search keeps failing can't starve the rest.
 	s.aiBudget = creatureBudget
-	for _, n := range s.npcs {
-		switch {
-		case n.mode == npcCreature:
-			s.creatureTick(n)
-		case n.mode == npcVillager:
-			s.villagerTick(n)
+	if len(s.npcs) > 0 {
+		start := s.fightNext % len(s.npcs)
+		for i := range s.npcs {
+			k := (start + i) % len(s.npcs)
+			before := s.aiBudget
+			switch n := s.npcs[k]; n.mode {
+			case npcCreature:
+				s.creatureTick(n)
+			case npcVillager:
+				s.villagerTick(n)
+			}
+			if s.aiBudget < before {
+				s.fightNext = k + 1
+			}
 		}
 	}
 	if s.hero != nil && len(s.party) > 0 {
@@ -423,7 +435,7 @@ func (s *startScene) heroTick() {
 	default: // idle with the intent: the planner 0x0041ED8C
 		s.targetCell = tw.cell
 		if adjacent(h.cell, tw.cell) {
-			hero.Flags3 |= 0x04 // the swing enters the stance (0x004149F5)
+			gamestate.EnterStance(hero) // the swing enters the stance (0x004149F5)
 			h.look = lookOf(*hero)
 			h.startAct(gamestate.ActAttack)
 			return
@@ -449,7 +461,7 @@ func (s *startScene) retaliate() {
 		}
 		s.startFight(n.entity)
 		s.targetCell = n.cell
-		hero.Flags3 |= 0x04
+		gamestate.EnterStance(hero)
 		h.look = lookOf(*hero)
 		h.dir = facing(h.cell, n.cell)
 		h.startAct(gamestate.ActAttack)
@@ -530,8 +542,8 @@ func (s *startScene) creatureDecide(n *npc, e *gamestate.Entity, g *gamestate.Gr
 			}
 		case gamestate.TacticNearest:
 			if !e.Animated() && !e.InStance() {
-				s.game.ReEquip(e) // 0x004105A0
-				e.Flags3 |= 0x04  // humanoids take the stance first (0x00413108)
+				s.game.ReEquip(e)        // 0x004105A0
+				gamestate.EnterStance(e) // humanoids take the stance first (0x00413108)
 				n.look = lookOf(*e)
 				return
 			}
@@ -603,8 +615,22 @@ func (s *startScene) goFor(n *npc, target int) bool {
 		return true // decide again next tick
 	}
 	s.aiBudget--
+	if !s.reachable(tw.cell) {
+		return false // the search would fail: every cell next to the target is taken
+	}
 	n.chase(tw.cell)
 	return len(n.path) > 0
+}
+
+// reachable reports a free cell next to c, without which a chase toward c
+// can only fail; it saves the search (the budget is still spent).
+func (s *startScene) reachable(c mapdata.Cell) bool {
+	for _, n := range mapdata.Neighbors(c) {
+		if !s.blocked(n.Cell) {
+			return true
+		}
+	}
+	return false
 }
 
 // stationarySwing is 0x00412F62: swing at an adjacent enemy, never move.

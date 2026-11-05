@@ -91,7 +91,8 @@ type startScene struct {
 	target     int          // hero's attack target (entity +6), -1 = none; see combat.go
 	targetCell mapdata.Cell // the target's cell when last checked (+0x0C/+0x0E)
 	deadAt     int          // frame the hero was first seen dead (gameOver)
-	aiBudget   int          // creature path searches left this game tick
+	aiBudget   int          // combat AI path searches left this game tick
+	fightNext  int          // round-robin start of the combat AI's path budget
 	melee      bool         // hero's melee intent (+2 bit 0x01): keeps finding targets after a kill
 	shoot      bool         // hero's shoot intent (+2 bit 0x04), ranged.go
 	arrows     []gamestate.Arrow
@@ -364,7 +365,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		}
 		cell := mapdata.Cell{Row: p.Row, Col: p.Col}
 		s.occ[cell] = true
-		cur := func() gamestate.Entity { return p.Entity }
+		cur := liveEntity(game, p.Index) // type (stance), weapon and gear change in fights
 		hero := p.Group == 0 && p.Index == game.Groups[0].First && len(s.party) > 0 && s.party[0].Index == p.Index
 		if hero {
 			cur = func() gamestate.Entity { return s.party[0] } // stance and weapon change at runtime

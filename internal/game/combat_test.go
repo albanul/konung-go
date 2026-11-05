@@ -1,6 +1,7 @@
 package game
 
 import (
+	"github.com/hajimehoshi/ebiten/v2"
 	"math/rand/v2"
 	"os"
 	"testing"
@@ -353,8 +354,10 @@ func TestAngryVillagerAttacks(t *testing.T) {
 	s := &startScene{game: g, party: []gamestate.Entity{volk}, npcs: []*npc{n}, byEntity: map[int]*npc{man: n},
 		hero: &walker{entity: volk.Index, cell: heroCell}, target: -1, pileAt: map[mapdata.Cell]int{}, aiBudget: 3}
 	s.villagerTick(n)
-	if !g.Entities[man].InStance() {
-		t.Fatal("the villager did not take the stance")
+	if e := g.Entities[man]; !e.InStance() || e.Type >= 6 || lookOf(e).typ != 0 {
+		// The stance moves the action type to the set 0–5; with type 6 the
+		// swing would ask for the missing type 11.
+		t.Fatalf("after the stance: in stance %v, type %d", e.InStance(), e.Type)
 	}
 	s.villagerTick(n)
 	if n.target != volk.Index || n.act != gamestate.ActAttack {
@@ -362,5 +365,44 @@ func TestAngryVillagerAttacks(t *testing.T) {
 	}
 	if !s.fighting(n) {
 		t.Error("the village AI would still run for a fighting villager")
+	}
+}
+
+// TestStanceSwingFrames: a villager who took the stance at runtime must get
+// the swing of the stance set (type 5) from its loader, not type 11 of the
+// peaceful set (the loader reads the live record, liveEntity).
+func TestStanceSwingFrames(t *testing.T) {
+	gameData, err := os.ReadFile("../../assets/Konung/GAME.0")
+	if err != nil {
+		t.Skip("GAME.0 not available:", err)
+	}
+	objects, err1 := os.ReadFile("../../assets/Konung/OBJECTS.RES")
+	graph, err2 := os.ReadFile("../../assets/Konung/GRAPH.RES")
+	exe, err3 := os.ReadFile("../../assets/Konung/konung.exe")
+	if err1 != nil || err2 != nil || err3 != nil {
+		t.Skip("assets not available")
+	}
+	g, err := gamestate.Parse(gameData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, err := resfmt.NewExeTables(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const elder = 355
+	var p gamestate.Placed
+	for _, q := range g.OnMap(1, nil) {
+		if q.Index == elder {
+			p = q
+		}
+	}
+	var loadErr error
+	load := entityLoader(g, p, liveEntity(g, elder), objects, graph, tb,
+		func(*resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image) { return nil, nil },
+		func(err error) { loadErr = err })
+	gamestate.EnterStance(&g.Entities[elder])
+	if f := load(gamestate.ActAttack, 0); loadErr != nil || len(f) != 12 {
+		t.Fatalf("swing after the stance: %d frames, error %v", len(f), loadErr)
 	}
 }

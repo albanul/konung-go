@@ -119,3 +119,29 @@ func SelectWeapon(e *Entity, mode int) {
 		e.Flags2 ^= 0x04
 	}
 }
+
+// EnterStance puts one entity into the combat stance the way the AI does
+// (0x00413108, 0x00416F65, 0x00421777): the action type moves to the stance
+// set (− 6) and +3 bit 0x04 is set. Animated models have one set; only the
+// bit changes for them.
+func EnterStance(e *Entity) {
+	if e.InStance() {
+		return
+	}
+	if e.Type >= 6 {
+		e.Type -= 6
+	}
+	e.Flags3 |= stanceBit
+}
+
+// LeaveStance is the calm village AI's reset (0x00416934): out of the stance
+// and back to the idle type 6.
+func LeaveStance(e *Entity) {
+	if !e.InStance() {
+		return
+	}
+	e.Flags3 &^= stanceBit
+	if !e.Animated() {
+		e.Type = 6
+	}
+}

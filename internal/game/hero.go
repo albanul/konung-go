@@ -272,6 +272,13 @@ func (w *walker) chase(goal mapdata.Cell) {
 	w.path, w.goal = path, goal
 }
 
+// liveEntity returns the current GAME.N record of entity i, for loaders that
+// must see runtime changes (the stance moves the action type to the set
+// 0–5, re-equipping changes the weapon).
+func liveEntity(game *gamestate.Game, i int) func() gamestate.Entity {
+	return func() gamestate.Entity { return game.Entities[i] }
+}
+
 // entityLoader returns a lazy loader of idle/walk frames for an entity, with
 // equipment, as offsets from its cell centre. cur returns the entity's
 // current state (stance, weapon); its type is the idle type of the current

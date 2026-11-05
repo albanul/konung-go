@@ -252,7 +252,8 @@ Orders:
 Approximations:
 * The rolls use Go's RNG, not the game's `rand()`.
 * A walking target does not flinch.
-* The creature path budget is separate from the villagers'.
+* The combat AI (creatures and alarmed villagers) has its own 3-search budget per tick, separate from the calm village AI. It is served round-robin like `0x004116CC`. A chase toward a target whose 8 neighbour cells are all taken skips the search but still spends the budget, since the game's search would fail anyway.
+* Characters entering the stance move to the stance animation set (type − 6, `gamestate.EnterStance`); calmed villagers leave it (`LeaveStance`).
 * A chasing creature re-plans its whole path when the target moves (the game patches one step).
 * Arrow points use the nearest cell centre instead of `0x00439BDC`.
 * `ReEquip` does not equip the best bag gear (`0x004104D4`).
