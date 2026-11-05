@@ -73,7 +73,10 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0043E242` | routine | Indexed-RLE blit `(surface, image, palette, x, y)`, clipped, top-left origin | [map format](konung_map_format.md) |
 | `0x0043ED09` | routine | Takes a palette byte offset and returns the palette used by the blit (conversion details not traced) | terrain draw pass |
 | `0x0043BEF8` | routine | `MENU<width>R.RES` loader; frames 1–14 → slots `0x1F2`–`0x1FF` of `0x006304B8` | [menu](konung_menu.md) |
-| `0x0042F8D8` | routine | Main-menu button draw (layout table `0x0045B314`) | [menu](konung_menu.md) |
+| `0x0042F8D8` | routine | Main-menu button draw (layout table `0x0045B314`); starts at button 2 unless `[0x00A3E728]` (game running) | [menu](konung_menu.md) |
+| `0x004398C4` | routine | Hit-test `(x, y, rect table)` → index; used by the menu with `0x0045B314` | [menu](konung_menu.md) |
+| `0x0043756C` | table | Escape switch on screen state `0x00A3E6D8` (0 game, 1 menu, 2 new game, 4/5 load/save, 6 settings) | [menu](konung_menu.md#input-behavior-currently-implemented) |
+| `0x00437E50` | table | Main-menu click switch (6 cases: return, save, load, new, settings, exit) | [menu](konung_menu.md) |
 | `0x0045B314` | data | Main-menu button rectangles, 32 bytes per button (640 then 800 x1,y1,x2,y2) | [menu](konung_menu.md) |
 | `0x0043D8E7` | routine | Type 5 RGB555 frame draw | [res format](konung_res_format.md) |
 | `0x00414078` | routine | Entity model initializer (Type 2 / Type 0) | this doc |

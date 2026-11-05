@@ -765,6 +765,22 @@ func (s *startScene) blocked(c mapdata.Cell) bool {
 	return x < 0 || y < 0 || x >= s.worldW || y >= s.worldH
 }
 
+// escape handles Escape in the game (0x00437447): return a held item
+// (0x00429194(1)), then close an open window (0x00A3E740 = 0, redraw
+// 0x004292E4). Only with no window open does it report true, and the caller
+// opens the main menu (state 7 → menu, 0x00A3E728 = 1). The game ignores
+// Escape in window 1; the port has no such window.
+func (s *startScene) escape() bool {
+	if len(s.party) > 0 {
+		s.hand.Return(&s.party[0])
+	}
+	if s.inv.open {
+		s.inv.toggle()
+		return false
+	}
+	return true
+}
+
 func (s *startScene) Update() {
 	s.frame++
 	s.hud.now = s.frame

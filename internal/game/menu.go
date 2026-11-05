@@ -26,6 +26,31 @@ type Menu struct {
 	world       *startScene
 	newWorld    func() (*startScene, error) // a fresh New Game scene (after a game over)
 	inWorld     bool
+	// running mirrors [0x00A3E728]: a game is in progress, so the menu also
+	// offers «Вернуться в игру» and «Сохранить игру» (items 0 and 1).
+	running bool
+	fresh   bool // world has not been played yet
+}
+
+// Main-menu items in the order of the exe layout table (0x0045B314) and the
+// click switch at 0x00437E50.
+const (
+	itemReturn   = 0 // 0x004379F8
+	itemSave     = 1 // 0x00437A25
+	itemLoad     = 2 // 0x00437B54, opens the load screen (not implemented)
+	itemNewGame  = 3 // 0x00437B91
+	itemSettings = 4 // 0x00437DDD (not implemented)
+	itemExit     = 5 // 0x00437E3D
+)
+
+// firstItem is the first visible menu item: the draw routine 0x0042F8D8
+// starts at 0 while a game is running and at 2 otherwise, and the menu loops
+// (0x0043799F, 0x00438D81) ignore hits on items below 2 without a game.
+func (m *Menu) firstItem() int {
+	if m.running {
+		return itemReturn
+	}
+	return itemLoad
 }
 
 type rect struct{ x, y, w, h int }
@@ -91,6 +116,8 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		sword:      ebiten.NewImageFromImage(swordFrame),
 		world:      world,
 		newWorld:   newWorld,
+		fresh:      true,
+		selected:   itemNewGame,
 	}
 	for i := range m.cursors {
 		img, err := loadGraphSprite(graphPath, i)
@@ -109,54 +136,87 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 }
 
 func (m *Menu) Update() error {
+	// Escape is switched on the screen state 0x00A3E6D8 (0x00437430, jump
+	// table 0x0043756C).
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		if m.inWorld {
-			m.inWorld = false
+			if m.world.escape() {
+				m.inWorld = false
+			}
 			return nil
 		}
-		return ebiten.Termination
+		// Menu (0x004374A5): resume a running game, else nothing.
+		if m.running {
+			m.inWorld = true
+		}
+		return nil
 	}
 	if m.inWorld {
-		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
-			m.inWorld = false
-		}
 		m.world.Update()
 		if m.world.gameOver() {
 			// 0x004376A8: the hero died; the game plays GAMEOVER.FLM (not in
 			// the installed files) and leaves the game loop for the menu.
 			m.inWorld = false
+			m.running = false
+			if m.selected < m.firstItem() {
+				m.selected = itemNewGame
+			}
+			w, err := m.newWorld()
+			if err != nil {
+				return err
+			}
+			m.world = w
+			m.fresh = true
+		}
+		return nil
+	}
+	first := m.firstItem()
+	if m.selected < first {
+		m.selected = first
+	}
+	n := menuItems - first
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		m.selected = first + (m.selected-first+n-1)%n
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		m.selected = first + (m.selected-first+1)%n
+	}
+	activate := -1
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		activate = m.selected
+	}
+	mx, my := ebiten.CursorPosition()
+	for i := first; i < menuItems; i++ {
+		r := m.buttonRects[i]
+		if mx >= r.x && mx < r.x+r.w && my >= r.y && my < r.y+r.h {
+			m.selected = i
+			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				activate = i
+			}
+		}
+	}
+	return m.activate(activate)
+}
+
+// activate runs a menu item. Save, Load and Settings are drawn but have no
+// action yet.
+func (m *Menu) activate(item int) error {
+	switch item {
+	case itemReturn:
+		m.inWorld = true
+	case itemNewGame:
+		if !m.fresh {
 			w, err := m.newWorld()
 			if err != nil {
 				return err
 			}
 			m.world = w
 		}
-		return nil
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-		m.selected = (m.selected + menuItems - 1) % menuItems
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-		m.selected = (m.selected + 1) % menuItems
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && m.selected == menuItems-1 {
-		return ebiten.Termination
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && m.selected == 3 {
+		m.fresh = false
+		m.running = true
 		m.inWorld = true
-	}
-
-	mx, my := ebiten.CursorPosition()
-	for i, r := range m.buttonRects {
-		if mx >= r.x && mx < r.x+r.w && my >= r.y && my < r.y+r.h {
-			m.selected = i
-			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && i == menuItems-1 {
-				return ebiten.Termination
-			}
-			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && i == 3 {
-				m.inWorld = true
-			}
-		}
+	case itemExit:
+		return ebiten.Termination
 	}
 	return nil
 }
@@ -173,7 +233,8 @@ func (m *Menu) Draw(screen *ebiten.Image) {
 		return
 	}
 	screen.DrawImage(m.background, nil)
-	for i, r := range m.buttonRects {
+	for i := m.firstItem(); i < menuItems; i++ {
+		r := m.buttonRects[i]
 		button := m.buttons[i][0]
 		if i == m.selected {
 			button = m.buttons[i][1]

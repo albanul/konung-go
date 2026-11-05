@@ -1,6 +1,6 @@
 # Ebitengine Main Menu Notes
 
-This document records the current Konung menu implementation and the asset findings that informed it. It is a rendering and input prototype; starting a new game, loading a save, and the other menu actions are not implemented yet.
+This document records the current Konung menu implementation and the asset findings that informed it. It is a rendering and input prototype: New game, Return to game and Exit work; Save, Load and Settings are not implemented yet.
 
 ## Source layout
 
@@ -25,7 +25,7 @@ The executable uses `MENU800R.RES` and `GRAPH.RES` from `assets/Konung/`. It dec
 * Frame 0 is drawn as the full-screen background.
 * Frame 2 is a small blue UI marker. It is not the mouse pointer, and the current menu does not draw it separately.
 * The six menu button pairs begin at frame 3. For menu item `i` from 0 through 5, frame `3 + 2*i` is the normal state and frame `4 + 2*i` is the selected state. Thus the pairs are 3/4, 5/6, 7/8, 9/10, 11/12, and 13/14.
-* Button positions come from the executable's layout table at DGROUP VA `0x0045B314`, verified by tracing the draw routine at VA `0x0042F8D8`. Each button has 32 bytes: the 640×480 rectangle `(x1, y1, x2, y2)`, then the 800×600 rectangle. The routine blits frame `3+2i` (normal) or `4+2i` (selected) with its top-left at `(x1, y1)`. The 800×600 rectangles' sizes match the button frames, except "Return to game", which is 300 px wide against a 245 px frame. The Go menu uses each rectangle as the hitbox; that the game hit-tests with the same rectangle is inferred, not traced.
+* Button positions come from the executable's layout table at DGROUP VA `0x0045B314`, verified by tracing the draw routine at VA `0x0042F8D8`. Each button has 32 bytes: the 640×480 rectangle `(x1, y1, x2, y2)`, then the 800×600 rectangle. The routine blits frame `3+2i` (normal) or `4+2i` (selected) with its top-left at `(x1, y1)`. The 800×600 rectangles' sizes match the button frames, except "Return to game", which is 300 px wide against a 245 px frame. Both menu loops hit-test the mouse against the same table (`0x004398C4(x, y, 0x0045B314)`), and the Go menu uses each rectangle as the hitbox.
 
 | Button | 640×480 rect | 800×600 rect |
 |---|---|---|
@@ -36,7 +36,8 @@ The executable uses `MENU800R.RES` and `GRAPH.RES` from `assets/Konung/`. It dec
 | 4 Установки | 215,282–333,321 | 268,353–416,402 |
 | 5 Выход | 222,327–300,371 | 276,409–366,464 |
 
-* The original draws buttons 0 and 1 (Return to game, Save game) only while a game is running (`[0x00A3E728] != 0`); otherwise the loop starts at button 2. The Go menu currently still shows all six.
+* The original draws buttons 0 and 1 (Return to game, Save game) only while a game is running (`[0x00A3E728] != 0`); otherwise the draw loop starts at button 2. Both menu loops (in-game `0x00437982`, start menu `0x00438D64`) also discard hits below 2 in that state. «Загрузить игру» has no such gate: its click case opens the load screen whether or not saves exist. The start menu therefore shows Load, New game, Settings and Exit. The Go menu does the same (`Menu.firstItem`); after a game starts, Escape opens the menu with all six.
+* Click switch (jump table `0x00437E50`, index = button): 0 `0x004379F8` return to game, 1 `0x00437A25` save screen, 2 `0x00437B54` load screen, 3 `0x00437B91` new game, 4 `0x00437DDD` settings, 5 `0x00437E3D` exit.
 * `MENU<width>R.RES` is loaded by `0x0043BEF8`: frame 0 is drawn as the background, and frames 1–14 go to the frame-pointer table `0x006304B8`, slots `0x1F2`–`0x1FF`. These slots are reused by other screens.
 
 The menu code checks for at least 15 frames. Frame 1 is currently unused. These observations apply to the current 800×600 menu layout; no 640×480 layout adaptation has been implemented here.
@@ -70,11 +71,14 @@ The player, Volk (Type 0 model 0, placeholder palette), is controllable (`intern
 
 ## Input behavior currently implemented
 
-* `Escape` exits the prototype.
-* Up/down arrows move the selected menu item and wrap around at either end.
-* Moving the mouse over a button selects it.
-* `Enter` exits only when the last item is selected. Clicking exits only when the last item is under the pointer.
-* Menu item 4 opens the scrollable `KONUNG.1` scene. While it is open, the arrow keys scroll the map instead of changing the menu selection. The other non-exit items still have visual states only.
+* **Escape** (VK 0x1B, `0x00437430`) is switched on the screen state `[0x00A3E6D8]` (jump table `0x0043756C`, states 0–6):
+  * State 0, in the game (`0x00437447`): return a held item (`0x00429194(1)`). Then, with window `[0x00A3E740]` = 1, do nothing; with another window open, close it (`0x00A3E740` = 0, `0x00A3E7B4` = 0, redraw `0x004292E4`); with no window open, open the menu (state 7, `[0x00A3E728]` = 1, `[0x00A3E7F0]` = 0). The port has only window 3 (the character window) and does the same (`startScene.escape`). Window 1 is not identified.
+  * State 1, the menu (`0x004374A5`): if a game is running, resume it (as «Вернуться в игру»); otherwise do nothing. Escape never quits; only «Выход» does.
+  * State 2 (new game, `0x004374DB`): back to the menu with `[0x00A3E728]` = 0. States 4/5 (load/save screens, `0x004374FE`) and 6 (settings, `0x00437517`) return to the menu. These screens are not ported.
+* Up/down arrows move the selection among the visible items and wrap around. Moving the mouse over a visible button selects it. `Enter` or a left click activates it.
+* «Новая игра» opens the `KONUNG.1` scene; while a game runs, it loads a fresh one. «Вернуться в игру» resumes the scene. «Выход» exits.
+* Save, Load and Settings are drawn and highlight, but do nothing yet.
+* After the hero dies, the game counts as not running, so the menu goes back to its four start items.
 
 ## Asset path behavior
 
