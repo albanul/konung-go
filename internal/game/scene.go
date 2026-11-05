@@ -110,6 +110,7 @@ type sceneAssets struct {
 	largeFont      *gameFont
 	rawTiles       []*image.RGBA
 	tiles          []*ebiten.Image
+	glow           *ebiten.Image // LIGHTS.RES glow map (resfmt.GlowMask); nil if the file is missing
 }
 
 // loadStartScene loads the shared resources and the GAME.N start state and
@@ -158,6 +159,15 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 		return nil, err
 	}
 	a.tiles = make([]*ebiten.Image, len(a.rawTiles))
+	// LIGHTS.RES sits next to GRAPH.RES (0x0043B7FC); without it piles don't glow.
+	lightsPath := filepath.Join(filepath.Dir(graphPath), "LIGHTS.RES")
+	if data, err := os.ReadFile(lightsPath); err != nil {
+		log.Printf("%s: %v", lightsPath, err)
+	} else if glow, err := resfmt.LightsGlow(data); err != nil {
+		log.Printf("%s: %v", lightsPath, err)
+	} else {
+		a.glow = ebiten.NewImageFromImage(resfmt.GlowMask(glow))
+	}
 	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
 	game.InitSettlementFlags(gameNumber) // 0x0043BD5C
 	return a.buildScene(game, mapNumber, nil)
@@ -227,6 +237,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	}
 	graphData, objectsData, tables, gamePath := a.graph, a.objects, a.tables, a.gamePath
 	rawTiles := a.rawTiles
+	game.Lit = false // 0x0043C11B: the map loader puts the torch out
 	s := &startScene{
 		assets:      a,
 		m:           m,
@@ -501,6 +512,9 @@ func (s *startScene) updateControls(mx, my int) {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyBackquote) && !s.inv.open {
 		s.inv.toggleQuick()
+		if s.inv.quick {
+			s.hand.Box = 0 // 0x00437253: showing the strip empties the in-hand box
+		}
 	}
 	if left || right {
 		s.click(hero, mx, my, spot, right)
@@ -628,7 +642,8 @@ func (s *startScene) statusText() []byte {
 	hero := s.party[0]
 	mx, my := ebiten.CursorPosition()
 	item := 0
-	switch spot := s.tables.HUDHotspot800(mx, my); {
+	spot := s.tables.HUDHotspot800(mx, my)
+	switch {
 	case spot >= 1 && spot <= len(gamestate.ButtonTooltips):
 		return s.tables.CString(gamestate.ButtonTooltips[spot-1])
 	case s.inv.showStrip() && s.inv.strip.hit(mx, my):
@@ -637,6 +652,9 @@ func (s *startScene) statusText() []byte {
 		item = s.hand.Box
 	case s.inv.open:
 		item = gamestate.HoveredItem(hero, spot)
+	}
+	if item == s.hand.Box && spot != hotspotInHand {
+		return nil // the boxed item is described only over the box (0x00424294, 0x004243C6, 0x00424403)
 	}
 	if item == 0 {
 		return nil
@@ -941,7 +959,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		s.inv.draw(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
 	}
 	if len(s.party) > 0 {
-		s.inv.drawQuick(screen, s.hud, s.game, s.tables, s.party[0])
+		s.inv.drawQuick(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
 	}
 	if text := s.statusText(); text != nil {
 		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.

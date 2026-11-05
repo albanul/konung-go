@@ -26,7 +26,7 @@ For each record on the current map (`0x00A3E7FC`): skip it while a respawn timer
 
 ## Drawing (`0x0042647E`)
 
-The pile draw is part of the terrain pass, after the terrain and decorations and before shadows and objects. It walks the visible cells row by row; on cells with flag `0x20` it looks the pile up (`0x00410E10`) and skips it if the gold is negative. It draws the INTR image at the stored position, so the image is centred on the cell. With `0x00A3E758` set, a 64×43 marker is drawn under it first (not ported; the flag is set by `0x004156E6`/`0x0041DF12`, not traced).
+The pile draw is part of the terrain pass, after the terrain and decorations and before shadows and objects. It walks the visible cells row by row; on cells with flag `0x20` it looks the pile up (`0x00410E10`) and skips it if the gold is negative. It draws the INTR image at the stored position, so the image is centred on the cell. With `0x00A3E758` set (the torch or Чистая слеза), a yellow glow from `LIGHTS.RES` is blended under it first ([loot highlight](konung_potions.md#loot-highlight-0x00a3e758), ported).
 
 ## Hover and pick-up
 
@@ -48,5 +48,5 @@ The pile draw is part of the terrain pass, after the terrain and decorations and
 
 ## Open questions
 
-* `0x004170A0` (the pile window), `0x00A3E758` (highlight markers), the index-0 script pile.
+* `0x004170A0` (the pile window), the index-0 script pile.
 * Whether berries other than «Белый корень» exist as respawning piles on other maps. Only types 1 and 2 respawn.

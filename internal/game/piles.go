@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/mapdata"
+	"konung1.5/internal/resfmt"
 )
 
 // Items on the ground (GAME.N section 3, gamestate.Pile). The map loader
@@ -54,10 +55,30 @@ func (s *startScene) drawPiles(dst *ebiten.Image) {
 		b := img.Bounds()
 		x, y := mapdata.CellCenter(c)
 		x, y = x-b.Dx()/2, y-b.Dy()/2
+		if s.game.Lit && s.assets.glow != nil {
+			// 0x00426554: the glow first, centred on the image (0x0043DE4D).
+			gx, gy := x+b.Dx()/2-resfmt.GlowWidth/2, y+b.Dy()/2-resfmt.GlowHeight/2
+			if s.visible(gx, gy, resfmt.GlowWidth, resfmt.GlowHeight) {
+				op := &ebiten.DrawImageOptions{Blend: glowBlend}
+				op.GeoM.Translate(float64(gx-s.camX), float64(gy-s.camY))
+				dst.DrawImage(s.assets.glow, op)
+			}
+		}
 		if s.visible(x, y, b.Dx(), b.Dy()) {
 			drawAt(dst, img, x-s.camX, y-s.camY)
 		}
 	}
+}
+
+// glowBlend brightens like 0x0043DE4D: dst' = src + dst·(1 − src) per
+// channel, alpha kept. The mask (resfmt.GlowMask) has no blue, so blue stays.
+var glowBlend = ebiten.Blend{
+	BlendFactorSourceRGB:        ebiten.BlendFactorOne,
+	BlendFactorSourceAlpha:      ebiten.BlendFactorZero,
+	BlendFactorDestinationRGB:   ebiten.BlendFactorOneMinusSourceColor,
+	BlendFactorDestinationAlpha: ebiten.BlendFactorOne,
+	BlendOperationRGB:           ebiten.BlendOperationAdd,
+	BlendOperationAlpha:         ebiten.BlendOperationAdd,
 }
 
 // pileUnderCursor returns the visible pile on the cell under the mouse.

@@ -21,7 +21,7 @@ The item's float `+4` is its **concentration** *f* (the description shows «, к
 | 8 | Противоядие | if poisoned: poison = max(0, trunc(poison − *f*·10)) |
 | 9 | Брага | *n* = effective Лов `+0x54` / 3, lowered to trunc(*f*) if *f* is smaller. Refused while a potion timer runs. Base Лов −3*n*; Хар, Сил, Вын +*n*; timer 30*n* |
 | 10 | Зелье | refused while a timer runs. *n* = trunc(*f*): base Лов, Сил, Вын +*n*; timer 30*n*; HP += *f*·160 (≤ 1600) |
-| 11 | Чистая слеза | timer 30*n*, hit bonus `+0xCA` = trunc(√*n*·0.1) (0 for any *n* < 100); sets `0x00A3E758` (below) |
+| 11 | Чистая слеза | timer 30*n*, hit bonus `+0xCA` = trunc(√*n*·0.1) (0 for any *n* < 100); [loot highlight](#loot-highlight-0x00a3e758) until the next map load |
 | 12 | Элексир Мудрости | refused for *n* < 6. Free experience trunc(√(*n*−5)·100) (`0x0041079C`); timer 60*n*; base Сил −5*n* (≥ 1); HP −160*n* (≥ 160) |
 | 13 | Живая Вода | *f* ≥ 10: HP = 1600; a dead user (`+4` bit `0x80`) is revived by `0x00414B3C` |
 
@@ -67,7 +67,7 @@ So the skill sets the starting strength: a jar plus a root gives a balm of *s* (
 
 ## Controls
 
-* **In-hand box** (window hotspot 19, item `0x00A3E7A0`, drawn centred at `0x00465864`, `0x0042E5C0`): the box only *points at* an item that stays where it is. A bag cell holding the boxed item can't be lifted (`0x004234A0`). The window clears it when it opens (`0x004246D1`). Click handler `0x00422D50`:
+* **In-hand box** (window hotspot 19, item `0x00A3E7A0`, drawn centred at `0x00465864`, `0x0042E5C0`): the box only *points at* an item that stays where it is. Every draw skips the boxed item: the bag strip leaves a plain, untinted empty cell (`0x0042F72F`, `0x0042F7FA`), and the equipment, ammunition and jewellery icons are not drawn (`0x0042E29F`, `0x0042E3EF`, `0x0042E4B7`). It is described only over the box (bag hover `0x00424294`, hand `0x004243C6`, ammunition `0x00424403`). So it looks as if it had moved into the box. A bag cell holding it can't be lifted (`0x004234A0`). The box is cleared when the window opens (`0x004246D1`) or the quick strip is shown (`0x00437253`), but not when the window closes. The item then shows in its cell again; it never left it. Click handler `0x00422D50`:
   * box empty or hand empty → `0x0041E96C`: an empty hand lifts the boxed item from its place (ammunition, equipment, jewellery, else the bag) and empties the box. A held item is put back from its backup (a bag item at the **end** of the bag) and the box points at it.
   * holding a herb (cursor 8) → `0x0041DB64(e, box, held)`: mixing, or poison/oil on a boxed weapon or arrows; the hand empties.
   * holding a misc item (cursor 9) → `0x00414E64(e, box, held)` (not ported).
@@ -75,15 +75,22 @@ So the skill sets the starting strength: a jar plus a root gives a balm of *s* (
 * **Portrait** (hotspots 30–39, `0x00422E21`) while holding an item: on a dead member or the holder itself → `0x0042054C(member)`: a herb is used on the member (`0x0041DB64(m, 0, held)`), and the jar returns to the bag front (`0x00429194`). A misc item goes to `0x00414E64` (not ported). Anything else shows the message and returns the item. On another living member → `0x004246F8(member)` (give: weight and bag-full checks).
 * **Right click on a bag herb** (`0x00423E26` case 9): `0x0041DB64(e, 0, item)` on the window's character; the jar stays in its cell; a refusal is silent.
 
-Port: `gamestate.Game.Mix`, `UseHerb`, `ClickBox`, `ClickPortrait`, `UseBagItem`; `Hand.Box`. UI: `startScene.windowClick` (hotspot 19), `startScene.click` (portraits), `charWindow.draw` (box icon), `statusText` (box hover).
+Port: `gamestate.Game.Mix`, `UseHerb`, `UseMisc` (torch), `ClickBox`, `ClickPortrait`, `UseBagItem`; `Hand.Box`. UI: `startScene.windowClick` (hotspot 19), `startScene.click` (portraits), `charWindow.draw` (box icon), `statusText` (box hover).
 
-## `0x00A3E758` (Чистая слеза, not ported)
+## Loot highlight (`0x00A3E758`)
 
-Set by Чистая слеза and by a misc item (`0x004156E6`), cleared on map load (`0x0043C11B`). While set, the pile pass (`0x00426554`, over the active piles `0x007A6CDC` on cells with grid bit `0x2000`, skipping buried piles) draws a 64×43 image `0x00625518` (hypothesis: a glow) under each pile and blits the pile with a palette from `0x0051ECB4` instead of the light-tinted one (`0x0043ED09`). Hypothesis: ground items stand out until the next map change.
+Status: traced and ported (`Game.Lit`, `resfmt.LightsGlow`, `startScene.drawPiles`); glow map checked against `LIGHTS.RES` (`resfmt.TestLightsGlow`) and a rendered preview.
+
+* **Set** by Чистая слеза (`0x0041DF12`) and by **«Факел»** (the torch, misc type 31: case 31 of `0x00414E64`'s jump table `0x00415ADC`, at `0x004156E6`). The torch is not used up: the common tail `0x00415BD3` frees nothing, plays sound 10 and returns 1. It works from the bag (right click), on the portrait (`0x0042054C`, cursor 9, then returned to the bag front) and on the in-hand box (then inserted at the bag front). `GAME.0` has two torches (items 1021, 1038).
+* **Cleared** by the map loader (`0x0043C11B`), so the light lasts until the next map change. Port: `buildScene` clears `Game.Lit`.
+* **Draw** (`0x00426554`, in the pile pass over visible cells with grid bit `0x2000`, piles from the active list `0x007A6CDC`, buried ones skipped): before each pile, the glow map is blended at (pile x − 32 + w/2, pile y − 21 + h/2), centred on the pile image, via `0x0043DE4D`. The pile is then blitted with its palette from `[0x0051ECB4]` instead of the light-tinted one (`0x0043ED09`); the port draws piles untinted anyway.
+* **Glow map**: `LIGHTS.RES` (one file, unrelated to `LIGHTS.N`; loader `0x0043B7FC`, size 145472 = `0x1000` + `0xAC0` + 19 × `0x1C80`). Bytes `0x1000`–`0x1ABF` are the 64×43 intensity map (`0x00625518`): a soft ellipse, values 0–43, 2334 non-zero. The other two parts (`0x005B0010`, `0x005B1010`) are not decoded.
+* **Blend** `0x0043DE4D(dst, map, x, y, 64, 43)`, clipped to the view: for each non-zero intensity *k*, the RGB555 path replaces red and green by `c + trunc((31 − c)·f_k)` and keeps blue (tables `0x004A17F0` red, `0x0047CB2C` green, built at `0x0043B27C`: 100 rows, *f* accumulated in float32 steps of 0.01 from `0x00450721`). So it is a yellow brightening of up to 43 % (`resfmt.Brighten555`). The RGB565 path (`0x00A3E824` = 16) uses the 565 tables built at `0x0043ADF1`.
+* **Port**: `resfmt.GlowMask` holds (*f*, *f*, 0) per pixel, and `game.glowBlend` draws it with dst' = src + dst·(1 − src) per channel, which is the same lerp without the 5-bit truncation.
 
 ## Open questions
 
 * `0x00414B3C` (revival by Живая Вода); the port's party has no dead members (the hero's death ends the game).
-* The pile glow `0x00A3E758` and its image `0x00625518`.
-* Misc items used on the box or a portrait (`0x00414E64`, cursor 9).
+* Misc items other than the torch used on the box or a portrait (`0x00414E64`, cursor 9).
+* The rest of `LIGHTS.RES` (`0x1000` bytes to `0x005B0010`, 19 × `0x1C80` to `0x005B1010`).
 * Herb sources other than the ground, loot and the start bag: the healer and merchants (dialogue).

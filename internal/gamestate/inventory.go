@@ -32,6 +32,8 @@ const (
 	CursorDig = 7
 	// CursorHerb is the hand holding a herb or potion (category 9).
 	CursorHerb = 8
+	// cursorMisc is the hand holding jewellery or a misc item (starburst).
+	cursorMisc = 9
 )
 
 // Map cursor sprites chosen by 0x00428A50 for the character under the mouse
@@ -82,7 +84,7 @@ func cursorFor(category int) int {
 	case CatHerb:
 		return CursorHerb // herbs: globe with hand
 	}
-	return 9 // jewellery and the rest: starburst
+	return cursorMisc // jewellery and the rest: starburst
 }
 
 // lift is 0x00425104 followed by 0x0041E210(e, from, item): set the cursor,
@@ -322,15 +324,16 @@ func (g *Game) give(h *Hand, holder, to *Entity, t *resfmt.ExeTables) int {
 // ClickBox is the in-hand box click (hotspot 19, 0x00422D50). With an empty
 // box or an empty hand it is boxSwap (0x0041E96C). Holding a herb, the herb
 // is used on the boxed item (UseHerb: mixing, or poison/oil on a weapon or
-// arrows) and the hand empties. Anything else (and a refusal) shows
-// «Предмет не доступен для использования» and returns the held item. Misc
-// items (cursor 9, 0x00414E64) are not ported and are refused.
+// arrows) and the hand empties; a held misc item goes to 0x00414E64 (UseMisc:
+// the torch only). Anything else (and a refusal) shows «Предмет не доступен
+// для использования» and returns the held item.
 func (g *Game) ClickBox(h *Hand, e *Entity, t *resfmt.ExeTables) int {
 	if h.Box == 0 || !h.Holding() {
 		g.boxSwap(h, e)
 		return 0
 	}
-	if h.Cursor == CursorHerb && g.UseHerb(e, t, h.Box, h.Item) {
+	if h.Cursor == CursorHerb && g.UseHerb(e, t, h.Box, h.Item) ||
+		h.Cursor == cursorMisc && g.UseMisc(e, h.Box, h.Item) {
 		h.Cursor = CursorPointer
 		return 0
 	}
@@ -399,11 +402,12 @@ func (g *Game) ClickPortrait(h *Hand, holder, m *Entity, t *resfmt.ExeTables) in
 }
 
 // useOn is 0x0042054C(e): a held herb is used on character e (UseHerb with
-// no target); the empty jar it leaves returns to the holder's bag front. A
-// refusal, or any other item, shows «Предмет не доступен для использования»
-// and returns the item.
+// no target), a misc item through UseMisc (the torch); what is left (the
+// empty jar, the torch) returns to the holder's bag front. A refusal, or
+// any other item, shows «Предмет не доступен для использования» and returns
+// the item.
 func (g *Game) useOn(h *Hand, holder, e *Entity, t *resfmt.ExeTables) int {
-	if h.Cursor == CursorHerb && g.UseHerb(e, t, 0, h.Item) {
+	if h.Cursor == CursorHerb && g.UseHerb(e, t, 0, h.Item) || h.Cursor == cursorMisc && g.UseMisc(e, 0, h.Item) {
 		if it, ok := g.Item(h.Item); ok && int8(it.Category) != -1 {
 			h.Return(holder)
 		}
@@ -420,9 +424,9 @@ func (g *Game) useOn(h *Hand, holder, e *Entity, t *resfmt.ExeTables) int {
 // to jewellery box 0; the shovel (misc type 0x18, 0x00415504) switches the
 // hand to CursorDig and the caller closes the window. A herb or potion (9)
 // is used on e at once (UseHerb, 0x0041DB64(e, 0, item)): it stays in the
-// bag as «Пустая банка»; a refusal is silent. Other misc items (0x00414E64)
-// are not ported; bracelets, rings and category 10 do nothing. It returns a
-// message VA or 0.
+// bag as «Пустая банка»; a refusal is silent. The torch lights the piles
+// (UseMisc). Other misc items (0x00414E64) are not ported; bracelets, rings
+// and category 10 do nothing. It returns a message VA or 0.
 func (g *Game) UseBagItem(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 	item := e.Bag[i&31]
 	it, ok := g.Item(item)
@@ -438,6 +442,8 @@ func (g *Game) UseBagItem(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 		return g.ClickJewellery(h, e, t, 0)
 	case c == CatHerb:
 		g.UseHerb(e, t, 0, item)
+	case c == 11 && it.Type == torchType:
+		g.UseMisc(e, 0, item)
 	case c == 11 && it.Type == shovelType:
 		h.Cursor = CursorDig
 	}

@@ -147,3 +147,30 @@ func TestInHandBoxGame0(t *testing.T) {
 		t.Fatalf("portrait: msg %#x HP %d bag %v", msg, volk.HP, volk.Bag[:4])
 	}
 }
+
+func TestLightGame0(t *testing.T) {
+	g, tb := potionGame(t)
+	volk := g.Entities[0]
+	// «Чистая слеза» lights the piles and starts its timer.
+	tear := herbOf(t, g, HerbTear)
+	g.setConcentration(tear, 4)
+	if !g.UseHerb(&volk, tb, 0, tear) || !g.Lit || volk.PotionTimer != 120 || volk.HitBonus != 0 {
+		t.Fatalf("tear: lit %v timer %d bonus %d", g.Lit, volk.PotionTimer, volk.HitBonus)
+	}
+	// The torch (misc type 31) does the same from the bag and stays there.
+	g.Lit = false
+	torch := g.newItem()
+	g.setItem(torch, 11, torchType)
+	BagInsert(&volk, torch)
+	h := NewHand()
+	g.UseBagItem(&h, &volk, tb, 0)
+	if !g.Lit || volk.Bag[0] != torch {
+		t.Fatalf("torch: lit %v bag %v", g.Lit, volk.Bag[:4])
+	}
+	// Dropped on the portrait it works too and returns to the bag front.
+	g.Lit = false
+	g.ClickBag(&h, &volk, tb, 0)
+	if msg := g.ClickPortrait(&h, &volk, &volk, tb); msg != 0 || !g.Lit || h.Holding() || volk.Bag[0] != torch {
+		t.Fatalf("torch on portrait: msg %#x lit %v bag %v", msg, g.Lit, volk.Bag[:4])
+	}
+}

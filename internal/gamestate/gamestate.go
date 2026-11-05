@@ -91,7 +91,11 @@ type Game struct {
 	Settlements []Settlement // section 6: villages with their named-character posts
 	Piles       []Pile       // section 3: items lying on the ground
 	Exits       []MapExit    // section 4: map exits (teleports), see exits.go
-	items       []byte
+	// Lit is 0x00A3E758: the visible piles glow (resfmt.LightsGlow). Set by
+	// «Чистая слеза» (UseHerb) and the torch (UseMisc); the map loader
+	// clears it (0x0043C11B).
+	Lit   bool
+	items []byte
 }
 
 // ItemType returns byte +3 of item record i, the item type that selects the

@@ -102,8 +102,8 @@ func (g *Game) Mix(e *Entity, t *resfmt.ExeTables, target, held int) {
 //     Лов −3n, Хар, Сил and Вын +n for 30n upkeep passes.
 //   - «Зелье»: refused while a timer runs. Base Лов, Сил, Вын +n for 30n
 //     passes and HP += f·160.
-//   - «Чистая слеза»: timer 30n, hit bonus +0xCA = trunc(√n·0.1); it also
-//     sets the map flag 0x00A3E758 (not ported).
+//   - «Чистая слеза»: timer 30n, hit bonus +0xCA = trunc(√n·0.1), and the
+//     visible piles glow until the next map load (Game.Lit, 0x00A3E758).
 //   - «Элексир Мудрости»: refused below n = 6. Free experience
 //     trunc(√(n−5)·100); base Сил −5n (at least 1) and HP −160n (at least
 //     160) for 60n passes.
@@ -192,6 +192,7 @@ func (g *Game) drink(e *Entity, t *resfmt.ExeTables, target, item int) bool {
 		e.BaseStats[3] += n
 		heal(f * 160)
 	case HerbTear:
+		g.Lit = true
 		save()
 		e.PotionTimer = n * potionPass
 		e.HitBonus = truncInt(math.Sqrt(float64(n)) * 0.1)
@@ -215,5 +216,24 @@ func (g *Game) drink(e *Entity, t *resfmt.ExeTables, target, item int) bool {
 		e.HP = HPFull
 	}
 	g.items[item*itemStride+3] = HerbJar
+	return true
+}
+
+// torchType is the misc item «Факел» (misc table 0x0046053C).
+const torchType = 31
+
+// UseMisc is the part of 0x00414E64(e, target, item) the port has: case 31,
+// the torch, sets Game.Lit (0x004156E6) and stays; with a target it then goes
+// to the front of e's bag (the common tail 0x00415BD3). Other misc items
+// return false (the shovel's case is handled by UseBagItem).
+func (g *Game) UseMisc(e *Entity, target, item int) bool {
+	it, ok := g.Item(item)
+	if !ok || it.Category != 11 || it.Type != torchType {
+		return false
+	}
+	g.Lit = true
+	if target != 0 {
+		BagInsert(e, item)
+	}
 	return true
 }

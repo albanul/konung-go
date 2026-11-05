@@ -11,7 +11,9 @@ import (
 // (0x0083B93C[0]; the hero in the port): window art, name and title,
 // equipment icons, jewellery, the 25 sheet numbers (0x0042E04C) and the bag
 // strip along the bottom of the view (0x0042F50C). Items move with the hand
-// (gamestate.Hand); the in-hand box shows gamestate.Hand.Box.
+// (gamestate.Hand); the in-hand box shows gamestate.Hand.Box. The boxed item
+// stays in its bag cell or doll box, but every draw skips it (0x0042E29F,
+// 0x0042E3EF, 0x0042E4B7, 0x0042F72F), so it is shown in the box only.
 //
 // The game draws windows into the screen buffer once and redraws on
 // changes; whether the map keeps animating underneath is not traced. The
@@ -101,9 +103,9 @@ func (w *charWindow) scrollBy(e gamestate.Entity, dir, now int) {
 }
 
 // drawQuick draws the strip alone, when the window is closed.
-func (w *charWindow) drawQuick(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfmt.ExeTables, e gamestate.Entity) {
+func (w *charWindow) drawQuick(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfmt.ExeTables, e gamestate.Entity, box int) {
 	if w.quick && !w.open {
-		w.drawBag(dst, h, g, t, e)
+		w.drawBag(dst, h, g, t, e, box)
 	}
 }
 
@@ -139,20 +141,20 @@ func (w *charWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfm
 	// Equipment: centred horizontally in a cell width, top at the table y.
 	shown := gamestate.SheetEquipment(e)
 	for slot, p := range l.Equipment {
-		if !shown[slot] {
+		if !shown[slot] || e.Equipment[slot] == box {
 			continue
 		}
 		if img := h.slot(gearIcon(g, t, e.Equipment[slot])); img != nil {
 			drawAt(dst, img, p.X+(w.strip.cellW+1-img.Bounds().Dx())/2, p.Y)
 		}
 	}
-	if img := h.slot(gearIcon(g, t, e.Quiver)); e.Quiver != 0 && img != nil {
+	if img := h.slot(gearIcon(g, t, e.Quiver)); e.Quiver != 0 && e.Quiver != box && img != nil {
 		drawAt(dst, img, l.ItemCA.X, l.ItemCA.Y)
 	}
 	// Jewellery: centred on the table point, icons from the jewel table.
 	for i, p := range l.Extras {
 		it, ok := g.Item(e.Extra[i])
-		if !ok {
+		if !ok || e.Extra[i] == box {
 			continue
 		}
 		if img := h.slot(t.ItemIcon(resfmt.ItemTableJewel, it.Type)); img != nil {
@@ -168,12 +170,13 @@ func (w *charWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfm
 	for i, v := range g.CharSheet(e, t) {
 		w.small.drawLine(dst, []byte(v), l.Stats[i].X, l.Stats[i].Y)
 	}
-	w.drawBag(dst, h, g, t, e)
+	w.drawBag(dst, h, g, t, e, box)
 }
 
 // drawBag draws the bag strip (0x0042F50C): arrows at both ends, then one
-// cell per visible bag slot with the item icon centred in it.
-func (w *charWindow) drawBag(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfmt.ExeTables, e gamestate.Entity) {
+// cell per visible bag slot with the item icon centred in it. The in-hand
+// box's item leaves a plain empty cell (0x0042F72F).
+func (w *charWindow) drawBag(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfmt.ExeTables, e gamestate.Entity, box int) {
 	s := &w.strip
 	left, right := bagLeftSlot, bagRightSlot
 	if h.now < w.until {
@@ -194,6 +197,7 @@ func (w *charWindow) drawBag(dst *ebiten.Image, h *hud, g *gamestate.Game, t *re
 		x := s.x0 + k*s.cellW
 		item := e.Bag[(w.scroll+k)&(charWindowBagSlots-1)]
 		it, ok := g.Item(item)
+		ok = ok && item != box
 		bg := cell
 		if ok {
 			// The cell is tinted when the item is unusable, flagged or enchanted (0x0042C914).
