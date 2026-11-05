@@ -75,7 +75,10 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0046219C`, `0x00438CE8`, `0x00A5399C`–`0x00A539B4` | data, table, globals | Settings hotspots (32 bytes each, 640 then 800); click switch; values saved on open (`0x00A539A0` = chosen video mode) | [settings](konung_settings.md) |
 | `0x0042A420`, `0x00427B1C` | routines | Music volume on/off; set video mode | [settings](konung_settings.md) |
 | `0x0043E242` | routine | Indexed-RLE blit `(surface, image, palette, x, y)`, clipped, top-left origin | [map format](konung_map_format.md) |
-| `0x0043ED09` | routine | Takes a palette byte offset and returns the palette used by the blit (conversion details not traced) | terrain draw pass |
+| `0x0043ED09` | routine | Palette for a blit: raw, or tinted by the light `0x0051EC7C` through the channel tables (cache `0x004A30F0`, copies `0x004E5C70`) | [day and night](konung_daylight.md) |
+| `0x00429330`, `0x0051EC7C`, `0x00A3E738`, `0x00A4E2A0` | routine, globals | Day/night tint for the time of day; the packed tint; moonlit night; night lights (lit terrain condition) | [day and night](konung_daylight.md) |
+| `0x0045AE70`, `0x0045AE8F`, `0x0045AD40`, `0x00A3E70C` | data, global | Day segment times (12 × int16); per-map fixed-light flag; per-map fixed tint; the current map's flag | [day and night](konung_daylight.md) |
+| `0x00475E2C`, `0x0047772C`, `0x0047992C`, `0x0047CB2C`, `0x0049FEF0`, `0x004A17F0` | data | Tint tables, darken/brighten: blue, green, red (100 × 32 entries) | [day and night](konung_daylight.md#tinted-palettes-0x0043ed09) |
 | `0x0043BEF8` | routine | `MENU<width>R.RES` loader; frames 1–14 → slots `0x1F2`–`0x1FF` of `0x006304B8` | [menu](konung_menu.md) |
 | `0x0042F8D8` | routine | Main-menu button draw (layout table `0x0045B314`); starts at button 2 unless `[0x00A3E728]` (game running) | [menu](konung_menu.md) |
 | `0x004398C4` | routine | Hit-test `(x, y, rect table)` → index; used by the menu with `0x0045B314` | [menu](konung_menu.md) |

@@ -127,26 +127,37 @@ func DecodeIndexedRLELegacyFrame(src []byte, palette *[256]color.RGBA) (*image.R
 // c' = trunc((1 − |n|·0.01)·c). The game builds lookup tables with float32
 // arithmetic at runtime (0x0043ADF1); the transparent key is kept.
 func TintPalette(p [256]color.RGBA, r, g, b int) [256]color.RGBA {
-	tint := func(v uint8, n int) uint8 {
-		c := (int(v)*31 + 127) / 255
-		var step float32
-		for range abs(n) {
-			step += 0.01
-		}
-		if n >= 0 {
-			c += int(float32(31-c) * step)
-		} else {
-			c = int((1 - step) * float32(c))
-		}
-		return uint8(c * 255 / 31)
+	tr, tg, tb := TintTable(r), TintTable(g), TintTable(b)
+	tint := func(v uint8, t *[32]uint8) uint8 {
+		return uint8(int(t[(int(v)*31+127)/255]) * 255 / 31)
 	}
 	for i := range p {
 		if p[i].A == 0 {
 			continue
 		}
-		p[i].R, p[i].G, p[i].B = tint(p[i].R, r), tint(p[i].G, g), tint(p[i].B, b)
+		p[i].R, p[i].G, p[i].B = tint(p[i].R, &tr), tint(p[i].G, &tg), tint(p[i].B, &tb)
 	}
 	return p
+}
+
+// TintTable is one of the game's per-percentage channel tables (built by
+// 0x0043B27C, 100 entries each way): the 5-bit channel value c maps to
+// c + trunc((31 − c)·s) for n ≥ 0 and trunc((1 − s)·c) for n < 0, where s
+// is 0.01 added |n| times in float32. |n| is clamped to 99.
+func TintTable(n int) [32]uint8 {
+	var step float32
+	for range min(abs(n), 99) {
+		step += 0.01
+	}
+	var t [32]uint8
+	for c := range t {
+		if n >= 0 {
+			t[c] = uint8(c + int(float32(31-c)*step))
+		} else {
+			t[c] = uint8(int((1 - step) * float32(c)))
+		}
+	}
+	return t
 }
 
 func abs(v int) int {

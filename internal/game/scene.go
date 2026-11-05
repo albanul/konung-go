@@ -29,8 +29,9 @@ const (
 // sceneFrame is one drawable image with its shadow, in world pixels.
 type sceneFrame struct {
 	img, shadow *ebiten.Image
-	x, y        int // image top-left
-	sx, sy      int // shadow top-left
+	x, y        int  // image top-left
+	sx, sy      int  // shadow top-left
+	raw         bool // untinted by day/night (self-lit object, character on a lit cell)
 }
 
 // sceneObject is a static map object (one frame) or an entity (its idle
@@ -59,6 +60,12 @@ type startScene struct {
 	objects        []sceneObject // objects and entities, in depth order
 	shadowLayer    *ebiten.Image
 	shadows        bool // setting 0x00A3E750: draw the shadow pass (0x004266C4)
+	dayNight       bool // setting 0x00A3E71C: tint the world by the time of day
+	moon           bool // 0x00A3E738: this night is moonlit
+	lit            *mapdata.LitCells
+	tint           resfmt.Tint    // 0x0051EC7C, this frame's light
+	tintU          map[string]any // shader tables for tint
+	tintSh         *ebiten.Shader // nil if the shader failed to compile
 	camX, camY     int
 	tick           int // game ticks (one per step)
 	frame          int // drawn frames (Update calls)
@@ -270,7 +277,14 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		follow:      true,
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
 	}
+	if s.lit, err = loadLitCells(a.mapDir, mapNumber); err != nil {
+		log.Printf("LIGHTS.%d: %v", mapNumber, err)
+	}
+	if s.tintSh, err = loadTintShader(); err != nil {
+		log.Print(err)
+	}
 	if prev != nil {
+		s.moon, s.dayNight, s.shadows = prev.moon, prev.dayNight, prev.shadows
 		s.inv, s.hand, s.follow, s.speed = prev.inv, prev.hand, prev.follow, prev.speed
 		s.tick, s.frame, s.msg, s.msgEnd = prev.tick, prev.frame, prev.msg, prev.msgEnd
 		s.shadowLayer = prev.shadowLayer
@@ -331,7 +345,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	for _, sp := range mapdata.ObjectSprites(mapdata.DrawOrder(placements, objs)) {
 		img, sh := upload(sp.Image, sp.Shadow)
 		s.objects = append(s.objects, sceneObject{
-			frames: []sceneFrame{{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY}},
+			frames: []sceneFrame{{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY, raw: sp.Raw}},
 			depth:  sp.Depth,
 		})
 	}
@@ -628,7 +642,7 @@ func (s *startScene) dropHeld(hero *gamestate.Entity) {
 func (s *startScene) drawCorpses(dst *ebiten.Image) {
 	draw := func(w *walker) {
 		if f, ok := w.frame(s.tick); ok && s.visible(f.x, f.y, f.img.Bounds().Dx(), f.img.Bounds().Dy()) {
-			drawAt(dst, f.img, f.x-s.camX, f.y-s.camY)
+			s.drawTinted(dst, f.img, f.x-s.camX, f.y-s.camY, s.lit.Lit(w.cell.Row, w.cell.Col))
 		}
 	}
 	if s.hero != nil && len(s.party) > 0 && s.party[0].Dead() {
@@ -918,6 +932,7 @@ func (s *startScene) visible(x, y, w, h int) bool {
 
 func (s *startScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
+	s.updateLight()
 	// Same order as the game's terrain pass (VA 0x0042562F): rows top to
 	// bottom, columns left to right, base layer then overlay layer.
 	rowMin := max(0, (s.camY-s.tileMarginY)/mapdata.CellHeight)
@@ -929,7 +944,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 			x, y := mapdata.CellOrigin(r, c)
 			for _, b := range s.m.Cells[r][c] {
 				if b != 0 && int(b) <= len(s.tiles) && s.tiles[b-1] != nil {
-					drawAt(screen, s.tiles[b-1], x-s.camX, y-s.camY)
+					s.drawTinted(screen, s.tiles[b-1], x-s.camX, y-s.camY, false)
 				}
 			}
 		}
@@ -938,7 +953,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	for _, d := range s.decorations {
 		t := s.tiles[d.Tile]
 		if s.visible(d.X, d.Y, t.Bounds().Dx(), t.Bounds().Dy()) {
-			drawAt(screen, t, d.X-s.camX, d.Y-s.camY)
+			s.drawTinted(screen, t, d.X-s.camX, d.Y-s.camY, false)
 		}
 	}
 	s.drawSelection(screen)
@@ -960,6 +975,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	var owners []int // entity index per chars entry
 	addChar := func(w *walker) {
 		if f, ok := w.frame(s.tick); ok && s.visible(f.x-64, f.y-64, f.img.Bounds().Dx()+128, f.img.Bounds().Dy()+128) {
+			f.raw = s.lit.Lit(w.cell.Row, w.cell.Col) // 0x00427285
 			chars = append(chars, f)
 			owners = append(owners, w.entity)
 			drawShadow(&chars[len(chars)-1])
@@ -995,7 +1011,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	// merged in where their own bottom edge falls.
 	drawFrame := func(f *sceneFrame) {
 		if s.visible(f.x, f.y, f.img.Bounds().Dx(), f.img.Bounds().Dy()) {
-			drawAt(screen, f.img, f.x-s.camX, f.y-s.camY)
+			s.drawTinted(screen, f.img, f.x-s.camX, f.y-s.camY, f.raw)
 		}
 	}
 	ci := 0

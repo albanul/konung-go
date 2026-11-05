@@ -347,6 +347,7 @@ func (m *Menu) updateSettings() {
 func (m *Menu) Draw(screen *ebiten.Image) {
 	if m.inWorld && m.world != nil {
 		m.world.shadows = m.config.Shadows != 0
+		m.world.dayNight = m.config.DayNight != 0
 		m.world.Draw(screen)
 		mx, my := ebiten.CursorPosition()
 		cur := m.sword

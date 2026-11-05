@@ -10,8 +10,8 @@ Path: game directory + `"KONUNG.CFG"` (strings `0x0045028D`, `0x00450811`; direc
 |---|---|---|---|
 | `0x00` | `0x00A3E774` | Video mode: 0 = 640×480, 1 = 800×600 («Видеорежим») | `0x00427B1C` sets the mode; indexes every 640/800 layout table |
 | `0x04` | `0x00A3E700` | «Прозрачность»: alpha-blended flames | `0x0042713A`, `0x00427667` (blit `0x0043D8EF` vs `0x0043E696`), `0x0043BAFD` (FLAMES.RES palette path) |
-| `0x08` | `0x00A3E71C` | «Смена дня и ночи»: day/night light level | `0x004293B3`: off → light level 0 |
-| `0x0C` | `0x00A3E734` | «Световые эффекты»: lit terrain path | `0x0042565D`: with `[0x00A4E2A0]` set, draw terrain via `0x004257A9` (`LIGHTS.N`) |
+| `0x08` | `0x00A3E71C` | «Смена дня и ночи»: day/night light tint | `0x004293B3`: off → no tint ([day and night](konung_daylight.md)) |
+| `0x0C` | `0x00A3E734` | «Световые эффекты»: lit terrain path | `0x0042565D`: at night (`[0x00A4E2A0]`, [day and night](konung_daylight.md)), draw terrain via `0x004257A9` (`LIGHTS.N`) |
 | `0x10` | `0x00A3E73C` | «Музыка» | `0x00429995`; toggle calls `0x0042A420(on)`: music buffer volume −1000 (on) / −10000 (off) via the DirectSound vtable `+0x3C` |
 | `0x14` | `0x00A3E744` | background tiling (not on the screen) | `0x0043141C` tiles INTR slot 5 |
 | `0x18` | `0x00A3E750` | «Тени»: the shadow pass | `0x004266C4` |
@@ -52,12 +52,11 @@ State `0x00A3E6D8` = 6. Opening it (`0x00437DDD`) copies the current values to a
 ## Port
 
 * All screens run at 800×600. The video choice is stored and written to `KONUNG.CFG`, but the port does not switch modes.
-* **Shadows** are honoured: `startScene.shadows` gates the shadow pass (the menu sets it from the config each frame).
-* Transparency, day/night, lighting, music and sound are stored, written and saved, but have no effect: the port has no flames, light levels, lit terrain or audio.
+* **Shadows** and **day/night** are honoured: `startScene.shadows` gates the shadow pass, `startScene.dayNight` the [day/night tint](konung_daylight.md) (the menu sets both from the config each frame).
+* Transparency, lighting, music and sound are stored, written and saved, but have no effect: the port has no flames, lit terrain or audio.
 * Saving puts day/night and lighting into `Game.Options`; loading copies them back into the config (`Menu.updateSaves`).
 * `KONUNG.CFG` is read from and written to the game directory (next to `KONUNG.1`), like the saves.
 
 ## Open questions
 
-* What sets `0x00A4E2A0`, the second condition for the lit terrain path.
-* The day/night light computation around `0x004293B3` (table `0x0045AE6E`) was not traced beyond the option check.
+* None specific to the screen; see [day and night](konung_daylight.md#open-questions) for the lit terrain path.

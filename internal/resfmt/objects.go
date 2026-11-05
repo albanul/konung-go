@@ -87,6 +87,10 @@ type MapObject struct {
 	Shadow           *image.Alpha // nil when the variant has no shadow or the header disables it
 	ShadowDX         int          // header +0xC0 + 8*variant
 	ShadowDY         int          // header +0xC2 + 8*variant
+	// SelfLit is header +8 ≥ 2: the sprite pass draws the object with its
+	// raw palette, not the day/night tinted one (0x0042755E), and without
+	// a shadow.
+	SelfLit bool
 }
 
 // MapObjectSlot converts a KONUNG.N section-3 object ID to the 0-based
@@ -135,7 +139,8 @@ func LoadMapObject(objects, graph []byte, slot, variant int, paletteOffset uint3
 	obj := &MapObject{Image: img, ImageDX: word(0xC4), ImageDY: word(0xC6), ShadowDX: word(0xC0), ShadowDY: word(0xC2)}
 	// The draw pass at 0x004268C3 skips the shadow when its offset is -1 or the
 	// header dword at +8 is >= 2.
-	if shadowOff != 0xffffffff && int32(binary.LittleEndian.Uint32(hdr[8:])) < 2 && int(shadowOff) < len(data) {
+	obj.SelfLit = int32(binary.LittleEndian.Uint32(hdr[8:])) >= 2
+	if shadowOff != 0xffffffff && !obj.SelfLit && int(shadowOff) < len(data) {
 		if obj.Shadow, err = DecodeShadowMask(data[shadowOff:]); err != nil {
 			return nil, fmt.Errorf("decode OBJECTS.RES slot %d shadow: %w", slot, err)
 		}

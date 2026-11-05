@@ -65,7 +65,8 @@ func (s *startScene) drawPiles(dst *ebiten.Image) {
 			}
 		}
 		if s.visible(x, y, b.Dx(), b.Dy()) {
-			drawAt(dst, img, x-s.camX, y-s.camY)
+			// The glowing piles use the raw palette, the others the tint.
+			s.drawTinted(dst, img, x-s.camX, y-s.camY, s.game.Lit)
 		}
 	}
 }
