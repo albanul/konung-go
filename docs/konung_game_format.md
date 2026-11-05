@@ -62,7 +62,7 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 | `+0x0A` | `uint16` | fine-grid column |
 | `+0x10` | byte | **animation step**, advanced by `0x00413DE4` until it reaches the count in `+0xD7` |
 | `+0x33` | byte | level (status line «Уров:») |
-| `+0x42`, `+0x46`, `+0x48`, `+0x4A`, `+0x4C` | `uint16` | skills: trade, building, healing, curios, smithing (status-line phrases above 30 / 4 / 100 / 10 / 4) |
+| `+0x42`, `+0x46`, `+0x48`, `+0x4A`, `+0x4C` | `uint16` | skills: trade, building, healing, curios, smithing (status-line phrases above 30 / 4 / 100 / 10 / 4). Healing (знахарство, ≤ 500) grows with potion making and sets potion strength ([potions](konung_potions.md)) |
 | `+0x12` | byte | **weapon mode** = active weapon slot: 0 axe/club, 1 bow, 2 blade; selects HUD button 0's image (`0x0042911A`); Volk = 2 |
 | `+0x50` | `int16` | non-zero while poisoned (HP bar colour) |
 | `+0x66` | 6 × `uint16` | **equipment**: item indices for slots 0–5 (0 = empty), drawn as overlays |
@@ -140,7 +140,7 @@ The slot meaning of 0–2 is verified by `0x0042192C` (mode *m* requires slot *m
 |---|---|---|---|---|
 | 0–5, 12 | gear `0x00459BB0` | 64 B | `int16 +0x3A` | «Нож», «Дубина», «Доспех кожаный», «медные стрелы» |
 | 6–8 | jewellery `0x00458110` | 128 B | `int16 +0x7C` | «Ожерелье», «Браслет» |
-| 9 | herbs, potions `0x004594B0` | 128 B | `int16 +0x7C` | «Лечебный бальзам», «Белый корень» |
+| 9 | herbs, potions `0x004594B0` (14 types, [potions](konung_potions.md#herb-types)) | 128 B | `int16 +0x7C` | «Лечебный бальзам», «Белый корень» |
 | other | misc `0x0046053C` | 128 B | `int16 +0x7C` | «Левая часть амулета Дракона», «Труды Гиппократа» |
 
 Gear records also hold the damage or armour value (`uint16 +0x2C`), a required stat id and minimum (`+0x30`, `+0x32`), the weight in grams (`+0x38`; other tables `+0x7A`) and the equipment overlay `k` at `+0x3E` (−1 = invisible; `0x004281A4` reads it as `int16[0x00459BEE + type*64]` by type alone). The character window uses the gear table for equipment and the jewellery table for the `+0xB2` items regardless of category. Code: `resfmt.ItemTableOf`, `ExeTables.ItemName`, `ItemIcon`, `ItemOverlay`; `gamestate.Game.Item`.

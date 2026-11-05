@@ -66,8 +66,8 @@ type Entity struct {
 	Marksmanship  int     // +0x44 word: «Меткость» ×100
 	BaseStats     [4]int  // words +0x5A, +0x60, +0x56, +0x64: base Хар, Сил, Лов, Вын («базовая» column)
 	Quiver        int     // +0xCC word: ammunition item in the box next to the bow (0 = empty)
-	HitBonus      int     // +0xCA int16: added to the hit chance while HitBonusOn != 0 (0x0041B5EE)
-	HitBonusOn    int     // +0xCE word: potion timer in upkeep passes (Upkeep); while set, nothing can be raised
+	HitBonus      int     // +0xCA int16: added to the hit chance while PotionTimer != 0 (0x0041B5EE)
+	PotionTimer   int     // +0xCE word: potion timer in upkeep passes (Upkeep, UseHerb); while set, nothing can be raised and HitBonus applies
 	SavedBase     [4]int  // words +0xBC, +0xBE, +0xC0, +0xC2: base Лов, Хар, Сил, Вын restored when the potion ends
 	Throttle      int     // +0x11: walk throttle mask (walk steps only on ticks where time & m == m)
 	PoisonDealt   int     // +0x52 int16: poison a creature adds to its target's +0x50 per hit (0x0041AF5D)
@@ -192,7 +192,7 @@ func Parse(data []byte) (*Game, error) {
 			BaseStats:     [4]int{u16(e, 0x5A), u16(e, 0x60), u16(e, 0x56), u16(e, 0x64)},
 			Quiver:        u16(e, 0xCC),
 			HitBonus:      s16(e, 0xCA),
-			HitBonusOn:    u16(e, 0xCE),
+			PotionTimer:   u16(e, 0xCE),
 			SavedBase:     [4]int{u16(e, 0xBC), u16(e, 0xBE), u16(e, 0xC0), u16(e, 0xC2)},
 			Throttle:      int(e[0x11]),
 			PoisonDealt:   s16(e, 0x52),

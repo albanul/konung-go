@@ -120,7 +120,7 @@ func TestLootAndLevels(t *testing.T) {
 	if c := g.RaiseCost(volk, tb, 2); c != 0 { // Лов 10 is above the level-1 cap 7 of the other row
 		t.Errorf("Volk Лов cost %d, want 0 (capped)", c)
 	}
-	volk.HitBonusOn = 1
+	volk.PotionTimer = 1
 	if g.RaiseCost(volk, tb, 5) != 0 {
 		t.Error("raise allowed during a potion")
 	}

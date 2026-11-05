@@ -198,7 +198,7 @@ func (g *Game) DropLoot(victim *Entity, a, l, m, at int, newOK bool, curios *int
 // go up a level; for ids 2/3/5/6 (Лов, Хар, Сил, Вын) the free-experience
 // cost of raising that stat, or 0 when it is capped or unaffordable.
 func (g *Game) RaiseCost(e Entity, t *resfmt.ExeTables, id int) int {
-	if e.HitBonusOn != 0 {
+	if e.PotionTimer != 0 {
 		return 0
 	}
 	race := int(e.Flags4&7) - 1

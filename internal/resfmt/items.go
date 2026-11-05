@@ -200,3 +200,40 @@ func (t *ExeTables) RespawnRule(kind int) (cost, period int) {
 // Bytes returns n bytes of DGROUP data at va (exe tables without their own
 // accessor: the level requirement/cap and cost tables of 0x00410B08).
 func (t *ExeTables) Bytes(va, n int) []byte { return t.at(va)[:n] }
+
+// Recipe is one row of the herb-mixing table at 0x00450E54 (33 rows of 6
+// bytes), read by 0x0041BC24: dropping a held herb of type Held on a herb of
+// type Target turns the target into NewTarget and the held herb into NewHeld
+// (0xFF = used up), raises the healing skill (+0x48) by Skill and sets the
+// target's concentration by Mode (RecipeSet… constants).
+type Recipe struct {
+	Target, Held, NewTarget, NewHeld int
+	Skill                            int // int8
+	Mode                             int
+}
+
+// Concentration rules of a recipe (jump table 0x0041BD34); s = healing skill.
+const (
+	RecipeSet      = iota // target = s·0.01
+	RecipeAddSkill        // target += s·0.01
+	RecipeAdd             // target += held
+	RecipeMin             // target = min(target, held)
+	RecipeHeld            // target = held + s·0.01
+)
+
+const (
+	recipesVA    = 0x00450E54
+	recipeCount  = 33
+	recipeStride = 6
+)
+
+// Recipes returns the herb-mixing table in the game's search order.
+func (t *ExeTables) Recipes() []Recipe {
+	r := make([]Recipe, recipeCount)
+	for i := range r {
+		b := t.at(recipesVA + i*recipeStride)
+		r[i] = Recipe{Target: int(b[0]), Held: int(b[1]), NewTarget: int(b[2]), NewHeld: int(b[3]),
+			Skill: int(int8(b[4])), Mode: int(b[5])}
+	}
+	return r
+}

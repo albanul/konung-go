@@ -10,8 +10,8 @@ import (
 // or the HUD bag button (0x00424610). It shows the selected character
 // (0x0083B93C[0]; the hero in the port): window art, name and title,
 // equipment icons, jewellery, the 25 sheet numbers (0x0042E04C) and the bag
-// strip along the bottom of the view (0x0042F50C). View only: dragging items
-// (0x00A3E7A0) is not ported.
+// strip along the bottom of the view (0x0042F50C). Items move with the hand
+// (gamestate.Hand); the in-hand box shows gamestate.Hand.Box.
 //
 // The game draws windows into the screen buffer once and redraws on
 // changes; whether the map keeps animating underneath is not traced. The
@@ -126,7 +126,7 @@ func gearIcon(g *gamestate.Game, t *resfmt.ExeTables, i int) int {
 	return t.ItemIcon(resfmt.ItemTableGear, it.Type)
 }
 
-func (w *charWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfmt.ExeTables, e gamestate.Entity) {
+func (w *charWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfmt.ExeTables, e gamestate.Entity, box int) {
 	l := &w.layout
 	h.draw(dst, resfmt.CharWindowBackground, viewLeft, viewTop)
 	centre := (viewLeft + viewRight) / 2
@@ -159,6 +159,11 @@ func (w *charWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfm
 			b := img.Bounds()
 			drawAt(dst, img, p.X-b.Dx()/2, p.Y-b.Dy()/2)
 		}
+	}
+	// The in-hand box: the icon by category, centred (0x0042E5C0).
+	if img := h.slot(itemIcon(g, t, box)); box != 0 && img != nil {
+		b := img.Bounds()
+		drawAt(dst, img, l.InHand.X-b.Dx()/2, l.InHand.Y-b.Dy()/2)
 	}
 	for i, v := range g.CharSheet(e, t) {
 		w.small.drawLine(dst, []byte(v), l.Stats[i].X, l.Stats[i].Y)

@@ -54,7 +54,7 @@ func (g *Game) HitChance(e Entity, t *resfmt.ExeTables, distance int) int {
 	} else {
 		hit = int(100 - (100-dex*0.5)/(float64(e.Fencing)*0.00015+1.5))
 	}
-	if e.HitBonusOn != 0 {
+	if e.PotionTimer != 0 {
 		hit += e.HitBonus
 	}
 	return bonus(e, 2, hit)

@@ -494,6 +494,9 @@ func (s *startScene) updateControls(mx, my int) {
 	if inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton {
 		s.hand.Return(hero)
 		s.inv.toggle()
+		if s.inv.open {
+			s.hand.Box = 0 // 0x004246D1
+		}
 		s.hud.press(hudBagButton, hudBagImage)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyBackquote) && !s.inv.open {
@@ -519,6 +522,12 @@ func (s *startScene) click(hero *gamestate.Entity, mx, my, spot int, right bool)
 	}
 	msg := 0
 	switch {
+	case !right && spot >= hotspotPortrait && spot < hotspotPortrait+len(portraitCells):
+		// 0x00422E21: a held item dropped on a portrait is used on (or given
+		// to) that member; with an empty hand the click would select.
+		if k := spot - hotspotPortrait; k < len(s.party) {
+			msg = s.game.ClickPortrait(&s.hand, hero, &s.party[k], s.tables)
+		}
 	case !inView(mx, my):
 		return // HUD: buttons were handled by updateControls
 	case s.inv.showStrip() && (spot == hotspotBagLeft || spot == hotspotBagRight):
@@ -624,6 +633,8 @@ func (s *startScene) statusText() []byte {
 		return s.tables.CString(gamestate.ButtonTooltips[spot-1])
 	case s.inv.showStrip() && s.inv.strip.hit(mx, my):
 		item = hero.Bag[((mx-s.inv.strip.x0)/s.inv.strip.cellW+s.inv.scroll)&31]
+	case s.inv.open && spot == hotspotInHand:
+		item = s.hand.Box
 	case s.inv.open:
 		item = gamestate.HoveredItem(hero, spot)
 	}
@@ -633,9 +644,16 @@ func (s *startScene) statusText() []byte {
 	return s.game.ItemDescription(s.tables, item)
 }
 
+// hotspotPortrait is the first portrait cell's hotspot id (30–39 = cells 0–9).
+const hotspotPortrait = 30
+
+// hotspotInHand is the character window's in-hand box (0x00A3E7A0).
+const hotspotInHand = 19
+
 // windowClick handles a left click on the character window's doll boxes
-// (hotspots 8–18, click handler 0x00422864; 19, the in-hand box, is not
-// ported) and returns a message VA or 0.
+// (hotspots 8–18) and the in-hand box (19, where herbs are mixed and
+// applied), as the click handler 0x00422864 does, and returns a message VA
+// or 0.
 func (s *startScene) windowClick(hero *gamestate.Entity, spot int) int {
 	switch {
 	case spot >= 8 && spot <= 13:
@@ -647,6 +665,8 @@ func (s *startScene) windowClick(hero *gamestate.Entity, spot int) int {
 		return s.game.ClickEquipment(&s.hand, hero, s.tables, slot)
 	case spot >= 14 && spot <= 18:
 		return s.game.ClickJewellery(&s.hand, hero, s.tables, spot-14)
+	case spot == hotspotInHand:
+		return s.game.ClickBox(&s.hand, hero, s.tables)
 	}
 	return 0
 }
@@ -918,7 +938,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	}
 	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
 	if s.inv.open && len(s.party) > 0 {
-		s.inv.draw(screen, s.hud, s.game, s.tables, s.party[0])
+		s.inv.draw(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
 	}
 	if len(s.party) > 0 {
 		s.inv.drawQuick(screen, s.hud, s.game, s.tables, s.party[0])

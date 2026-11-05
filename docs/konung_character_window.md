@@ -2,7 +2,7 @@
 
 Window 3: the character sheet with equipment, jewellery, stats and the bag strip. Opened and closed with **I** or HUD button 6 (the bag, hotspot 7). Both call `0x00424610`, which works when no window or window 3 is open (`0x00A3E740` = 0 or 3). It presses button 6 with image 13 (`0x004290AC(6, 13)`) and toggles the window. It shows the first selected character (`0x0083B93C[0]` → `0x00A3E688`), resets the bag scroll `0x00A3E840`, then draws the window (`0x0042DBBC(2)`; the dispatcher's jump table at `0x0042F4C8` is indexed with *argument + 1*, so this is case 3, `0x0042E04C`) and the bag strip (`0x0042F50C(entity, 0)`).
 
-Status: drawing verified against code and rendered PNGs. Values verified against hand calculation for `GAME.0` entities 0 and 355. [Moving items](#moving-items) between the bag, the equipment and the jewellery is ported; the in-hand box (hotspot 19, `0x00A3E7A0`) and item use are not.
+Status: drawing verified against code and rendered PNGs. Values verified against hand calculation for `GAME.0` entities 0 and 355. [Moving items](#moving-items) between the bag, the equipment and the jewellery is ported, and so are the in-hand box (hotspot 19, `0x00A3E7A0`) and herb use ([potions](konung_potions.md)). Misc item use is ported for the shovel only.
 
 ## Window (`0x0042E04C`, 800×600)
 
@@ -17,7 +17,7 @@ Positions come from exe tables of `(x640, y640, x800, y800)` int32 rows; `resfmt
 | Equipment | slot → position row `int32[0x0046573C + slot·4]` → `0x004657B4 + row·16`. Icon = gear table icon by type; x = row x + (cell width + 1 − icon width)/2, y = row y. Axe (slot 0) and blade (slot 2) share the hand box: the axe is drawn unless weapon mode is 2 and the blade is present; the blade only when the axe isn't drawn (`gamestate.SheetEquipment`). |
 | Ammunition | item word `+0xCC`, gear-table icon, top-left at `0x00465804` (the box next to the bow) |
 | Jewellery | items `+0xB2`…`+0xBA`, jewellery-table icons, centred on `0x00465814 + i·16` |
-| Held item | `0x00A3E7A0` (being dragged), centred on `0x00465864`; not ported |
+| In-hand box | item `0x00A3E7A0`, icon by category centred on `0x00465864` (`0x0042E5C0`); see [potions](konung_potions.md#controls) |
 | 25 numbers | small font `0x005A31F4`, top-left at `0x00465874 + i·16`, see below |
 | Raise column | `0x0042F2B6`: XP pool and level/stat-raise costs (`0x00410B08`) with INTR slot 171; not ported |
 | Stance icon | INTR slot `0xAA` if `+3` bit `0x02`, else `0xA9`; not ported |
@@ -47,7 +47,7 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 | 9 | hand (axe or blade) | `0x0041E500(slot)`, slot from `0x00422CB4` (`gamestate.HandSlot`): holding, category 0 → 0 else 2; empty hand, no axe → 2, axe mode → 0, blade present → 2, else 0 |
 | 13 | ammunition (`+0xCC`) | `0x0041E500(12)` |
 | 14–18 | jewellery `+0xB2`[0–4] | `0x0041E778(id)` |
-| 19 | in-hand box | `0x0041E96C` and item use (`0x0041DB64`, `0x00414E64`); not ported |
+| 19 | in-hand box | `0x00422D50`: `0x0041E96C` (put in / take out) or herb use on the boxed item (`0x0041DB64`); misc use `0x00414E64` not ported ([potions](konung_potions.md#controls)) |
 | 40–45 | raise buttons (right column) | not ported |
 | bag cell | `+0x72`[(cell + scroll) & 31] | `0x0042342A` |
 
@@ -58,7 +58,7 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 * **Bag insert** (`0x00424918`): if any of the 32 slots is free, shift the bag right by one and store at index 0; otherwise fail without storing.
 * **Equipment** (`0x0041E500(slot)`): empty hand → lift the slot's item. Holding → if the entity is a creature or the item's category ≠ slot, return it; if the character can't use it (`0x00418364`), show «Предмет не доступен для использования» (`0x0045C17C`) and return it; otherwise the old item goes through bag insert (its result is ignored, so with a full bag the old item is lost), the new item is stored and `0x0041C750` recomputes the stats.
 * **Jewellery** (`0x0041E778`): box 0 takes category 6, boxes 1–2 category 7, boxes 3–4 category 8; unusable or wrong items return silently; otherwise as equipment.
-* **Bag** (`0x0042342A`): empty hand → lift the clicked item. Holding → `0x004246F8`: if carried weight + the item's weight (`0x0041B164`, same per-category rule as the bag) > max weight, «Превышен вес» (`0x0045C57C`); if the bag is full, «Мешок у тебя не резиновый!» (`0x0045BD7C`); either way the item returns. Otherwise it goes to the front of the bag. The clicked cell doesn't matter.
+* **Bag** (`0x0042342A`): empty hand → lift the clicked item, unless it is the in-hand box's item (`0x004234A0`). Holding → `0x004246F8`: if carried weight + the item's weight (`0x0041B164`, same per-category rule as the bag) > max weight, «Превышен вес» (`0x0045C57C`); if the bag is full, «Мешок у тебя не резиновый!» (`0x0045BD7C`); either way the item returns. Otherwise it goes to the front of the bag. The clicked cell doesn't matter.
 
 **Messages** (`0x0042F9B8`): small font at (view left + 10, view bottom + 5), the status-line position; counter `0x00A3E84C` = 12 main-loop passes. The port shows them for 12 animation steps. Sounds (`0x0042A664`) are not ported.
 
@@ -71,7 +71,7 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 | 0–5, 12 | equip at once: lift from the bag, then `0x0041E500(category)` (with all its checks) |
 | 6 | lift, then jewellery box 0 (`0x0041E778(14)`) |
 | 7, 8, 10 | nothing |
-| 9 | use the herb, `0x0041DB64(e, 0, item)` (not ported) |
+| 9 | use the herb on the character, `0x0041DB64(e, 0, item)` ([potions](konung_potions.md)) |
 | 11 | use the misc item, `0x00414E64(e, 0, item)` (jump table `0x00415ADC` by type; only the shovel, type 24, is ported: [dig mode](konung_ground_items.md#hover-and-pick-up)) |
 
 **Quick bag (`` ` ``/`~`, VK 0xC0, `0x004371D2`).** Only with no window open (`0x00A3E740` = 0). It toggles the bag strip (`0x0042F50C`) for the first selected member: if the strip already shows that member (`0x00A3E730`) it is hidden, otherwise the scroll resets and the strip is drawn. The strip covers the bottom of the game view, just above the status bar. Its cells and arrows work as in the window (hotspot routine `0x004395E6` tests `0x00A3E730`, not the window). The window toggle saves and restores the strip state (`0x00A3E760`), and the shovel leaves the strip open. While an item is held, a left click on the map drops it ([ground items](konung_ground_items.md#hover-and-pick-up)). Port: `charWindow.quick`.
@@ -98,7 +98,7 @@ An enchantment adds, per effect with a stat, the stat's name from `0x00465A24` (
 
 Validation: `gamestate.TestItemDescriptionGame0` checks 14 `GAME.0` items, e.g. Volk's knife «Нож, убойная сила 60, износ 16/16, вес 0.20, требует:  Сил:3» and «Богатырские доспехи, броня: 200, износ 110/110, вес 5.00 Лов=100 Вын-20, требует:  Хар:35, требует:  Вын:95». `GAME.0` has no unidentified or poisoned items; those branches follow the code only.
 
-Port: `startScene.statusText` (a click message still wins for its short lifetime; the in-hand box is not ported).
+Port: `startScene.statusText` (a click message still wins for its short lifetime).
 
 ## Derived values
 
@@ -123,4 +123,4 @@ Port: `startScene.statusText` (a click message still wins for its short lifetime
 
 * The raise column's drawing and buttons (hotspots 40–45, handler `0x00422864`; the cost rule `0x00410B08` is traced and ported as `Game.RaiseCost`, see [combat: experience and levels](konung_combat.md#experience-and-levels-verified)), the auto-level toggle (`+3` bit `0x02`, `0x00423272`; `Game.GainExperience`), the XP-pool text, and the stance icon slots 0xA9/0xAA.
 * `0x00A3E768` (god mode, see [combat](konung_combat.md#open-questions)).
-* The in-hand box (hotspot 19, `0x00A3E7A0`) and using items on characters (cursor modes 8/9), and the background tiling flag `0x00A3E744` (`0x0043141C` tiles INTR slot 5).
+* Misc items on the in-hand box or a portrait (cursor mode 9, `0x00414E64`), and the background tiling flag `0x00A3E744` (`0x0043141C` tiles INTR slot 5).

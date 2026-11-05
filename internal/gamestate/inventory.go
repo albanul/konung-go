@@ -30,6 +30,8 @@ const (
 	// hand is empty; the next left or right click resets it (0x0042296C,
 	// 0x004238FB, 0x00423412) and continues as a normal click.
 	CursorDig = 7
+	// CursorHerb is the hand holding a herb or potion (category 9).
+	CursorHerb = 8
 )
 
 // Map cursor sprites chosen by 0x00428A50 for the character under the mouse
@@ -46,10 +48,13 @@ const EquipAmmo = 12
 
 // Hand is the item being moved (0x00A3E520–0x00A3E5A0): the item, the
 // cursor sprite, where it came from and a backup of that array so it can
-// be returned.
+// be returned. Box is the item in the window's in-hand box (hotspot 19,
+// 0x00A3E7A0): it stays where it is (bag, equipment…), the box only
+// points at it; herbs held in the hand are used on it (ClickBox).
 type Hand struct {
 	Item   int // 0x00A3E528
 	Cursor int // 0x00A3E790; CursorPointer when empty
+	Box    int // 0x00A3E7A0; 0 = empty, cleared when the window opens (0x004246D1)
 	from   int
 	equip  [6]int  // 0x00A3E52C
 	bag    [32]int // 0x00A3E538: the bag without the item, the item appended
@@ -74,8 +79,8 @@ func cursorFor(category int) int {
 		return 2 // bow, arrows
 	case 3, 4, 5:
 		return 0 // armour, helmet, shield
-	case 9:
-		return 8 // herbs: globe with hand
+	case CatHerb:
+		return CursorHerb // herbs: globe with hand
 	}
 	return 9 // jewellery and the rest: starburst
 }
@@ -288,32 +293,136 @@ func (g *Game) ClickJewellery(h *Hand, e *Entity, t *resfmt.ExeTables, box int) 
 // ClickBag is the bag strip click (0x0042342A) on bag index i: an empty
 // hand lifts the item there; a held item is dropped into the bag (0x004246F8)
 // at the front, if the weight limit and the bag allow, else it returns.
+// The item in the in-hand box can't be lifted from the bag (0x004234A0).
 func (g *Game) ClickBag(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 	if !h.Holding() {
-		if item := e.Bag[i&31]; item != 0 {
+		if item := e.Bag[i&31]; item != 0 && item != h.Box {
 			g.lift(h, e, fromBag, item)
 		}
 		return 0
 	}
-	if g.CarriedWeight(*e, t)+g.ItemWeight(t, h.Item) > MaxWeight(*e) {
-		h.Return(e)
+	return g.give(h, e, e, t)
+}
+
+// give is 0x004246F8(to): the held item goes to the front of to's bag if
+// to can carry it and the bag has room; otherwise it returns to holder.
+func (g *Game) give(h *Hand, holder, to *Entity, t *resfmt.ExeTables) int {
+	if g.CarriedWeight(*to, t)+g.ItemWeight(t, h.Item) > MaxWeight(*to) {
+		h.Return(holder)
 		return MsgTooHeavy
 	}
-	if !BagInsert(e, h.Item) {
-		h.Return(e)
+	if !BagInsert(to, h.Item) {
+		h.Return(holder)
 		return MsgBagFull
 	}
 	h.Cursor = CursorPointer
 	return 0
 }
 
+// ClickBox is the in-hand box click (hotspot 19, 0x00422D50). With an empty
+// box or an empty hand it is boxSwap (0x0041E96C). Holding a herb, the herb
+// is used on the boxed item (UseHerb: mixing, or poison/oil on a weapon or
+// arrows) and the hand empties. Anything else (and a refusal) shows
+// «Предмет не доступен для использования» and returns the held item. Misc
+// items (cursor 9, 0x00414E64) are not ported and are refused.
+func (g *Game) ClickBox(h *Hand, e *Entity, t *resfmt.ExeTables) int {
+	if h.Box == 0 || !h.Holding() {
+		g.boxSwap(h, e)
+		return 0
+	}
+	if h.Cursor == CursorHerb && g.UseHerb(e, t, h.Box, h.Item) {
+		h.Cursor = CursorPointer
+		return 0
+	}
+	h.Return(e)
+	return MsgUnusable
+}
+
+// boxSwap is 0x0041E96C. Empty hand: the boxed item is lifted from where it
+// is (ammunition, equipment, jewellery, else the bag) and the box empties.
+// Holding an item: its source is restored from the backup (a bag item goes
+// back to the end of the bag, not the front) and the box points at it.
+func (g *Game) boxSwap(h *Hand, e *Entity) {
+	if !h.Holding() {
+		item := h.Box
+		if item == 0 {
+			return
+		}
+		from := fromBag
+		switch {
+		case e.Quiver == item:
+			from = fromAmmo
+		case contains(e.Equipment[:], item):
+			from = fromEquipment
+		case contains(e.Extra[:], item):
+			from = fromJewellery
+		}
+		g.lift(h, e, from, item)
+		h.Box = 0
+		return
+	}
+	h.Cursor = CursorPointer
+	switch h.from {
+	case fromEquipment:
+		e.Equipment = h.equip
+	case fromBag:
+		e.Bag = h.bag
+	case fromJewellery:
+		e.Extra = h.extra
+	default:
+		e.Quiver = h.Item
+	}
+	h.Box = h.Item
+}
+
+func contains(s []int, v int) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// ClickPortrait is a left click on party member m's portrait (hotspots
+// 30–39, 0x00422E21) while holder holds an item: on a dead member or on
+// holder itself the item is used on m (useOn); another member gets it in
+// the bag (give). With an empty hand the click selects (not handled here).
+func (g *Game) ClickPortrait(h *Hand, holder, m *Entity, t *resfmt.ExeTables) int {
+	if !h.Holding() {
+		return 0
+	}
+	if m.Dead() || m == holder {
+		return g.useOn(h, holder, m, t)
+	}
+	return g.give(h, holder, m, t)
+}
+
+// useOn is 0x0042054C(e): a held herb is used on character e (UseHerb with
+// no target); the empty jar it leaves returns to the holder's bag front. A
+// refusal, or any other item, shows «Предмет не доступен для использования»
+// and returns the item.
+func (g *Game) useOn(h *Hand, holder, e *Entity, t *resfmt.ExeTables) int {
+	if h.Cursor == CursorHerb && g.UseHerb(e, t, 0, h.Item) {
+		if it, ok := g.Item(h.Item); ok && int8(it.Category) != -1 {
+			h.Return(holder)
+		}
+		h.Cursor = CursorPointer
+		return 0
+	}
+	h.Return(holder)
+	return MsgUnusable
+}
+
 // UseBagItem is the right click on bag slot i (0x00423E26, jump table
 // 0x00423F28 by category): gear (0–5) and arrows (12) are equipped at once
 // (lift, then ClickEquipment with the category as slot); a necklace (6) goes
 // to jewellery box 0; the shovel (misc type 0x18, 0x00415504) switches the
-// hand to CursorDig and the caller closes the window. Herbs (9,
-// 0x0041DB64) and other misc items (0x00414E64) are not ported; bracelets,
-// rings and category 10 do nothing. It returns a message VA or 0.
+// hand to CursorDig and the caller closes the window. A herb or potion (9)
+// is used on e at once (UseHerb, 0x0041DB64(e, 0, item)): it stays in the
+// bag as «Пустая банка»; a refusal is silent. Other misc items (0x00414E64)
+// are not ported; bracelets, rings and category 10 do nothing. It returns a
+// message VA or 0.
 func (g *Game) UseBagItem(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 	item := e.Bag[i&31]
 	it, ok := g.Item(item)
@@ -327,6 +436,8 @@ func (g *Game) UseBagItem(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 	case c == 6:
 		g.lift(h, e, fromBag, item)
 		return g.ClickJewellery(h, e, t, 0)
+	case c == CatHerb:
+		g.UseHerb(e, t, 0, item)
 	case c == 11 && it.Type == shovelType:
 		h.Cursor = CursorDig
 	}

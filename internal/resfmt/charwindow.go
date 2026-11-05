@@ -15,6 +15,7 @@ type CharWindow struct {
 	Equipment [6]image.Point
 	ItemCA    image.Point    // top-left of the item in entity word +0xCA (0x00465804)
 	Extras    [5]image.Point // centres of the five items at +0xB2 (0x00465814)
+	InHand    image.Point    // centre of the in-hand box item 0x00A3E7A0 (0x00465864)
 	Stats     [25]image.Point
 	// Stats are the top-left corners of the 25 numbers (0x00465874), in the
 	// order of gamestate.CharSheet.
@@ -49,6 +50,7 @@ func (t *ExeTables) CharWindow800() CharWindow {
 	for i := range w.Stats {
 		w.Stats[i] = pt(0x00465874 + i*16)
 	}
+	w.InHand = pt(0x00465864)
 	w.Label = pt(0x00465754)
 	w.NameY = 10 * screenHeight800 / 640
 	w.TitleY = (i32(0x00465778+8) + 10 - i32(0x00465768+8) + 4) * screenHeight800 / 640

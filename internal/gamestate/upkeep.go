@@ -47,8 +47,8 @@ func (g *Game) Upkeep(t *resfmt.ExeTables, current int, skip func(i int) bool, d
 					}
 				}
 			}
-			if e.HitBonusOn != 0 {
-				if e.HitBonusOn--; e.HitBonusOn == 0 {
+			if e.PotionTimer != 0 {
+				if e.PotionTimer--; e.PotionTimer == 0 {
 					e.HitBonus = 0
 					e.BaseStats[2], e.BaseStats[0], e.BaseStats[1], e.BaseStats[3] =
 						e.SavedBase[0], e.SavedBase[1], e.SavedBase[2], e.SavedBase[3]

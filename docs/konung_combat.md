@@ -211,7 +211,7 @@ Settlement byte `+0x4B2` (`Settlement.Flags`):
 * **Every 16 ticks** (`0x0041D0FC`), for every active group on every map:
   * Creature groups run `0x0041BDF0`; the party and villages run an inline copy with HUD updates.
   * **Poison:** every living member with poison `+0x50` ≠ 0 loses that much HP. The poison never wears off. At HP ≤ 0: `+2` = 0, HP 0, and on the current map the death action and the loot `0x00418510(e, 0, hero level)`. Off the current map the member stays at HP 0 without dying.
-  * **Potion timer** `+0xCE`: −1; at 0, `+0xCA` = 0 and base stats are restored from `+0xBC`, `+0xBE`, `+0xC0`, `+0xC2` (into `+0x56`, `+0x5A`, `+0x60`, `+0x64`).
+  * **Potion timer** `+0xCE` (set by timed potions, [potions](konung_potions.md)): −1; at 0, `+0xCA` = 0 and base stats are restored from `+0xBC`, `+0xBE`, `+0xC0`, `+0xC2` (into `+0x56`, `+0x5A`, `+0x60`, `+0x64`).
   * **Creature respawn counters** (kinds `0x40`–`0x50`):
     * While target `+0x18` < maximum `+0x19`, countdown `+6` − 1; below 0 → target + 1, countdown += period.
     * While target > count `+0x1C`, debt `+2` (int32) − 1.
