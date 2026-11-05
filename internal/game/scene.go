@@ -58,6 +58,7 @@ type startScene struct {
 	decorations    []mapdata.Decoration
 	objects        []sceneObject // objects and entities, in depth order
 	shadowLayer    *ebiten.Image
+	shadows        bool // setting 0x00A3E750: draw the shadow pass (0x004266C4)
 	camX, camY     int
 	tick           int // game ticks (one per step)
 	frame          int // drawn frames (Update calls)
@@ -984,9 +985,11 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		sorted[i], sortedOwners[i] = chars[k], owners[k]
 	}
 	chars, owners = sorted, sortedOwners
-	op := &ebiten.DrawImageOptions{}
-	op.ColorScale.Scale(0, 0, 0, 0.5)
-	screen.DrawImage(s.shadowLayer, op)
+	if s.shadows {
+		op := &ebiten.DrawImageOptions{}
+		op.ColorScale.Scale(0, 0, 0, 0.5)
+		screen.DrawImage(s.shadowLayer, op)
+	}
 
 	// Static objects are depth-sorted by their bottom edge; characters are
 	// merged in where their own bottom edge falls.

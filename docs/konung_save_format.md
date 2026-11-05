@@ -14,8 +14,8 @@ The name is `"KONUNG.SA0"` with the slot added to the last character (`0x00424EE
 
 | File offset | Size | Global | Contents |
 |---|---|---|---|
-| `0x00` | 4 | `0x00A3E71C` | setting (settings screen toggle, `0x00438B42`); 1 without a config file (`0x0042BB58`). `Game.Options[0]` |
-| `0x04` | 4 | `0x00A3E734` | setting (`0x00438B71`); default 1. `Game.Options[1]` |
+| `0x00` | 4 | `0x00A3E71C` | setting «Смена дня и ночи» ([settings](konung_settings.md)); 1 without a config file (`0x0042BB58`). `Game.Options[0]` |
+| `0x04` | 4 | `0x00A3E734` | setting «Световые эффекты» (lit terrain path); default 1. `Game.Options[1]` |
 | `0x08` | 4 | `0x00A3E770` | game time, ticks |
 | `0x0C` | 4 | — | hero entity index, `(0x00A3E694 − 0x007AB378) / 256` |
 | `0x10` | 4 | `0x00A3E7D8` | projectiles in flight |
@@ -70,5 +70,4 @@ The slot under the mouse (hit test `0x004398C4` on the same table) is selected. 
 
 ## Open questions
 
-* What the settings `0x00A3E71C` / `0x00A3E734` control (two of the settings screen's toggles).
 * The 64 dwords at `0x00A3E584` that the loader fills with the hero record: their later use was not traced.

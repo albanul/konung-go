@@ -3,11 +3,13 @@ package game
 import (
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"konung1.5/internal/gamestate"
 	"konung1.5/internal/resfmt"
 )
 
@@ -35,6 +37,12 @@ type Menu struct {
 	fresh   bool // world has not been played yet
 	saves   *saveScreen
 	inSaves bool // the load or save screen is shown
+	// config holds the settings (KONUNG.CFG at cfgPath, next to the game
+	// files as in the original 0x0083DE58); settings is their screen.
+	config     gamestate.Config
+	cfgPath    string
+	settings   *settingsScreen
+	inSettings bool
 }
 
 // Main-menu items in the order of the exe layout table (0x0045B314) and the
@@ -44,7 +52,7 @@ const (
 	itemSave     = 1 // 0x00437A25
 	itemLoad     = 2 // 0x00437B54, opens the load screen
 	itemNewGame  = 3 // 0x00437B91
-	itemSettings = 4 // 0x00437DDD (not implemented)
+	itemSettings = 4 // 0x00437DDD, opens the settings screen
 	itemExit     = 5 // 0x00437E3D
 )
 
@@ -126,7 +134,19 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		return nil, err
 	}
 
+	// 0x0042BA60: read the settings at startup; defaults without the file.
+	cfgPath := filepath.Join(filepath.Dir(mapPath), gamestate.ConfigFile)
+	cfgData, err := os.ReadFile(cfgPath)
+	if err != nil {
+		cfgData = nil
+	} else if cfgData == nil {
+		cfgData = []byte{}
+	}
+
 	m := &Menu{
+		config:     gamestate.ParseConfig(cfgData),
+		cfgPath:    cfgPath,
+		settings:   newSettingsScreen(frames[1], frames[2]),
 		saves:      saves,
 		background: ebiten.NewImageFromImage(frames[0]),
 		sword:      ebiten.NewImageFromImage(swordFrame),
@@ -166,6 +186,12 @@ func (m *Menu) Update() error {
 			m.inSaves = false
 			return nil
 		}
+		// Settings (0x00437517): restore the values and go back.
+		if m.inSettings {
+			m.settings.restore(&m.config)
+			m.inSettings = false
+			return nil
+		}
 		// Menu (0x004374A5): resume a running game, else nothing.
 		if m.running {
 			m.inWorld = true
@@ -193,6 +219,10 @@ func (m *Menu) Update() error {
 	}
 	if m.inSaves {
 		return m.updateSaves()
+	}
+	if m.inSettings {
+		m.updateSettings()
+		return nil
 	}
 	first := m.firstItem()
 	if m.selected < first {
@@ -222,7 +252,7 @@ func (m *Menu) Update() error {
 	return m.activate(activate)
 }
 
-// activate runs a menu item. Settings is drawn but has no action yet.
+// activate runs a menu item.
 func (m *Menu) activate(item int) error {
 	switch item {
 	case itemReturn:
@@ -244,6 +274,9 @@ func (m *Menu) activate(item int) error {
 		m.fresh = false
 		m.running = true
 		m.inWorld = true
+	case itemSettings:
+		m.settings.open(m.config)
+		m.inSettings = true
 	case itemExit:
 		return ebiten.Termination
 	}
@@ -267,6 +300,8 @@ func (m *Menu) updateSaves() error {
 	}
 	switch s.mode {
 	case screenSave:
+		// A save stores the settings 0x00A3E71C and 0x00A3E734.
+		m.world.game.Options = [2]int32{m.config.DayNight, m.config.Lighting}
 		if err := s.save(s.selected, m.world); err != nil {
 			log.Printf("save slot %d: %v", s.selected, err)
 			return nil
@@ -279,12 +314,39 @@ func (m *Menu) updateSaves() error {
 			return nil
 		}
 		m.world, m.fresh, m.running, m.inWorld = w, false, true, true
+		// Loading restores them (0x004249AC); KONUNG.CFG is not rewritten.
+		m.config.DayNight, m.config.Lighting = w.game.Options[0], w.game.Options[1]
 	}
 	return nil
 }
 
+// updateSettings runs the settings screen: a left click on a hotspot acts
+// on it (0x00438A94). «Ok» writes KONUNG.CFG with the chosen video mode
+// (0x0043D2CC); «Отмена» restores the values. Both return to the menu.
+func (m *Menu) updateSettings() {
+	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		return
+	}
+	mx, my := ebiten.CursorPosition()
+	closed, ok := m.settings.click(m.settings.hit(mx, my), &m.config)
+	if !closed {
+		return
+	}
+	m.inSettings = false
+	if ok {
+		// The game switches to the chosen mode first (0x00427B1C); the
+		// port stays at 800x600, so the running mode is unchanged.
+		c := m.config
+		c.Video = m.settings.video
+		if err := os.WriteFile(m.cfgPath, c.Marshal(), 0o644); err != nil {
+			log.Printf("write %s: %v", m.cfgPath, err)
+		}
+	}
+}
+
 func (m *Menu) Draw(screen *ebiten.Image) {
 	if m.inWorld && m.world != nil {
+		m.world.shadows = m.config.Shadows != 0
 		m.world.Draw(screen)
 		mx, my := ebiten.CursorPosition()
 		cur := m.sword
@@ -297,6 +359,11 @@ func (m *Menu) Draw(screen *ebiten.Image) {
 	mx, my := ebiten.CursorPosition()
 	if m.inSaves {
 		m.saves.draw(screen)
+		drawAt(screen, m.sword, mx-1, my-1)
+		return
+	}
+	if m.inSettings {
+		m.settings.draw(screen, m.config)
 		drawAt(screen, m.sword, mx-1, my-1)
 		return
 	}

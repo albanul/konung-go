@@ -103,8 +103,8 @@ type Game struct {
 	// draw flags 0x00A3E0A8 (0x00414E64).
 	Quests   [QuestFlagsSize]byte
 	MiscUsed [miscUsedSize]byte
-	// Options are the settings 0x00A3E71C and 0x00A3E734 that a save
-	// stores; 1 without a config file (0x0042BB58).
+	// Options are the settings 0x00A3E71C (day/night) and 0x00A3E734
+	// (lighting) that a save stores (Config.DayNight, Config.Lighting).
 	Options [2]int32
 	items   []byte
 	data    []byte // the GAME.N image the records came from (Marshal)

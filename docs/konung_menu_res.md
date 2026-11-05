@@ -18,7 +18,7 @@ Button labels were read from the decoded images. Normal and selected states are 
 | Frame(s) | Visual content | `MENU640R.RES`: offset / payload / dimensions | `MENU800R.RES`: offset / payload / dimensions |
 |---:|---|---|---|
 | 0 | Scenic forest and rock background with decorative border | `0x000000 / 618,724 / 640×480` | `0x000000 / 966,004 / 800×600` |
-| 1 | Settings screen artwork: resolution choices (640×480 / 800×600), transparency, shadows, day/night change, lighting effects, animation, sound, OK and Cancel | `0x0970EC / 618,724 / 640×480` | `0x0EBD7C / 966,004 / 800×600` |
+| 1 | Settings screen artwork: resolution choices (640×480 / 800×600), transparency, shadows, day/night change, lighting effects, music, sound, OK and Cancel ([settings](konung_settings.md)) | `0x0970EC / 618,724 / 640×480` | `0x0EBD7C / 966,004 / 800×600` |
 | 2 | Small cyan/blue orb or gem-like marker; exact role not established | `0x12E1D8 / 344 / 13×13` | `0x1D7AF8 / 344 / 13×13` |
 | 3–4 | «Вернуться в игру» — Return to game; normal / selected | `0x12E338 / 7,203 / 192×31`; `0x12FF63 / 7,203 / 192×31` | `0x1D7C58 / 12,964 / 245×43`; `0x1DAF04 / 13,128 / 245×43` |
 | 5–6 | «Сохранить игру» — Save game; normal / selected | `0x131B8E / 7,107 / 173×36`; `0x133759 / 7,101 / 173×36` | `0x1DE254 / 10,500 / 216×45`; `0x1E0B60 / 10,500 / 216×45` |
@@ -33,7 +33,7 @@ The phrase «Вернуться в игру» (“Return to game”) indicates t
 
 * Each file contains exactly 15 frames. Frames 0 and 1 are full-screen images; frame 2 is the same `13 × 13` image in both resolution variants; frames 3–14 are six pairs of button states.
 * Button labels and order are identical between the two resolutions, while the frames are scaled and re-rendered for each screen size.
-* Frame 1 embeds the settings labels and controls in a full-screen image. Frame 2 is a separate small blue marker, but its exact role is unknown from the resource data alone.
+* Frame 1 embeds the settings labels and controls in a full-screen image. Frame 2 is the small blue marker that the settings screen centres in every box whose setting is on ([settings](konung_settings.md)).
 * The plain sword mouse pointer is **not** frame 2 of either menu file. It is Type 5 sprite 4 in `GRAPH.RES`; see the [GRAPH.RES sprite catalog](konung_graph_sprites.md).
 * The image descriptions are visual observations. Behavioral meanings beyond the visible Russian labels require executable call-site analysis.
 

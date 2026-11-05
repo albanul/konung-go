@@ -70,6 +70,10 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0042562F` | routine | Terrain draw pass | [map format](konung_map_format.md) |
 | `0x00426684`, `0x0043E242`, `0x0043D8EF` | routines | Sprite pass (shadows, then depth-sorted objects and characters); opaque clipped RLE blit; alpha-blended blit for flames | [map format](konung_map_format.md#shadows-and-draw-order) |
 | `0x00A3E700`, `0x00A3E750` | globals | Options: transparent flames; shadows | [map format](konung_map_format.md#shadows-and-draw-order) |
+| `0x00A3E774`, `0x00A3E71C`, `0x00A3E734`, `0x00A3E73C`, `0x00A3E744`, `0x00A3E75C` | globals | Settings: video mode, day/night, lighting, music, background tiling, sound (`KONUNG.CFG`) | [settings](konung_settings.md) |
+| `0x0042BA60`, `0x0043D2CC`, `0x004315F8` | routines | `KONUNG.CFG` reader and writer; settings screen draw | [settings](konung_settings.md) |
+| `0x0046219C`, `0x00438CE8`, `0x00A5399C`–`0x00A539B4` | data, table, globals | Settings hotspots (32 bytes each, 640 then 800); click switch; values saved on open (`0x00A539A0` = chosen video mode) | [settings](konung_settings.md) |
+| `0x0042A420`, `0x00427B1C` | routines | Music volume on/off; set video mode | [settings](konung_settings.md) |
 | `0x0043E242` | routine | Indexed-RLE blit `(surface, image, palette, x, y)`, clipped, top-left origin | [map format](konung_map_format.md) |
 | `0x0043ED09` | routine | Takes a palette byte offset and returns the palette used by the blit (conversion details not traced) | terrain draw pass |
 | `0x0043BEF8` | routine | `MENU<width>R.RES` loader; frames 1–14 → slots `0x1F2`–`0x1FF` of `0x006304B8` | [menu](konung_menu.md) |
