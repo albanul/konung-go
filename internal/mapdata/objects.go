@@ -163,6 +163,14 @@ type Sprite struct {
 	SX, SY int
 	Depth  int  // bottom-edge sort key
 	Raw    bool // drawn with the raw palette, not the day/night tint (resfmt.MapObject.SelfLit)
+	// Flames drawn over the sprite, at world positions (placement position
+	// plus the flame offset).
+	Flames []PlacedFlame
+}
+
+// PlacedFlame is a flame at a world position (top-left of its frame).
+type PlacedFlame struct {
+	Type, X, Y int
 }
 
 // ObjectSprites converts resolved static objects to sprites.
@@ -170,8 +178,13 @@ func ObjectSprites(sorted []SortedPlacement) []Sprite {
 	out := make([]Sprite, 0, len(sorted))
 	for _, s := range sorted {
 		px, py := s.Placement.Pos()
+		var flames []PlacedFlame
+		for _, f := range s.Object.Flames {
+			flames = append(flames, PlacedFlame{Type: f.Type, X: px + f.DX, Y: py + f.DY})
+		}
 		out = append(out, Sprite{
-			Image: s.Object.Image, X: s.X, Y: s.Y,
+			Flames: flames,
+			Image:  s.Object.Image, X: s.X, Y: s.Y,
 			Shadow: s.Object.Shadow, SX: px + s.Object.ShadowDX, SY: py + s.Object.ShadowDY,
 			Depth: s.DepthKey(), Raw: s.Object.SelfLit,
 		})

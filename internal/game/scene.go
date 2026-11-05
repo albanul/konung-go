@@ -40,6 +40,7 @@ type sceneObject struct {
 	frames []sceneFrame
 	phase  int // step offset so neighbours don't animate in lockstep
 	depth  int // bottom-edge sort key (from the first step)
+	flames []flame
 }
 
 func (o *sceneObject) frame(tick int) *sceneFrame {
@@ -70,6 +71,9 @@ type startScene struct {
 	litCells       map[[2]int]*litCell // composed lit terrain cells, relit each frame
 	litTables      *resfmt.LitTables
 	litBuf         *image.RGBA
+	transparency   bool           // setting 0x00A3E700: flames are blended (0x0043D8EF)
+	flameFrame     int            // game frame (60 ms) of the last flame advance
+	tiling         bool           // setting 0x00A3E744 («T»): windows hide the world behind a tiled background
 	tint           resfmt.Tint    // 0x0051EC7C, this frame's light
 	tintU          map[string]any // shader tables for tint
 	tintSh         *ebiten.Shader // nil if the shader failed to compile
@@ -128,6 +132,7 @@ type sceneAssets struct {
 	tiles          []*ebiten.Image
 	glow           *ebiten.Image // LIGHTS.RES glow map (resfmt.GlowMask); nil if the file is missing
 	lightMasks     [][]byte      // LIGHTS.RES light masks for the lit terrain path; nil if missing
+	flames         *flameImages  // FLAMES.RES; nil if missing
 }
 
 // loadStartScene loads the shared resources and the GAME.N start state and
@@ -185,6 +190,10 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	} else {
 		a.glow = ebiten.NewImageFromImage(resfmt.GlowMask(glow))
 		a.lightMasks, _ = resfmt.LightMasks(data)
+	}
+	// FLAMES.RES sits next to GRAPH.RES (0x0043BA50); without it nothing burns.
+	if a.flames, err = loadFlames(filepath.Join(filepath.Dir(graphPath), "FLAMES.RES")); err != nil {
+		log.Print(err)
 	}
 	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
 	game.InitSettlementFlags(gameNumber) // 0x0043BD5C
@@ -294,6 +303,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	}
 	if prev != nil {
 		s.moon, s.dayNight, s.shadows, s.lighting = prev.moon, prev.dayNight, prev.shadows, prev.lighting
+		s.transparency = prev.transparency
 		s.inv, s.hand, s.follow, s.speed = prev.inv, prev.hand, prev.follow, prev.speed
 		s.tick, s.frame, s.msg, s.msgEnd = prev.tick, prev.frame, prev.msg, prev.msgEnd
 		s.shadowLayer = prev.shadowLayer
@@ -356,6 +366,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		s.objects = append(s.objects, sceneObject{
 			frames: []sceneFrame{{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY, raw: sp.Raw}},
 			depth:  sp.Depth,
+			flames: s.newFlames(sp.Flames),
 		})
 	}
 	// Characters and creatures are walkers with lazily loaded idle/walk
@@ -942,6 +953,39 @@ func (s *startScene) visible(x, y, w, h int) bool {
 func (s *startScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 	s.updateLight()
+	if s.tiling && s.inv.open {
+		// 0x0042AE68: with background tiling («T», 0x00A3E744) an open
+		// window hides the world; the window tiles INTR slot 5 behind it.
+		s.hovered = -1
+	} else {
+		chars, owners := s.drawWorld(screen)
+		s.hovered = s.hitTest(chars, owners)
+		if s.inv.open {
+			s.hovered = -1 // the window covers the characters
+		}
+	}
+	if s.hero != nil {
+		s.drawHelp(screen)
+	}
+	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
+	s.inv.tiled = s.tiling
+	if s.inv.open && len(s.party) > 0 {
+		s.inv.draw(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
+	}
+	if len(s.party) > 0 {
+		s.inv.drawQuick(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
+	}
+	if text := s.statusText(); text != nil {
+		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.
+		s.font.drawWrapped(screen, text, viewLeft+10, viewBottom+5, viewRight-viewLeft-15)
+	}
+
+}
+
+// drawWorld is the scene draw 0x0042894C: terrain, decorations, piles,
+// shadows, objects with their flames, characters and arrows. It returns
+// the drawn characters and their entities for the hit test.
+func (s *startScene) drawWorld(screen *ebiten.Image) ([]sceneFrame, []int) {
 	// Same order as the game's terrain pass (VA 0x0042562F): rows top to
 	// bottom, columns left to right, base layer then overlay layer.
 	rowMin := max(0, (s.camY-s.tileMarginY)/mapdata.CellHeight)
@@ -1026,6 +1070,13 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 			s.drawTinted(screen, f.img, f.x-s.camX, f.y-s.camY, f.raw)
 		}
 	}
+	// The flames advance once per drawn frame (0x00427185). The game draws
+	// a frame every 60 ms (0x00A3E6F4, set at 0x0042B9C4, paced with
+	// timeGetTime at 0x0042BD97); the port updates 60 times a second, so
+	// the game's frame count is updates · (1000/60) / 60 = updates · 5/18.
+	gameFrame := s.frame * 5 / 18
+	advanceFlames := gameFrame != s.flameFrame
+	s.flameFrame = gameFrame
 	ci := 0
 	for i := range s.objects {
 		for ci < len(chars) && depth(&chars[ci]) < s.objects[i].depth {
@@ -1033,30 +1084,13 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 			ci++
 		}
 		drawFrame(s.objects[i].frame(s.tick))
+		s.drawFlames(screen, &s.objects[i], advanceFlames)
 	}
 	for ; ci < len(chars); ci++ {
 		drawFrame(&chars[ci])
 	}
 	s.drawArrows(screen)
-	s.hovered = s.hitTest(chars, owners)
-	if s.inv.open {
-		s.hovered = -1 // the window covers the characters
-	}
-	if s.hero != nil {
-		s.drawHelp(screen)
-	}
-	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
-	if s.inv.open && len(s.party) > 0 {
-		s.inv.draw(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
-	}
-	if len(s.party) > 0 {
-		s.inv.drawQuick(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
-	}
-	if text := s.statusText(); text != nil {
-		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.
-		s.font.drawWrapped(screen, text, viewLeft+10, viewBottom+5, viewRight-viewLeft-15)
-	}
-
+	return chars, owners
 }
 
 // hitTest returns the entity whose drawn sprite has an opaque pixel under

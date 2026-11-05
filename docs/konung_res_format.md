@@ -25,7 +25,7 @@ All other multi-byte values are little-endian (32-bit x86).
 
 ## Type 5 frame (RGB555 row-RLE)
 
-Loader evidence: `FLAMES.RES` loader at VA `0x0043BA50` reads an 8-byte header to `0x00A53994`, then `[0x00A53998]` bytes of frame data, for 74 frames (`cmp [ebp-4], 0x4A` at `0x0043BABE`). 74 header+payload pairs sum exactly to the 1,533,070-byte file. The decoder logic comes from the draw routine at VA `0x0043D8E7`.
+Use: flames on burning objects, see [flames](konung_flames.md). Loader evidence: `FLAMES.RES` loader at VA `0x0043BA50` reads an 8-byte header to `0x00A53994`, then `[0x00A53998]` bytes of frame data, for 74 frames (`cmp [ebp-4], 0x4A` at `0x0043BABE`). 74 header+payload pairs sum exactly to the 1,533,070-byte file. The decoder logic comes from the draw routine at VA `0x0043D8E7`.
 
 Payload:
 

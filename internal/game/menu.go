@@ -199,6 +199,12 @@ func (m *Menu) Update() error {
 		return nil
 	}
 	if m.inWorld {
+		// T (VK 0x54, 0x00436F58) toggles background tiling and writes
+		// KONUNG.CFG at once.
+		if inpututil.IsKeyJustPressed(ebiten.KeyT) {
+			m.config.Tiling = 1 - min(m.config.Tiling, 1)
+			m.writeConfig()
+		}
 		m.world.Update()
 		if m.world.gameOver() {
 			// 0x004376A8: the hero died; the game plays GAMEOVER.FLM (not in
@@ -336,11 +342,18 @@ func (m *Menu) updateSettings() {
 	if ok {
 		// The game switches to the chosen mode first (0x00427B1C); the
 		// port stays at 800x600, so the running mode is unchanged.
-		c := m.config
-		c.Video = m.settings.video
-		if err := os.WriteFile(m.cfgPath, c.Marshal(), 0o644); err != nil {
-			log.Printf("write %s: %v", m.cfgPath, err)
-		}
+		m.writeConfig()
+	}
+}
+
+// writeConfig is 0x0043D2CC: KONUNG.CFG with the video mode last chosen on
+// the settings screen (0x00A539A0; 0 if the screen was never opened, as in
+// the game).
+func (m *Menu) writeConfig() {
+	c := m.config
+	c.Video = m.settings.video
+	if err := os.WriteFile(m.cfgPath, c.Marshal(), 0o644); err != nil {
+		log.Printf("write %s: %v", m.cfgPath, err)
 	}
 }
 
@@ -349,6 +362,8 @@ func (m *Menu) Draw(screen *ebiten.Image) {
 		m.world.shadows = m.config.Shadows != 0
 		m.world.dayNight = m.config.DayNight != 0
 		m.world.lighting = m.config.Lighting != 0
+		m.world.transparency = m.config.Transparency != 0
+		m.world.tiling = m.config.Tiling != 0
 		m.world.Draw(screen)
 		mx, my := ebiten.CursorPosition()
 		cur := m.sword

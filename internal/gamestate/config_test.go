@@ -5,13 +5,25 @@ import (
 	"testing"
 )
 
-// The installed KONUNG.CFG is 28 bytes: seven dwords, so Sound keeps its
-// zero value.
+// The installed KONUNG.CFG is the original 28-byte file (seven dwords, so
+// Sound keeps its zero value) or the 32 bytes the settings screen writes;
+// the game rewrites it, so only its shape is checked.
 func TestParseConfigInstalled(t *testing.T) {
-	c := ParseConfig(readAsset(t, ConfigFile))
-	want := Config{Video: 1, Transparency: 1, DayNight: 1, Lighting: 1, Music: 0, Tiling: 1, Shadows: 1, Sound: 0}
-	if c != want {
-		t.Fatalf("got %+v, want %+v", c, want)
+	data := readAsset(t, ConfigFile)
+	if len(data) != 28 && len(data) != ConfigSize {
+		t.Fatalf("size %d", len(data))
+	}
+	c := ParseConfig(data)
+	if c.Video < 0 || c.Video > 2 {
+		t.Fatalf("video %d", c.Video)
+	}
+	for _, v := range []int32{c.Transparency, c.DayNight, c.Lighting, c.Music, c.Tiling, c.Shadows, c.Sound} {
+		if v != 0 && v != 1 {
+			t.Fatalf("setting %d in %+v", v, c)
+		}
+	}
+	if len(data) == 28 && c.Sound != 0 {
+		t.Fatal("a 28-byte file leaves Sound at 0")
 	}
 }
 

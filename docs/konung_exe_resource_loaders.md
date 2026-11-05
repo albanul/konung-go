@@ -65,10 +65,14 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x004404C1` | routine | File close | map loader |
 | `0x0043B4AB` | routine | `GRAPH.RES` loader; reads the T1 table at `0x0043B6B1` | this doc |
 | `0x0043B8BB` | routine | `OBJECTS.RES` loader | this doc |
-| `0x0043BA50` | routine | `FLAMES.RES` loader (74 frames) | [res format](konung_res_format.md) |
+| `0x0042BD19`, `0x00A3E6F4` | routine, global | Message loop: posts `WM_USER` (a frame) every `[0x00A3E6F4]` = 60 ms (`timeGetTime`) | [menu](konung_menu.md) |
+| `0x00436F58`, `0x0043141C`, `0x0042AE68` | routines | T: toggle background tiling `0x00A3E744`; tile INTR slot 5 over a rectangle; frame redraw skipping the world under a window | [settings](konung_settings.md#background-tiling-t) |
+| `0x0043BA50` | routine | `FLAMES.RES` loader (74 frames); with transparency converts each frame (`0x00427D9C`) | [flames](konung_flames.md) |
+| `0x0042708D`, `0x0045AEC8`, `0x0083B990`, `0x0043E696` | routine, data, buffer, routine | Flame draw over a burning object; flame type frame ranges (7 × start, end); flame frame pointers; plain RLE copy | [flames](konung_flames.md) |
+| `0x00427D9C`, `0x00465E2C`, `0x0047FEF0`, `0x0047902C`, `0x0043B0CC` | routine, data | Flame premultiply; blend keep-fraction table; screen RG / B scaled tables; their RGB555 builder | [flames](konung_flames.md#transparency-0x00a3e700) |
 | `0x0043C0FC` | routine | Map loader (`LIGHTS.N`, `KONUNG.N`); argument 1 = restore mode after a load | [map format](konung_map_format.md), [saves](konung_save_format.md#load-0x00437b54--0x00438966--0x004249ac) |
 | `0x0042562F` | routine | Terrain draw pass | [map format](konung_map_format.md) |
-| `0x00426684`, `0x0043E242`, `0x0043D8EF` | routines | Sprite pass (shadows, then depth-sorted objects and characters); opaque clipped RLE blit; alpha-blended blit for flames | [map format](konung_map_format.md#shadows-and-draw-order) |
+| `0x00426684`, `0x0043E242`, `0x0043D8EF` | routines | Sprite pass (shadows, then depth-sorted objects and characters); opaque clipped RLE blit; alpha-blended blit for flames | [map format](konung_map_format.md#shadows-and-draw-order), [flames](konung_flames.md) |
 | `0x00A3E700`, `0x00A3E750` | globals | Options: transparent flames; shadows | [map format](konung_map_format.md#shadows-and-draw-order) |
 | `0x00A3E774`, `0x00A3E71C`, `0x00A3E734`, `0x00A3E73C`, `0x00A3E744`, `0x00A3E75C` | globals | Settings: video mode, day/night, lighting, music, background tiling, sound (`KONUNG.CFG`) | [settings](konung_settings.md) |
 | `0x0042BA60`, `0x0043D2CC`, `0x004315F8` | routines | `KONUNG.CFG` reader and writer; settings screen draw | [settings](konung_settings.md) |

@@ -60,8 +60,7 @@ Loader `0x0043CB98`; shadow pass and depth bucketing `0x00426833`–`0x00426B78`
 |---|---|---|
 | `+0x00` | `int32` | Object ID. `OBJECTS.RES` 0-based slot = ID + `0x1E` (always a static entry). The loader replaces it with a pointer to the object's 0x100-byte header (`0x00780DDC + ID*0x100`). |
 | `+0x04` | `uint32` | Palette byte offset override; `0` → header `+0x14` |
-| `+0x08` | 8 bytes | zero in files |
-| `+0x10` | 12 bytes | `0xFF` in files; role unknown |
+| `+0x08` | 20 bytes | runtime flame frame counters, one int8 per flame of the object (zero / `0xFF` in files; set by the loader, [flames](konung_flames.md)) |
 | `+0x1C` | `uint16` | runtime (animation counter, set from header `+0x18`) |
 | `+0x1E` | `uint16` | fine-grid column → replaced by world x |
 | `+0x20` | `uint16` | fine-grid row → replaced by world y |
@@ -84,7 +83,8 @@ Per variant `f` (0–7), 8-byte entries:
 | Offset | Meaning |
 |---|---|
 | `+0x04` | data size in file; replaced at runtime by a pointer to the data after the header |
-| `+0x08` | if ≥ 2, the shadow is not drawn |
+| `+0x08` | flame count N; N ≥ 2: no shadow and the raw palette ([flames](konung_flames.md), [day and night](konung_daylight.md)) |
+| `+0x1C + 5i` | flame i: type (int8), dx, dy (int16) |
 | `+0x0C` | variant count (random variant pick) |
 | `+0x14` | default palette byte offset |
 | `+0x18` | > 0 enables animation / random variant |

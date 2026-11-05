@@ -1,6 +1,7 @@
 package game
 
 import (
+	"image"
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -23,6 +24,7 @@ import (
 type charWindow struct {
 	open   bool
 	quick  bool // ~: the bag strip alone (0x004371D2); restored when the window closes
+	tiled  bool // background tiling 0x00A3E744: tile INTR slot 5 behind the window and strip
 	scroll int  // first visible bag index (0x00A3E840), reset on open
 	arrow  int  // arrow drawn pressed: -1 left, +1 right (0x0042F50C's argument)
 	until  int  // tick until which the arrow stays pressed
@@ -132,6 +134,9 @@ func gearIcon(g *gamestate.Game, t *resfmt.ExeTables, i int) int {
 
 func (w *charWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfmt.ExeTables, e gamestate.Entity, box int) {
 	l := &w.layout
+	if w.tiled {
+		tileBackground(dst, h, viewLeft, viewTop, viewRight, viewBottom) // 0x0042DCA4
+	}
 	h.draw(dst, resfmt.CharWindowBackground, viewLeft, viewTop)
 	centre := (viewLeft + viewRight) / 2
 	name := gamestate.Name(e, t)
@@ -213,6 +218,9 @@ func (w *charWindow) drawRaise(dst *ebiten.Image, h *hud, g *gamestate.Game, t *
 // box's item leaves a plain empty cell (0x0042F72F).
 func (w *charWindow) drawBag(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfmt.ExeTables, e gamestate.Entity, box int) {
 	s := &w.strip
+	if w.tiled {
+		tileBackground(dst, h, viewLeft, s.y, viewRight, viewBottom) // 0x0042F5E3
+	}
 	left, right := bagLeftSlot, bagRightSlot
 	if h.now < w.until {
 		if w.arrow < 0 {
@@ -249,6 +257,25 @@ func (w *charWindow) drawBag(dst *ebiten.Image, h *hud, g *gamestate.Game, t *re
 		if img := h.slot(itemIcon(g, t, item)); img != nil {
 			b := img.Bounds()
 			drawAt(dst, img, x+(s.cellW+1-b.Dx())/2, cy+(s.cellH+1-b.Dy())/2)
+		}
+	}
+}
+
+// backgroundTile is the INTR slot that 0x0043141C tiles behind windows.
+const backgroundTile = 5
+
+// tileBackground is 0x0043141C: with the tiling setting on, cover the
+// rectangle (inclusive) with INTR slot 5 in 100-px steps from its top-left,
+// clipped to the rectangle.
+func tileBackground(dst *ebiten.Image, h *hud, x1, y1, x2, y2 int) {
+	img := h.slot(backgroundTile)
+	if img == nil {
+		return
+	}
+	clip := dst.SubImage(image.Rect(x1, y1, x2+1, y2+1)).(*ebiten.Image)
+	for i := range (y2 - y1 + 100) / 100 {
+		for j := range (x2 - x1 + 100) / 100 {
+			drawAt(clip, img, x1+100*j, y1+100*i)
 		}
 	}
 }

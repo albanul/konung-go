@@ -9,19 +9,28 @@ Path: game directory + `"KONUNG.CFG"` (strings `0x0045028D`, `0x00450811`; direc
 | Offset | Global | Setting (screen row) | Consumer |
 |---|---|---|---|
 | `0x00` | `0x00A3E774` | Video mode: 0 = 640×480, 1 = 800×600 («Видеорежим») | `0x00427B1C` sets the mode; indexes every 640/800 layout table |
-| `0x04` | `0x00A3E700` | «Прозрачность»: alpha-blended flames | `0x0042713A`, `0x00427667` (blit `0x0043D8EF` vs `0x0043E696`), `0x0043BAFD` (FLAMES.RES palette path) |
+| `0x04` | `0x00A3E700` | «Прозрачность»: alpha-blended flames ([flames](konung_flames.md)) | `0x0042713A`, `0x00427667` (blit `0x0043D8EF` vs `0x0043E696`), `0x0043BAFD` (FLAMES.RES conversion at load) |
 | `0x08` | `0x00A3E71C` | «Смена дня и ночи»: day/night light tint | `0x004293B3`: off → no tint ([day and night](konung_daylight.md)) |
 | `0x0C` | `0x00A3E734` | «Световые эффекты»: lit terrain path | `0x0042565D`: at night (`[0x00A4E2A0]`, [day and night](konung_daylight.md)), draw terrain via `0x004257A9` (`LIGHTS.N`) |
 | `0x10` | `0x00A3E73C` | «Музыка» | `0x00429995`; toggle calls `0x0042A420(on)`: music buffer volume −1000 (on) / −10000 (off) via the DirectSound vtable `+0x3C` |
-| `0x14` | `0x00A3E744` | background tiling (not on the screen) | `0x0043141C` tiles INTR slot 5 |
+| `0x14` | `0x00A3E744` | background tiling: toggled by **T** in the game, not on the screen ([below](#background-tiling-t)) | `0x0042AE68` skips the world under an open window; `0x0043141C` tiles INTR slot 5 |
 | `0x18` | `0x00A3E750` | «Тени»: the shadow pass | `0x004266C4` |
 | `0x1C` | `0x00A3E75C` | «Звук»: sound effects | `0x0042A679` (play sound), `0x0042A9F0` |
 
 * **Read** (`0x0042BA60`, at startup): open with `0x00440047`, then eight separate 4-byte reads `0x0044023E`. The globals are in `.bss` (zero at start), so a short file leaves the remaining settings at 0. A video mode outside 0–2 becomes 0 (`0x0042BB3A`).
 * **No file** (`0x0042BB58`): every setting 1, video mode 1 (800×600).
 * **Write** (`0x0043D2CC`, on «Ok» only): creates the file (`0x0044050F`, mode `0x180`) and writes the same eight dwords. The first is the *chosen* mode `0x00A539A0`, not the running one.
-* The installed `KONUNG.CFG` is 28 bytes (seven dwords: `1 1 1 1 0 1 1`): music off, and sound stays 0 because its dword is missing. Probably written by another build; the exe writes 32 bytes. Test: `gamestate.TestParseConfigInstalled`.
+* The `KONUNG.CFG` that came with the install was 28 bytes (seven dwords: `1 1 1 1 0 1 1`): music off, and sound stays 0 because its dword is missing. Probably written by another build; the exe writes 32 bytes. «Ok» in the port's settings screen replaces it with the 32-byte form. Test: `gamestate.TestParseConfigInstalled` (accepts both sizes).
 * A save stores `0x00A3E71C` and `0x00A3E734` (offsets `0x00`/`0x04` of `KONUNG.SA<n>`, `Game.Options`), and loading one overwrites them. Loading does not rewrite `KONUNG.CFG` ([saves](konung_save_format.md)).
+
+## Background tiling (T)
+
+* **T** (VK `0x54`, key switch `0x004372C7` → `0x00436F58`) flips `0x00A3E744`. It redraws the open window (`0x0042DBBC`, plus the bag strip `0x0042F50C` for window 3) and writes `KONUNG.CFG` at once (`0x0043D2CC`). The written video mode is `0x00A539A0`, which is still 0 (640×480) if the settings screen hasn't been opened since start.
+* While it is on and a window is open (`0x00A3E740` ≠ 0), the frame redraw `0x0042AE5F` skips the world draw `0x0042894C`, so nothing moves behind the window.
+* The windows tile their background first: `0x0043141C(x1, y1, x2, y2)` blits INTR slot 5 at (x1 + 100j, y1 + 100i) for (x2 − x1 + 100)/100 columns and (y2 − y1 + 100)/100 rows, clipped to the rectangle. Rectangles:
+  * the character window and other windows: the whole view (140, 0)–(799, 555) (`0x0042DCA4`, `0x0042DEFD`, `0x0042E094`, `0x0042F4BA`);
+  * the bag strip: from the strip top 486 to the bottom of the view (`0x0042F5E3`), also when the strip is shown alone.
+* Port: `Menu` handles T and writes the file (`Menu.writeConfig`). `startScene.tiling` skips `drawWorld` while the character window is open. `tileBackground` tiles behind the window and the strip.
 
 ## Screen
 
@@ -54,7 +63,9 @@ State `0x00A3E6D8` = 6. Opening it (`0x00437DDD`) copies the current values to a
 * All screens run at 800×600. The video choice is stored and written to `KONUNG.CFG`, but the port does not switch modes.
 * **Shadows** and **day/night** are honoured: `startScene.shadows` gates the shadow pass, `startScene.dayNight` the [day/night tint](konung_daylight.md) (the menu sets both from the config each frame).
 * **Световые эффекты** is honoured: at night it switches the terrain to the [lit path](konung_daylight.md#lit-terrain-path-0x004257a9) (`startScene.lighting`).
-* Transparency, music and sound are stored, written and saved, but have no effect: the port has no flames or audio.
+* **Прозрачность** is honoured: flames are blended or copied ([flames](konung_flames.md), `startScene.transparency`).
+* **Background tiling** is honoured (T, [above](#background-tiling-t)).
+* Music and sound are stored and written, but have no effect: the port has no audio.
 * Saving puts day/night and lighting into `Game.Options`; loading copies them back into the config (`Menu.updateSaves`).
 * `KONUNG.CFG` is read from and written to the game directory (next to `KONUNG.1`), like the saves.
 

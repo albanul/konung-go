@@ -51,7 +51,8 @@ Who draws through it (tinted) and who doesn't (raw):
 | Terrain (`0x0042571D`, `0x00425772`; on the lit path the unlit cells `0x00425A0E`, `0x00425A63`), decorations (`0x00425AE3`) | tinted |
 | Lit terrain cells (night, «Световые эффекты») | [lit path](#lit-terrain-path-0x004257a9) |
 | Piles (`0x00426645`) | tinted; raw while the loot highlight `0x00A3E758` is on |
-| Map objects (sprite pass kind 2, `0x0042754E`) | raw if header `+0x08` ≥ 2 (`resfmt.MapObject.SelfLit`, also no shadow), else tinted |
+| Map objects (sprite pass kind 2, `0x0042754E`) | raw if header `+0x08` (the flame count, [flames](konung_flames.md)) ≥ 2 (`resfmt.MapObject.SelfLit`, also no shadow), else tinted |
+| Flames | raw |
 | Characters (kind 4, `0x00427285`), corpses | raw on a lit cell (`LIGHTS.N`, below), else tinted |
 | Arrows and other list-2 sprites (kind 1), shadows, HUD | raw |
 
@@ -88,7 +89,7 @@ Pitfalls:
 * A Kage shader (`tintShaderSrc`) applies the three 32-entry tables to the decoded RGBA sprites. Because the tint is a per-channel lookup on the 5-bit values, this gives the same colours as tinting the palette.
 * The day passes at the port's game time rate: one time unit per 4 ticks (`walkTicksPerStep`), so a day takes 21600 units. The original tick rate is not traced, so how long a day lasts in real time may differ.
 * The lit path is computed on the CPU (`resfmt.LightTerrainCell`) per visible lit cell and frame, because the flicker changes every frame. The cell's composed layers are cached (`litCell`), and the frame's tables are built once (`resfmt.NewLitTables`). This costs about 34 µs per cell.
-* Not ported: flames.
+* Flames: [flames and transparency](konung_flames.md).
 
 ## Open questions
 
