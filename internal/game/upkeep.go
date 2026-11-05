@@ -160,7 +160,7 @@ func (s *startScene) villagerTick(n *npc) {
 		n.look = lookOf(*e)
 		return
 	}
-	if gamestate.CanShoot(*e) && s.npcShoot(n) {
+	if gamestate.HasBow(*e) && s.npcShoot(n) {
 		return
 	}
 	if e.WeaponMode == gamestate.WeaponBow {

@@ -319,9 +319,7 @@ func (s *startScene) provoke(g int) {
 		return
 	}
 	if st := s.game.SettlementOf(g); st != nil {
-		s.game.Anger(st)
-		s.game.Groups[g].Enemy = 0
-		return
+		s.game.Anger(st) // only the village group itself (0x00421F39 tests +0x1E & 0x80)
 	}
 	s.alarmGroup(g)
 }
@@ -355,11 +353,20 @@ func (s *startScene) flinch(tw *walker) {
 	}
 }
 
-// alarmGroup is 0x004248A0 for a creature group: alarmed, against the party.
+// alarmGroup is 0x004248A0: group g is alarmed against the party (+0x1D =
+// 1), and every member without the melee intent (and not of kind 0x49) has
+// its walk cut after the current step (+0x14 = 0xFF), so all of them decide
+// again at once instead of finishing a calm walk first.
 func (s *startScene) alarmGroup(g int) {
-	if g > 0 && g < len(s.game.Groups) && s.game.Groups[g].CreatureGroup() {
-		s.game.Groups[g].Alarm = gamestate.AlarmAttack
-		s.game.Groups[g].Enemy = 0
+	if g <= 0 || g >= len(s.game.Groups) {
+		return
+	}
+	s.game.Groups[g].Alarm = gamestate.AlarmAttack
+	s.game.Groups[g].Enemy = 0
+	for _, n := range s.npcs {
+		if e := s.game.Entities[n.entity]; e.Group == g && n.intent&intentMelee == 0 && e.Flags4 != 0x49 {
+			n.stopWalk()
+		}
 	}
 }
 
@@ -547,7 +554,7 @@ func (s *startScene) creatureDecide(n *npc, e *gamestate.Entity, g *gamestate.Gr
 				n.look = lookOf(*e)
 				return
 			}
-			if !e.Animated() && gamestate.CanShoot(*e) && s.npcShoot(n) {
+			if !e.Animated() && gamestate.HasBow(*e) && s.npcShoot(n) {
 				return
 			}
 		}

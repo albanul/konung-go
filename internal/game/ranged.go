@@ -98,17 +98,20 @@ func (s *startScene) firstShootable(w *walker, e *gamestate.Entity) int {
 }
 
 // npcShoot starts a shot of creature or villager n at the hero when the line
-// is clear (0x00410E84 with the party as the enemy group).
+// is clear (0x00410E84 with the party as the enemy group). The caller checks
+// gamestate.HasBow; the bow becomes the active weapon here. Out of range
+// (beyond the bow's reach, or closer than 3) the caller falls back to melee.
 func (s *startScene) npcShoot(n *npc) bool {
 	e := &s.game.Entities[n.entity]
 	h := s.hero
 	if h == nil || len(s.party) == 0 || !alive(h, &s.party[0]) {
 		return false
 	}
-	e.WeaponMode = gamestate.WeaponBow
+	e.WeaponMode = gamestate.WeaponBow // +0x12 = 1 before the shot test
 	if s.lineOfFire(&n.walker, e, h.cell) <= 0 {
 		return false
 	}
+	n.look = lookOf(*e)
 	n.target, n.targetCell, n.intent = s.party[0].Index, h.cell, intentShoot
 	n.startAct(gamestate.ActShoot)
 	return true

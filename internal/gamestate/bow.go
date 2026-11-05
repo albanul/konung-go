@@ -41,6 +41,11 @@ func CanShoot(e Entity) bool {
 	return e.WeaponMode == WeaponBow && e.Equipment[WeaponBow] != 0 && e.Quiver != 0
 }
 
+// HasBow is the AI's test (0x004130EE, 0x00416F65, 0x00410E84): a bow
+// equipped and arrows in the quiver, whatever the active weapon; the AI then
+// makes the bow active (+0x12 = 1) before trying a shot.
+func HasBow(e Entity) bool { return e.Equipment[WeaponBow] != 0 && e.Quiver != 0 }
+
 // Arrow is a flying projectile (32-byte record of 0x0082C1F8).
 type Arrow struct {
 	X, Y, VX, VY float64 // position and per-sub-step velocity (floats in the game)

@@ -406,3 +406,92 @@ func TestStanceSwingFrames(t *testing.T) {
 		t.Fatalf("swing after the stance: %d frames, error %v", len(f), loadErr)
 	}
 }
+
+// TestAlarmCutsWalks: the alarm 0x004248A0 ends every member's walk after
+// the current step (+0x14 = 0xFF), so villagers on a calm walk decide at once.
+func TestAlarmCutsWalks(t *testing.T) {
+	gameData, err := os.ReadFile("../../assets/Konung/GAME.0")
+	if err != nil {
+		t.Skip("GAME.0 not available:", err)
+	}
+	g, err := gamestate.Parse(gameData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := g.SettlementOnMap(1)
+	long := []mapdata.Cell{{Row: 90, Col: 40}, {Row: 92, Col: 40}, {Row: 94, Col: 40}, {Row: 96, Col: 40}}
+	walking := &npc{walker: walker{entity: 360, cell: mapdata.Cell{Row: 88, Col: 40}, walking: true,
+		path: append([]mapdata.Cell(nil), long...)}, mode: npcVillager, group: st.Group, target: -1}
+	idle := &npc{walker: walker{entity: 361, cell: mapdata.Cell{Row: 70, Col: 40}, path: long[2:]},
+		mode: npcVillager, group: st.Group, target: -1}
+	s := &startScene{game: g, npcs: []*npc{walking, idle}}
+	s.provoke(st.Group)
+	if st.Flags&0x15 != 0x15 || g.Groups[st.Group].Alarm != gamestate.AlarmAttack {
+		t.Fatalf("village flags %#x alarm %#x", st.Flags, g.Groups[st.Group].Alarm)
+	}
+	if len(walking.path) != 1 || walking.path[0] != long[0] || len(idle.path) != 0 {
+		t.Errorf("paths after the alarm: walking %v, not yet stepping %v", walking.path, idle.path)
+	}
+}
+
+// TestHunterShootsAgain: a village hunter (bow, arrows in the bag) shoots
+// from range; when the hero is next to him he fights in melee; when the hero
+// steps back into bow range he shoots again (the AI tests the gear, not the
+// active weapon: 0x00416F65).
+func TestHunterShootsAgain(t *testing.T) {
+	gameData, err := os.ReadFile("../../assets/Konung/GAME.0")
+	if err != nil {
+		t.Skip("GAME.0 not available:", err)
+	}
+	exe, err := os.ReadFile("../../assets/Konung/konung.exe")
+	if err != nil {
+		t.Skip("konung.exe not available:", err)
+	}
+	g, err := gamestate.Parse(gameData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, err := resfmt.NewExeTables(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const hunter = 357 // bow equipped, arrows in the bag
+	st := g.SettlementOnMap(1)
+	frames := func(int, int) []sceneFrame { return make([]sceneFrame, 12) }
+	cell := mapdata.Cell{Row: 100, Col: 40}
+	n := &npc{walker: walker{entity: hunter, cell: cell, load: frames, dir: 4}, mode: npcVillager, group: st.Group, target: -1}
+	volk := g.Entities[g.Groups[0].First]
+	volk.HP = 60000
+	far := mapdata.Cell{Row: 100, Col: 45} // 5 cells east, inside bow range
+	s := &startScene{game: g, tables: tb, party: []gamestate.Entity{volk}, npcs: []*npc{n}, byEntity: map[int]*npc{hunter: n},
+		hero: &walker{entity: volk.Index, cell: far, load: frames}, target: -1, pileAt: map[mapdata.Cell]int{},
+		walk: &mapdata.WalkGrid{}, rng: rand.New(rand.NewPCG(4, 4)), occ: map[mapdata.Cell]bool{}}
+	s.provoke(st.Group)
+	shoot := func() bool {
+		for range 40 {
+			s.aiBudget = 3
+			s.villagerTick(n)
+			if n.act == gamestate.ActShoot {
+				return true
+			}
+		}
+		return false
+	}
+	if !shoot() {
+		t.Fatalf("the hunter did not shoot from 5 cells (mode %d, quiver %d)", g.Entities[hunter].WeaponMode, g.Entities[hunter].Quiver)
+	}
+	for n.act == gamestate.ActShoot {
+		s.villagerTick(n)
+	}
+	s.hero.cell = mapdata.Neighbors(cell)[4].Cell // right next to him: too close to shoot
+	s.aiBudget = 3
+	s.villagerTick(n)
+	if n.act != gamestate.ActAttack {
+		t.Fatalf("next to the hero the hunter's action is %d, want the swing", n.act)
+	}
+	s.hero.cell = far // the hero steps back: the swing stops, the bow comes out again
+	s.villagerTick(n)
+	if !shoot() {
+		t.Fatalf("after melee the hunter never shot again (mode %d)", g.Entities[hunter].WeaponMode)
+	}
+}

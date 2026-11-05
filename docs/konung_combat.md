@@ -143,7 +143,7 @@ A bow shot spawns a **projectile**. The hit is decided by what the arrow flies i
     The arrow is removed in every case. **Friendly fire exists.**
   * Otherwise it moves on.
 * **Drawing** (`0x00426D90`): INTR image slot `+0x1C` + (game time & 1) (slots 184–199: two frames per facing; 32×6, 29×17, 6×23), at the position plus the sprite offset, depth y + 0x5E. Incendiary arrows also get a 64×64 glow (`0x005B0010`, unknown).
-* **Bandits and alarmed villagers** (`0x004130EE`, `0x00416F65`): first `0x004105A0` re-equips (quiver from the bag, best gear; slot `+0x12` = 1 with bow and arrows, else 0 with an axe, else 2) and enters the stance. Then they shoot via `0x00410E84` if possible, else go for the nearest in melee.
+* **Bandits and alarmed villagers** (`0x004130EE`, `0x00416F65`): first `0x004105A0` re-equips (quiver from the bag, best gear; slot `+0x12` = 1 with bow and arrows, else 0 with an axe, else 2) and enters the stance. Then they shoot via `0x00410E84` if possible, else go for the nearest in melee. The test is the gear (a bow equipped and arrows in the quiver), not the active weapon (`gamestate.HasBow`); the bow becomes active before each shot test, and a failed test falls back to melee with the axe/club or the blade (fists without one). They only shoot when they decide while idle, at a grid distance of at least 3 and within the bow's reach (range·32 px: about 6 cells sideways, 24 rows up or down). A shooter already walking into melee does not shoot until it stops again.
 * Arrows are not recoverable. Slayer specials 1–11: оборотень 5000 (kind 85), муравьи 500 (65), ичетик 3000 (70), пауки 2000 (77), червяки 3000 (78), морок 3500 (73), омутник 4000 (75), скелеты 4000 (76), нави 4000 (74), мертвяк 4500 (69), моховик 5000 (72); special 0 = incendiary.
 
 ## Loot (verified)
@@ -193,6 +193,8 @@ Settlement byte `+0x4B2` (`Settlement.Flags`):
 
 * **Load** (`0x0043BD5C`): `0x10`, plus `0x04` for a fenced village (`+1` ≠ 0) of another tribe.
 * **Anger** `|= 0x15` (hostile + strangers + independent): a villager's hit reaction ending or death (step count − 2), whoever caused it (`0x0041658E`, `0x0041651C`); the party's melee swing at step 2; an arrow hitting a villager or a building; the dialogue's "attack" op.
+* **Who counts.** Only members of the village group itself (`+0x1E` bit `0x80`; the swing tests it at `0x00421F39`). Characters with a group of their own on the village map do not count; for example Путята (entity 536 on `KONUNG.1`, a one-member kind-`0x53` group with a dialogue). Hitting them alarms only their own group.
+* **Alarm** `0x004248A0` (hits, the swing's step 2): `+0x1D` = 1. Every member without the melee intent (and not of kind `0x49`) gets `+0x14` = `0xFF`, which ends its walk after the current step, so everyone decides at once (`startScene.alarmGroup`).
 * **Peace** `&= 0xEA`: surrender, a village without men, the dialogue's peace op.
 * **Alarm check** `0x00416700`, every 16 ticks offset by 7 (`(time + 7) & 0xF` = 0, `0x0041D39F`) for the village on the current map. Without bits `0x05` → calm. Otherwise a living party member inside the village group's rectangle alarms it (`+0x1A` = party, `+0x1D` = 1) when bit `0x01` is set, or when bit `0x04` is set and the member is an armed stranger. Otherwise calm. Hostility outlives the alarm: the village re-attacks on re-entry.
 * **Alarmed villagers** (`0x00416934` → `0x00416DA6`):
