@@ -106,8 +106,11 @@ type Game struct {
 	// Options are the settings 0x00A3E71C (day/night) and 0x00A3E734
 	// (lighting) that a save stores (Config.DayNight, Config.Lighting).
 	Options [2]int32
-	items   []byte
-	data    []byte // the GAME.N image the records came from (Marshal)
+	// Sounds are non-positional sound ids queued by game rules (equip,
+	// box, herbs, shovel); the scene plays and clears them.
+	Sounds []int
+	items  []byte
+	data   []byte // the GAME.N image the records came from (Marshal)
 }
 
 // ItemType returns byte +3 of item record i, the item type that selects the

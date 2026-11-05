@@ -123,6 +123,7 @@ func (g *Game) UseHerb(e *Entity, t *resfmt.ExeTables, target, item int) bool {
 	if it, ok := g.Item(item); target != 0 && ok && int8(it.Category) >= 0 {
 		BagInsert(e, item)
 	}
+	g.sound(SoundDrink) // 0x0041E19D, after mixing and drinking alike
 	return true
 }
 

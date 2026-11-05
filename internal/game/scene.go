@@ -74,6 +74,7 @@ type startScene struct {
 	transparency   bool           // setting 0x00A3E700: flames are blended (0x0043D8EF)
 	flameFrame     int            // game frame (60 ms) of the last flame advance
 	tiling         bool           // setting 0x00A3E744 («T»): windows hide the world behind a tiled background
+	soundFrame     int            // game frame (60 ms) of the last soundTick
 	tint           resfmt.Tint    // 0x0051EC7C, this frame's light
 	tintU          map[string]any // shader tables for tint
 	tintSh         *ebiten.Shader // nil if the shader failed to compile
@@ -422,6 +423,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 			look:    lookOf(p.Entity),
 			load:    entityLoader(game, p, cur, objectsData, graphData, tables, uploadSprite, logErr),
 			reserve: reserve, release: release,
+			sound: s.actionSound,
 		}
 		if hero {
 			w.blocked, w.searchCap = s.blocked, pathSearchLimit
@@ -859,6 +861,10 @@ func (s *startScene) escape() bool {
 
 func (s *startScene) Update() {
 	s.frame++
+	if f := s.frame * 5 / 18; f != s.soundFrame { // one game frame per 60 ms
+		s.soundFrame = f
+		s.soundTick()
+	}
 	s.hud.now = s.frame
 	mx, my := ebiten.CursorPosition()
 	if s.hero != nil {

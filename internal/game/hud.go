@@ -73,7 +73,13 @@ type hud struct {
 const pressTicks = ticksPerStep
 
 // press shows button k pressed with image img, like 0x004290AC.
-func (h *hud) press(k, img int) { h.pressed[k].img, h.pressed[k].until = img, h.now+pressTicks }
+// The routines that press the buttons (attack 0x00421698, stance
+// 0x0042179C, weapon 0x0042192C, gather 0x004226C0, bag 0x00424610) first
+// play the click, sound 4.
+func (h *hud) press(k, img int) {
+	h.pressed[k].img, h.pressed[k].until = img, h.now+pressTicks
+	sfx.play(gamestate.SoundClick, 0, 0)
+}
 
 func newHUD(intr, graph []byte) (*hud, error) {
 	res, err := resfmt.ParseInterface(intr)

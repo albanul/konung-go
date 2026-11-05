@@ -56,6 +56,8 @@ Same header (`Width`, `Height`, `RowSizes`). Each row: a byte with the high bit 
 
 ## `SOUNDS.RES` / `Sounds_.res`
 
+Use and triggers: [sound](konung_sound.md). `MUSICS.RES` (9 Ogg Vorbis tracks) is described there too.
+
 8-byte header (tag 1 BE, data-section size LE), then exactly 1000 `(offset, size)` LE pairs. Offsets are relative to the data start at byte 8008. An unused entry is `FFFFFFFF FFFFFFFF`. Payloads are PCM: mono, 16-bit, 22,050 Hz, matching CTPAX-X `knsfxres.c`. Decoder: `resfmt.LoadSoundEntries`, `SoundEntry.WriteWAV`.
 
 ## `FLAMES.RES` frame groups

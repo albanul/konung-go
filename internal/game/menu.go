@@ -143,8 +143,13 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		cfgData = []byte{}
 	}
 
+	config := gamestate.ParseConfig(cfgData)
+	// 0x00438E04: SOUNDS.RES and MUSICS.RES load at startup and a random
+	// track starts, before the menu.
+	startAudio(filepath.Dir(mapPath), config.Music != 0, config.Sound != 0)
+
 	m := &Menu{
-		config:     gamestate.ParseConfig(cfgData),
+		config:     config,
 		cfgPath:    cfgPath,
 		settings:   newSettingsScreen(frames[1], frames[2]),
 		saves:      saves,
@@ -172,6 +177,10 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 }
 
 func (m *Menu) Update() error {
+	if sfx != nil {
+		sfx.soundOn = m.config.Sound != 0 // checked at each play (0x0042A679)
+		sfx.update()
+	}
 	// Escape is switched on the screen state 0x00A3E6D8 (0x00437430, jump
 	// table 0x0043756C).
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
@@ -251,6 +260,9 @@ func (m *Menu) Update() error {
 		if mx >= r.x && mx < r.x+r.w && my >= r.y && my < r.y+r.h {
 			m.selected = i
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if m.running {
+					sfx.play(gamestate.SoundClick, 0, 0) // in-game menu only (0x004379E2)
+				}
 				activate = i
 			}
 		}
@@ -334,7 +346,11 @@ func (m *Menu) updateSettings() {
 		return
 	}
 	mx, my := ebiten.CursorPosition()
-	closed, ok := m.settings.click(m.settings.hit(mx, my), &m.config)
+	hit := m.settings.hit(mx, my)
+	closed, ok := m.settings.click(hit, &m.config)
+	if hit == 6 || hit == settingsCancel {
+		sfx.setMusic(m.config.Music != 0) // 0x00438BD0, 0x00438CDB
+	}
 	if !closed {
 		return
 	}

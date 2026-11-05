@@ -259,6 +259,10 @@ func (s *startScene) swing(aw *walker, a *gamestate.Entity, target int, targetCe
 	}
 	a.Variant, t.Variant = int(aw.dir), int(tw.dir)
 	switch r, _ := s.game.Strike(a, t, s.tables, s.rng.IntN); r {
+	case gamestate.StrikeDodged:
+		if a.Group == 0 {
+			s.playAt(gamestate.SoundDodge, tw.cell) // 0x0042204B
+		}
 	case gamestate.StrikeKill:
 		s.kill(a, tw, t, false)
 		return true
@@ -498,6 +502,9 @@ func (s *startScene) creatureTick(n *npc) {
 		}
 		return
 	case n.act == gamestate.ActShoot && n.actStep > 0: // waking up (0x00412A36)
+		if n.actStep == 1 && e.Animated() {
+			s.playAt(gamestate.WakeSound(*e), n.cell) // 0x00412A60
+		}
 		if !n.advanceAct() {
 			n.act = 0
 		}

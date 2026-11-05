@@ -56,6 +56,10 @@ type walker struct {
 	reserve   func(mapdata.Cell) bool // claim the next cell; false if taken
 	release   func(mapdata.Cell)      // free the cell just left
 	searchCap int
+	// sound plays the action sound (0x004143DC); busy tracks the last
+	// game frame's walking/action state for the idle sound.
+	sound func(w *walker, act int)
+	busy  bool
 }
 
 // look is what selects an entity's frames besides kind and facing: its
@@ -115,6 +119,9 @@ func (w *walker) walkTo(goal mapdata.Cell) {
 	}
 	if len(path) > 0 || start == goal {
 		w.path, w.goal = path, goal
+		if len(path) > 0 && w.sound != nil {
+			w.sound(w, 1) // 0x004142D4 starts the walk (action 1)
+		}
 	}
 }
 
@@ -211,7 +218,12 @@ func (w *walker) frame(tick int) (sceneFrame, bool) {
 }
 
 // startAct starts action animation act at step 0 (0x004143DC).
-func (w *walker) startAct(act int) { w.act, w.actStep = act, 0 }
+func (w *walker) startAct(act int) {
+	w.act, w.actStep = act, 0
+	if w.sound != nil {
+		w.sound(w, act)
+	}
+}
 
 // advanceAct is 0x00413DE4: the next step of the action, or false (staying
 // on the last step) when the action has played out.

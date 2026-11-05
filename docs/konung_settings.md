@@ -65,7 +65,7 @@ State `0x00A3E6D8` = 6. Opening it (`0x00437DDD`) copies the current values to a
 * **Световые эффекты** is honoured: at night it switches the terrain to the [lit path](konung_daylight.md#lit-terrain-path-0x004257a9) (`startScene.lighting`).
 * **Прозрачность** is honoured: flames are blended or copied ([flames](konung_flames.md), `startScene.transparency`).
 * **Background tiling** is honoured (T, [above](#background-tiling-t)).
-* Music and sound are stored and written, but have no effect: the port has no audio.
+* **Музыка** and **Звук** are honoured ([sound](konung_sound.md)): music on is −10 dB, off silent (the track keeps playing); with sound off no effect plays.
 * Saving puts day/night and lighting into `Game.Options`; loading copies them back into the config (`Menu.updateSaves`).
 * `KONUNG.CFG` is read from and written to the game directory (next to `KONUNG.1`), like the saves.
 

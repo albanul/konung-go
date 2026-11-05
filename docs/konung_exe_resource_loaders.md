@@ -98,7 +98,10 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00414078` | routine | Entity model initializer (Type 2 / Type 0) | this doc |
 | `0x004143DC` | routine | Entity position initializer | this doc |
 | `0x006314B8` | buffer | `GRAPH.T1` table, 512 × 8 bytes | [GRAPH layout](konung_graph_sprites.md) |
-| `0x006324B8` | buffer | Another 8-byte-entry table directly after T1 (referenced at `0x0042A4E0`, `0x00438E4A`); role unknown | open |
+| `0x006324B8`, `0x00632500`, `0x0083BAB8`, `0x00A3E6C4` | buffers | `MUSICS.RES` table (9 × offset, size); `SOUNDS.RES` table (1000 × offset, size); loaded sound pointers; music data | [sound](konung_sound.md) |
+| `0x0042A664`, `0x00439F4C`, `0x00439EEC`, `0x004143DC` | routines | Play a sound (id, volume, pan, loop); volume by distance from the hero; pan by column; start an action animation and its sound | [sound](konung_sound.md) |
+| `0x0042A474`, `0x00429A98`, `0x0042A420`, `0x00438E04`, `0x0043D1D0` | routines | Play music track; next track when it ends; music volume; `MUSICS.RES` load and first track; per-map sound loading queue | [sound](konung_sound.md#music) |
+| `0x004376F4`, `0x0042A9C4`, `0x00A4E368` | code, routine, data | Ambient sound roll; `SPEECHS.RES` voice player; the three wave formats (22050/19050/25050 Hz) | [sound](konung_sound.md) |
 | `0x00A3E6BC` | global | Pointer to the T1 image data | GRAPH loader |
 | `0x00627FD8` | buffer | `KONUNG.N` terrain section (`0x6400`) | [map format](konung_map_format.md) |
 | `0x00505C70` | buffer | Expanded 320 × 160 word grid from `KONUNG.N` section 1 | [map format](konung_map_format.md) |

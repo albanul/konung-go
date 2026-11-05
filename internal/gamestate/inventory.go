@@ -241,6 +241,7 @@ func (g *Game) ClickEquipment(h *Hand, e *Entity, t *resfmt.ExeTables, slot int)
 		}
 		if item != 0 {
 			g.lift(h, e, from, item)
+			g.sound(g.equipSound(item))
 		}
 		return 0
 	}
@@ -254,6 +255,7 @@ func (g *Game) ClickEquipment(h *Hand, e *Entity, t *resfmt.ExeTables, slot int)
 		return MsgUnusable
 	}
 	h.Cursor = CursorPointer
+	g.sound(g.equipSound(h.Item))
 	if slot == EquipAmmo {
 		if e.Quiver != 0 {
 			BagInsert(e, e.Quiver)
@@ -275,6 +277,7 @@ func (g *Game) ClickJewellery(h *Hand, e *Entity, t *resfmt.ExeTables, box int) 
 	if !h.Holding() {
 		if item := e.Extra[box]; item != 0 {
 			g.lift(h, e, fromJewellery, item)
+			g.sound(SoundJewellery)
 		}
 		return 0
 	}
@@ -285,6 +288,7 @@ func (g *Game) ClickJewellery(h *Hand, e *Entity, t *resfmt.ExeTables, box int) 
 		return 0
 	}
 	h.Cursor = CursorPointer
+	g.sound(SoundJewellery)
 	if old := e.Extra[box]; old != 0 {
 		BagInsert(e, old)
 	}
@@ -362,6 +366,7 @@ func (g *Game) boxSwap(h *Hand, e *Entity) {
 		}
 		g.lift(h, e, from, item)
 		h.Box = 0
+		g.sound(SoundClick) // 0x0041EAA2 → 0x0041EB84
 		return
 	}
 	h.Cursor = CursorPointer
@@ -376,6 +381,7 @@ func (g *Game) boxSwap(h *Hand, e *Entity) {
 		e.Quiver = h.Item
 	}
 	h.Box = h.Item
+	g.sound(SoundClick) // 0x0041EB55 → 0x0041EB84
 }
 
 func contains(s []int, v int) bool {
@@ -446,6 +452,7 @@ func (g *Game) UseBagItem(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 		g.UseMisc(e, 0, item)
 	case c == 11 && it.Type == shovelType:
 		h.Cursor = CursorDig
+		g.sound(SoundUse) // 0x00415520
 	}
 	return 0
 }
