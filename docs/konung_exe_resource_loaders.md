@@ -66,7 +66,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0043B4AB` | routine | `GRAPH.RES` loader; reads the T1 table at `0x0043B6B1` | this doc |
 | `0x0043B8BB` | routine | `OBJECTS.RES` loader | this doc |
 | `0x0043BA50` | routine | `FLAMES.RES` loader (74 frames) | [res format](konung_res_format.md) |
-| `0x0043C0FC` | routine | Map loader (`LIGHTS.N`, `KONUNG.N`) | [map format](konung_map_format.md) |
+| `0x0043C0FC` | routine | Map loader (`LIGHTS.N`, `KONUNG.N`); argument 1 = restore mode after a load | [map format](konung_map_format.md), [saves](konung_save_format.md#load-0x00437b54--0x00438966--0x004249ac) |
 | `0x0042562F` | routine | Terrain draw pass | [map format](konung_map_format.md) |
 | `0x00426684`, `0x0043E242`, `0x0043D8EF` | routines | Sprite pass (shadows, then depth-sorted objects and characters); opaque clipped RLE blit; alpha-blended blit for flames | [map format](konung_map_format.md#shadows-and-draw-order) |
 | `0x00A3E700`, `0x00A3E750` | globals | Options: transparent flames; shadows | [map format](konung_map_format.md#shadows-and-draw-order) |
@@ -75,6 +75,10 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0043BEF8` | routine | `MENU<width>R.RES` loader; frames 1–14 → slots `0x1F2`–`0x1FF` of `0x006304B8` | [menu](konung_menu.md) |
 | `0x0042F8D8` | routine | Main-menu button draw (layout table `0x0045B314`); starts at button 2 unless `[0x00A3E728]` (game running) | [menu](konung_menu.md) |
 | `0x004398C4` | routine | Hit-test `(x, y, rect table)` → index; used by the menu with `0x0045B314` | [menu](konung_menu.md) |
+| `0x00424E34`, `0x004249AC`, `0x004314E0`, `0x0042D3DC` | routines | Save writer, save reader, load/save screen draw, `SAVE<width>R.RES` loader | [saves](konung_save_format.md) |
+| `0x0046203C`, `0x00674640`, `0x0083DF5C`, `0x00A3E7AC` | data, buffers, global | Save slot rectangles; slot names (`KONUNG.SAV`); the new save's name; selected slot | [saves](konung_save_format.md#save-and-load-screen) |
+| `0x0045B3F4` | data | Location names, 0x28 bytes, index map − 1 | [map format](konung_map_format.md#location-names-verified) |
+| `0x0043BDD5`, `0x00625068`, `0x00A3E0A8` | routine, buffers | `QUESTR.RES` loader; quest flags (its last `0x4B0` bytes); misc-item draw flags (56 bytes) | [saves](konung_save_format.md) |
 | `0x0043756C` | table | Escape switch on screen state `0x00A3E6D8` (0 game, 1 menu, 2 new game, 4/5 load/save, 6 settings) | [menu](konung_menu.md#input-behavior-currently-implemented) |
 | `0x00437E50` | table | Main-menu click switch (6 cases: return, save, load, new, settings, exit) | [menu](konung_menu.md) |
 | `0x0045B314` | data | Main-menu button rectangles, 32 bytes per button (640 then 800 x1,y1,x2,y2) | [menu](konung_menu.md) |
@@ -150,7 +154,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0043195C` | routine | Hover status line in the bottom bar | [interface](konung_interface_res.md#hover-status-line-verified) |
 | `0x0043F89C` | routine | Cursor-over-opaque-pixel test for an RLE image at (x, y); sets the hover entity `0x00A3E6A0` | [interface](konung_interface_res.md#hover-status-line-verified) |
 | `0x0043F821`, `0x0042CBBC`, `0x00427A80` | routines | Text width; wrapped text draw (15 px lines); queue a text draw | [interface](konung_interface_res.md#hover-status-line-verified) |
-| `0x00592CFC`, `0x005A31F4` | data | Embedded fonts (large, small) | [interface](konung_interface_res.md#hover-status-line-verified) |
+| `0x00592CFC`, `0x005A31F4`, `0x00593040` | data | Embedded fonts (large, small, save-slot names) | [interface](konung_interface_res.md#hover-status-line-verified) |
 | `0x00437EC3`, `0x00437F88`, `0x00438042` | code | Hero selection: writes name `+0xD4` and model `+0xD6` | [GAME.N](konung_game_format.md) |
 | `0x00427A0C` | routine | Queue a clipped indexed blit `(image, palette, x, y, xmin, ymin, xmax, ymax)` (32-byte records at `0x0069B8B4`) | [interface](konung_interface_res.md) |
 | `0x0051ECB4` | global | Pointer to the `GRAPH.RES` palette block; images add a palette byte offset to it | [interface](konung_interface_res.md) |

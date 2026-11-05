@@ -105,6 +105,33 @@ Example: `KONUNG.1`'s first record is ID 117 at col 27, row 33, giving world (15
 
 Validation: the `KONUNG.1` render shows a palisaded village (log houses, a smithy, a building site, a well), trees with ground shadows, and a stone dolmen. All 43 maps render with no object decode errors. `go test ./internal/mapdata ./internal/resfmt` checks counts, the first records, offsets and depth order.
 
+## Location names (verified)
+
+The exe names every map: a table of 40-byte CP866 strings at DGROUP `0x0045B3F4`, entry `map − 1` (`gamestate.LocationName`). It is indexed with the current map `0x00A3E7FC` when the default save name is built (`0x00437A34`, [saves](konung_save_format.md#save-0x00437a25--0x00438a2f--0x00424e34)). Maps marked with * have no `KONUNG.N` among the installed files.
+
+| N | Name | N | Name | N | Name |
+|---|---|---|---|---|---|
+| 1 | Родники | 19 | Черный Бор | 37 | Нижний лагерь |
+| 2 | Укромное место | 20 | Волхв у Черного Бора | 38 | Волхв у Нижнего лагеря |
+| 3 | Волхв у Родников | 21 | Лагерь Волка | 39 | Лесной лагерь |
+| 4 | Старый лагерь | 22 | Поречье | 40 | Волхв у Лесного лагеря |
+| 5 | Волхв у Старого лагеря | 23 | Волхв у Поречья | 41* | Гнездо |
+| 6 | Мыс | 24 | Куницын Бор | 42 | Пещера Воды |
+| 7 | Византийский Лагерь | 25 | Волхв у Куницыного Бора | 43 | Пещера Зверя |
+| 8 | Полуостров | 26* | Островок на болоте | 44 | Пещера Луны |
+| 9* | Болото у Византийского Лагеря | 27 | Бережки | 45 | Пещера Огня |
+| 10 | Волхв у Византийского Лагеря | 28 | Волхв у Бережков | 46 | Гнездо Дракона |
+| 11 | Ловье | 29 | Камни | 47 | Старая шахта |
+| 12 | Волхв у Ловье | 30 | Волхв у Камней | 48–50 | Гнездо Дракона |
+| 13* | Поляны у Ловье | 31* | Пещера у Камней | 51–55* | Пещера №10 … №14 |
+| 14 | Верхний лагерь | 32 | Волхв у Пропасти | 56* | Остров |
+| 15 | Волхв у Верхнего лагеря | 33 | Борье | | |
+| 16 | Лесовье | 34* | Рудник у Борья | | |
+| 17 | Волхв у Лесовья | 35 | Средний лагерь | | |
+| 18* | Пепелище у Лесовья | 36 | Волхв у среднего лагеря | | |
+
+So `KONUNG.1` (Volk's start) is «Родники», and «Старый лагерь» (Old Camp), Dragomir's start in the walkthrough, is `KONUNG.4` (model 1 → map 4). Michail's start `KONUNG.7` is «Византийский Лагерь».
+
 ## Open questions
 
 * Characters/NPCs/monsters come from `GAME.N`, not from the map; see [the GAME.N notes](konung_game_format.md).
@@ -113,4 +140,3 @@ Validation: the `KONUNG.1` render shows a palisaded village (log houses, a smith
 * Objects anchored above y = 0 are clipped in `map-render` PNGs; the game scrolls past them.
 * Section 1 semantics beyond walls (`0xFFF`) and arrow obstacles (bits `0xC0`): the other bits.
 * The `LIGHTS.N` shading path. The loader reads `0x3200` bytes to `0x00671440` (80 × 160, one byte per terrain cell, indexed `row*0x50 + col` by the lit draw path) and `0xC800` bytes to `0x00664C40`.
-* `KONUNG.1 = Old Camp` remains provisional.

@@ -171,7 +171,14 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	}
 	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
 	game.InitSettlementFlags(gameNumber) // 0x0043BD5C
-	return a.buildScene(game, mapNumber, nil)
+	// 0x0043BDD5: QUESTR.RES next to GAME.N; the port keeps only the quest
+	// flags, for saves.
+	if questr, err := readGameFile(a.mapDir, "QUESTR.RES"); err != nil {
+		log.Printf("QUESTR.RES: %v", err)
+	} else if err := game.SetQuestFlags(questr); err != nil {
+		log.Printf("QUESTR.RES: %v", err)
+	}
+	return a.buildScene(game, mapNumber, nil, nil)
 }
 
 // changeMap takes map exit x (0x00421CCD, then the main loop's map change at
@@ -183,7 +190,7 @@ func (s *startScene) changeMap(x gamestate.MapExit) {
 	entities := append([]gamestate.Entity(nil), s.game.Entities...)
 	s.storeWorld()
 	s.game.TakeExit(x)
-	ns, err := s.assets.buildScene(s.game, x.To, s)
+	ns, err := s.assets.buildScene(s.game, x.To, s, nil)
 	if err != nil {
 		log.Printf("map exit %d to KONUNG.%d: %v", x.Index, x.To, err)
 		s.game.Groups[0] = group
@@ -213,8 +220,11 @@ func (s *startScene) storeWorld() {
 // buildScene builds the scene for map mapNumber: terrain, decorations and
 // static objects from the KONUNG.N file, characters and creatures from game.
 // prev, when set, is the scene being left: the clock, speed, camera mode,
-// held item and windows carry over.
-func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *startScene) (*startScene, error) {
+// held item and windows carry over. restore, when set, is a loaded save:
+// like the map loader's restore mode 0x0043C0FC(1) it keeps the groups'
+// alarm, skips placement and respawn (EnterMap) and takes the active piles,
+// the clock and the arrows in flight from the save.
+func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *startScene, restore *gamestate.SaveState) (*startScene, error) {
 	mapPath := filepath.Join(a.mapDir, fmt.Sprintf("KONUNG.%d", mapNumber))
 	mapData, err := os.ReadFile(mapPath)
 	if err != nil {
@@ -356,9 +366,11 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 			}
 		}
 	}
-	game.EnterMap(mapNumber, tables, s.rng.IntN,
-		func(r, c int) bool { return walk.Blocked(r, c) || taken[[2]int{r, c}] },
-		func(r, c int) { taken[[2]int{r, c}] = true })
+	if restore == nil {
+		game.EnterMap(mapNumber, tables, s.rng.IntN,
+			func(r, c int) bool { return walk.Blocked(r, c) || taken[[2]int{r, c}] },
+			func(r, c int) { taken[[2]int{r, c}] = true })
+	}
 	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
 		if p.Group != 0 && p.Dead() {
 			continue // the leave cleanup (0x00436AD0) removes the dead
@@ -392,7 +404,9 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		case gr.CreatureGroup():
 			n.mode, n.group = npcCreature, p.Group
 			n.blocked = s.blocked
-			game.Groups[p.Group].Alarm = gamestate.AlarmCalm // 0x0043C66D
+			if restore == nil {
+				game.Groups[p.Group].Alarm = gamestate.AlarmCalm // 0x0043C66D
+			}
 			if p.Type%6 == gamestate.ActShoot {
 				n.act = gamestate.ActShoot // dormant (kinds 0x46, 0x4C, 0x55)
 			}
@@ -411,6 +425,9 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		s.byEntity[p.Index] = n
 	}
 	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
+	if restore != nil {
+		s.restoreSaved(*restore)
+	}
 	s.activatePiles()
 	s.centerOn(camX, camY)
 	return s, nil

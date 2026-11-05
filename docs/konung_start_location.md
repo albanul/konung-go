@@ -2,13 +2,13 @@
 
 ## What is confirmed
 
-The available [Konung walkthrough](https://shara-games.ru/knyaz/) identifies **Old Camp** as Dragomir's starting location. This supports the intended scene for the New Game menu action. The walkthrough does not connect Old Camp to a particular `KONUNG.N` filename.
+The available [Konung walkthrough](https://shara-games.ru/knyaz/) identifies **Old Camp** as Dragomir's starting location. This supports the intended scene for the New Game menu action. The walkthrough does not connect Old Camp to a `KONUNG.N` filename; the exe's location table does (`KONUNG.4`).
 
 Human-like `OBJECTS.RES` entries: 15 (robed figure, 30 × 74, palette 152), 16 (child-sized), and 5 (corpse-like); entry 4 is a plant-like monster. None is used by the current scene, which uses a `GRAPH.RES` Type 0 warrior.
 
 ## Candidate map and uncertainty
 
-**Identified by the user: `KONUNG.1` is Volk's (Волк) initial location.** Dragomir is hero model 1, whose start map is `KONUNG.4` (model*3+1); the walkthrough's "Old Camp" may therefore be `KONUNG.4`, but this is unverified. See [GAME.N notes](konung_game_format.md#heroes-and-start-maps). Its terrain, decorations and static objects are now decoded and rendered from the map data; see [the map format notes](konung_map_format.md). The render shows a palisaded village (log houses, a smithy, a building site, a well) on a coast, which fits a starting camp but is not proof. Only the warrior is still a hand-placed preview.
+**Identified by the user: `KONUNG.1` is Volk's (Волк) initial location.** Dragomir is hero model 1, whose start map is `KONUNG.4` (model*3+1). The exe's location table names `KONUNG.1` «Родники» and `KONUNG.4` «Старый лагерь» (Old Camp), so the walkthrough's Old Camp is `KONUNG.4` ([location names](konung_map_format.md#location-names-verified)). See [GAME.N notes](konung_game_format.md#heroes-and-start-maps). Its terrain, decorations and static objects are now decoded and rendered from the map data; see [the map format notes](konung_map_format.md). The render shows a palisaded village (log houses, a smithy, a building site, a well) on a coast, which fits a starting camp but is not proof. Only the warrior is still a hand-placed preview.
 
 Observed facts for `KONUNG.1`:
 
@@ -17,7 +17,7 @@ Observed facts for `KONUNG.1`:
 * The terrain is the **first** `0x6400`-byte section: 160 rows × 80 two-byte cells (base and overlay layers), each byte a 1-based `GRAPH.T1` tile index, drawn on a staggered 116 × 32 px grid. This is verified against the executable's renderer at VA `0x0042562F`. An earlier preview drew the `0xC800`-byte section at `0x6400` as terrain. That section is a 320 × 160 grid expanded into flag words (probably walkability), not terrain.
 * Scanning the file as little-endian words finds values 87 twice, 88 once, and no 89 in `KONUNG.1`; the 88 reference is at file offset `0x16D4C` (87 references at `0x17EBC` and `0x18414`). These are raw references only: their record and coordinate interpretation is not established, so they cannot yet be positioned faithfully in the Go scene.
 
-Do not record `KONUNG.1 = Old Camp` as a confirmed game-data fact until the map is matched using executable references, a labeled in-game screenshot, or a known save.
+`KONUNG.1` is not Old Camp: the exe's location table names it «Родники».
 
 ## Village-chief screenshot clue
 

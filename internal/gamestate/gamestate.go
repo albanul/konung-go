@@ -82,6 +82,9 @@ type Entity struct {
 	Equipment     [6]int  // +0x66 words: worn items (0 = empty), drawn as overlays; see EquipAxe..EquipShield
 	Bag           [32]int // +0x72 words: carried items (0 = empty)
 	Extra         [5]int  // +0xB2 words: five more item slots, meaning not traced (0 = empty)
+	// Raw is the record as loaded; Encode writes the fields above over it,
+	// so bytes the port does not decode survive a save.
+	Raw [entityStride]byte
 }
 
 // Game holds the decoded groups (index 0..199) and entities.
@@ -94,8 +97,17 @@ type Game struct {
 	// Lit is 0x00A3E758: the visible piles glow (resfmt.LightsGlow). Set by
 	// «Чистая слеза» (UseHerb) and the torch (UseMisc); the map loader
 	// clears it (0x0043C11B).
-	Lit   bool
-	items []byte
+	Lit bool
+	// Not ported, but saved with the game (0x00424E34): the quest flags
+	// 0x00625068 (QUESTR.RES tail, SetQuestFlags) and the misc-item
+	// draw flags 0x00A3E0A8 (0x00414E64).
+	Quests   [QuestFlagsSize]byte
+	MiscUsed [miscUsedSize]byte
+	// Options are the settings 0x00A3E71C and 0x00A3E734 that a save
+	// stores; 1 without a config file (0x0042BB58).
+	Options [2]int32
+	items   []byte
+	data    []byte // the GAME.N image the records came from (Marshal)
 }
 
 // ItemType returns byte +3 of item record i, the item type that selects the
@@ -136,7 +148,8 @@ func Parse(data []byte) (*Game, error) {
 	if len(data) != FileSize {
 		return nil, fmt.Errorf("GAME file has size %d, want %d", len(data), FileSize)
 	}
-	g := &Game{items: data[itemOffset : itemOffset+0x20000]}
+	data = append([]byte(nil), data...)
+	g := &Game{items: data[itemOffset : itemOffset+0x20000], data: data, Options: [2]int32{1, 1}}
 	owner := map[int]int{}
 	for i := 0; i < groupCount; i++ {
 		r := data[groupOffset+i*groupStride:][:groupStride]
@@ -210,6 +223,7 @@ func Parse(data []byte) (*Game, error) {
 			Equipment:     [6]int(words(e[0x66:], 6)),
 			Bag:           [32]int(words(e[0x72:], 32)),
 			Extra:         [5]int(words(e[0xB2:], 5)),
+			Raw:           [entityStride]byte(e),
 		})
 	}
 	g.Settlements = parseSettlements(data)

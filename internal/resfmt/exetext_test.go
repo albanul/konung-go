@@ -25,7 +25,7 @@ func TestExeTextAndFonts(t *testing.T) {
 			t.Errorf("table %#x[%d] = %q, want %q", c.va, c.i, got, c.want)
 		}
 	}
-	for _, va := range []int{FontLargeVA, FontSmallVA} {
+	for _, va := range []int{FontLargeVA, FontSmallVA, FontSlotVA} {
 		f, err := tb.Font(va)
 		if err != nil {
 			t.Fatal(err)

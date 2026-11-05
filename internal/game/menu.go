@@ -2,6 +2,9 @@ package game
 
 import (
 	"fmt"
+	"log"
+	"path/filepath"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -30,6 +33,8 @@ type Menu struct {
 	// offers «Вернуться в игру» and «Сохранить игру» (items 0 and 1).
 	running bool
 	fresh   bool // world has not been played yet
+	saves   *saveScreen
+	inSaves bool // the load or save screen is shown
 }
 
 // Main-menu items in the order of the exe layout table (0x0045B314) and the
@@ -37,7 +42,7 @@ type Menu struct {
 const (
 	itemReturn   = 0 // 0x004379F8
 	itemSave     = 1 // 0x00437A25
-	itemLoad     = 2 // 0x00437B54, opens the load screen (not implemented)
+	itemLoad     = 2 // 0x00437B54, opens the load screen
 	itemNewGame  = 3 // 0x00437B91
 	itemSettings = 4 // 0x00437DDD (not implemented)
 	itemExit     = 5 // 0x00437E3D
@@ -111,7 +116,18 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		return nil, fmt.Errorf("load KONUNG.1 scene: %w", err)
 	}
 
+	saveRes, err := FindGameResource("assets/Konung/SAVE800R.RES")
+	if err != nil {
+		return nil, err
+	}
+	// 0x0042D3DC: SAVE<width>R.RES; slots and names live next to the game files.
+	saves, err := newSaveScreen(saveRes, filepath.Dir(mapPath), world.tables, world.assets.largeFont)
+	if err != nil {
+		return nil, err
+	}
+
 	m := &Menu{
+		saves:      saves,
 		background: ebiten.NewImageFromImage(frames[0]),
 		sword:      ebiten.NewImageFromImage(swordFrame),
 		world:      world,
@@ -145,6 +161,11 @@ func (m *Menu) Update() error {
 			}
 			return nil
 		}
+		// Load/save screens (0x004374FE): back to the menu.
+		if m.inSaves {
+			m.inSaves = false
+			return nil
+		}
 		// Menu (0x004374A5): resume a running game, else nothing.
 		if m.running {
 			m.inWorld = true
@@ -169,6 +190,9 @@ func (m *Menu) Update() error {
 			m.fresh = true
 		}
 		return nil
+	}
+	if m.inSaves {
+		return m.updateSaves()
 	}
 	first := m.firstItem()
 	if m.selected < first {
@@ -198,12 +222,17 @@ func (m *Menu) Update() error {
 	return m.activate(activate)
 }
 
-// activate runs a menu item. Save, Load and Settings are drawn but have no
-// action yet.
+// activate runs a menu item. Settings is drawn but has no action yet.
 func (m *Menu) activate(item int) error {
 	switch item {
 	case itemReturn:
 		m.inWorld = true
+	case itemSave:
+		m.saves.open(screenSave, m.world.saveName(time.Now()))
+		m.inSaves = true
+	case itemLoad:
+		m.saves.open(screenLoad, nil)
+		m.inSaves = true
 	case itemNewGame:
 		if !m.fresh {
 			w, err := m.newWorld()
@@ -221,6 +250,39 @@ func (m *Menu) activate(item int) error {
 	return nil
 }
 
+// updateSaves runs the load/save screen: the slot under the mouse is
+// selected; a left click on a slot loads or saves it and goes to the game,
+// a click elsewhere or a failed load returns to the menu (0x00438966,
+// 0x004389F4).
+func (m *Menu) updateSaves() error {
+	mx, my := ebiten.CursorPosition()
+	s := m.saves
+	s.selected = s.hit(mx, my)
+	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		return nil
+	}
+	m.inSaves = false
+	if s.selected < 0 {
+		return nil
+	}
+	switch s.mode {
+	case screenSave:
+		if err := s.save(s.selected, m.world); err != nil {
+			log.Printf("save slot %d: %v", s.selected, err)
+			return nil
+		}
+		m.inWorld = true
+	case screenLoad:
+		w, err := m.world.assets.loadSaved(s.dir, s.selected)
+		if err != nil {
+			log.Printf("load slot %d: %v", s.selected, err)
+			return nil
+		}
+		m.world, m.fresh, m.running, m.inWorld = w, false, true, true
+	}
+	return nil
+}
+
 func (m *Menu) Draw(screen *ebiten.Image) {
 	if m.inWorld && m.world != nil {
 		m.world.Draw(screen)
@@ -230,6 +292,12 @@ func (m *Menu) Draw(screen *ebiten.Image) {
 			cur = m.cursors[n]
 		}
 		drawAt(screen, cur, mx-1, my-1)
+		return
+	}
+	mx, my := ebiten.CursorPosition()
+	if m.inSaves {
+		m.saves.draw(screen)
+		drawAt(screen, m.sword, mx-1, my-1)
 		return
 	}
 	screen.DrawImage(m.background, nil)
@@ -242,7 +310,6 @@ func (m *Menu) Draw(screen *ebiten.Image) {
 		drawAt(screen, button, r.x, r.y)
 	}
 	// Keep the blade tip at the native cursor position, matching the in-game pointer.
-	mx, my := ebiten.CursorPosition()
 	drawAt(screen, m.sword, mx-1, my-1)
 }
 

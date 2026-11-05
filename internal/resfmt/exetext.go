@@ -22,6 +22,7 @@ const (
 	// Fonts (header + glyph pointer table, relocated at load, VA 0x0043AA7F).
 	FontLargeVA = 0x00592CFC // character window title
 	FontSmallVA = 0x005A31F4 // status line, dialogue text
+	FontSlotVA  = 0x00593040 // save/load screen: slots other than the selected one (0x004315A8)
 )
 
 // CString returns the zero-terminated CP866 string at a DGROUP address.

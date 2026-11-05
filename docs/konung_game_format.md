@@ -29,6 +29,8 @@ All three installed files are 709,822 bytes, exactly the sum of six reads:
 | `0x2A69A` | `0x7D000` | `0x007AB378` | 2000 × 256-byte **entities** |
 | `0xA769A` | `0x5E24` | `0x00835B18` | 20 × `0x4B5` **settlements** with named-character posts ([village AI](#village-ai-verified-against-code-and-game0)) |
 
+A saved game stores every section except the map exits ([saves](konung_save_format.md)). `gamestate.Game.Marshal` writes the decoded records back in this layout; each record keeps its original bytes for the fields the port does not decode (`Entity.Raw`, `Group.Raw`). It reproduces `GAME.0`–`GAME.2` exactly.
+
 ## Groups (32 bytes)
 
 Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` to `0x0069D1B4`, and the hero pointer `0x00A3E694` to entity `word[group0+0]`. The map loader iterates groups 1–199 (loop at `0x0043C612`).
