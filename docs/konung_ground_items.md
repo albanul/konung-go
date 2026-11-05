@@ -22,6 +22,8 @@ Code: `gamestate.Pile`, `Game.Piles`.
 
 For each record on the current map (`0x00A3E7FC`): skip it while a respawn timer runs, i.e. `+0 < 0`, `+0 == +4` and `time + (+0) < 5400` (game time `0x00A3E770`, incremented once per main-loop tick next to the AI dispatch, `0x00437849`). Otherwise set the fine-grid flag `0x20` at `0x00505C71 + row·0x140 + col·2` and copy the record to the active list `0x007A6CDC` (count `0x00A3E7E0`). The copy keeps the record index at `+0x0E` and replaces `+0`/`+4` with the screen position: world position of the cell (`0x00439BA0`) minus half the image's width and height. `gamestate.Pile.Active`.
 
+**Draw order.** The terrain pass draws the dead flat (`0x00425C23` draws only entities with `+4` bit `0x80`; the depth-sorted character pass `0x00426C07` skips them), then the visible piles (`0x0042647E`). A kill's loot pouch therefore lies on top of the body. Port: `startScene.drawCorpses` before `drawPiles`.
+
 **Image (`0x00439DF0`, `Game.PileImage`).** INTR slot 0xA3 (a pouch) when the pile has a second item or non-zero gold. Otherwise the single item's ground image, which is the word after its inventory icon: gear table `+0x3C`, jewellery/herb/misc `+0x7E` (`resfmt.ItemGroundImage`). Arrows (category 12) use 0x99; categories 10 and above 12 use the pouch. Examples: «Белый корень» 0xA8 (a red-berried bush), «Земляной орех» 0xA0, «Деревянный щит» 0xA5.
 
 ## Drawing (`0x0042647E`)

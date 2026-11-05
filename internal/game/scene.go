@@ -621,6 +621,25 @@ func (s *startScene) dropHeld(hero *gamestate.Entity) {
 	}
 }
 
+// drawCorpses draws the dead flat in the terrain pass, before the ground
+// items (0x00425C23 draws only entities with +4 bit 0x80; the depth-sorted
+// pass 0x00426C07 skips them), so a loot pouch lies on top of its body.
+func (s *startScene) drawCorpses(dst *ebiten.Image) {
+	draw := func(w *walker) {
+		if f, ok := w.frame(s.tick); ok && s.visible(f.x, f.y, f.img.Bounds().Dx(), f.img.Bounds().Dy()) {
+			drawAt(dst, f.img, f.x-s.camX, f.y-s.camY)
+		}
+	}
+	if s.hero != nil && len(s.party) > 0 && s.party[0].Dead() {
+		draw(s.hero)
+	}
+	for _, n := range s.npcs {
+		if s.game.Entities[n.entity].Dead() {
+			draw(&n.walker)
+		}
+	}
+}
+
 // drawSelection draws the selection ellipse under the hero (the port's
 // selection list), like 0x00426146: before the ground items, flat, coloured
 // by HP and following the walk animation.
@@ -918,6 +937,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		}
 	}
 	s.drawSelection(screen)
+	s.drawCorpses(screen)
 	s.drawPiles(screen)
 	// Shadows are unioned, then every covered pixel is halved once (0x0043E5DF).
 	s.shadowLayer.Clear()
@@ -940,11 +960,13 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 			drawShadow(&chars[len(chars)-1])
 		}
 	}
-	if s.hero != nil {
+	if s.hero != nil && len(s.party) > 0 && !s.party[0].Dead() {
 		addChar(s.hero)
 	}
 	for _, n := range s.npcs {
-		addChar(&n.walker)
+		if !s.game.Entities[n.entity].Dead() { // corpses: drawCorpses
+			addChar(&n.walker)
+		}
 	}
 	depth := func(f *sceneFrame) int { return f.y + f.img.Bounds().Dy() }
 	order := make([]int, len(chars))
