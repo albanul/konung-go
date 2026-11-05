@@ -32,6 +32,14 @@ const (
 	CursorDig = 7
 )
 
+// Map cursor sprites chosen by 0x00428A50 for the character under the mouse
+// (0x00A3E6A0) or the cell under it.
+const (
+	CursorAttack  = 1 // crossed swords: a living selected member is in the combat stance
+	CursorBlocked = 3 // red barred circle: a character without dialogue, or an occupied cell
+	CursorTalk    = 5 // parchment: a character with a dialogue (+0xD0 ≠ 0xFF), no one in the stance
+)
+
 // EquipAmmo is the slot argument of the ammunition box (entity +0xCC) in
 // ClickEquipment (0x0041E500 is called with 12, the arrows' category).
 const EquipAmmo = 12

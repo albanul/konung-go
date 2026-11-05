@@ -31,7 +31,9 @@ type Group struct {
 	Row, Col int  // +0x08, +0x10: group position on the map's fine grid
 	Map      int  // +0x1B: KONUNG.N number
 	Count    int  // +0x1C: number of consecutive entities
-	Kind     byte // +0x1E: 0 = unused; other values not fully decoded
+	Kind     byte // +0x1E: 0 = unused; bit 0x40 creature group, 0x80 village; other values not fully decoded
+	Enemy    int  // +0x1A int8: the group an alarmed group attacks (set by AlarmState's caller)
+	Alarm    int  // +0x1D: AlarmCalm / AlarmAttack / AlarmReturn (creature.go); 0x80 in the files, cleared on map load
 	Raw      [groupStride]byte
 }
 
@@ -136,6 +138,8 @@ func Parse(data []byte) (*Game, error) {
 			Map:   int(r[0x1B]),
 			Count: int(r[0x1C]),
 			Kind:  r[0x1E],
+			Enemy: int(int8(r[0x1A])),
+			Alarm: int(r[0x1D]),
 		}
 		copy(gr.Raw[:], r)
 		g.Groups = append(g.Groups, gr)

@@ -51,7 +51,7 @@ Ebitengine's system cursor is hidden. The menu draws the game sprite at the curr
 
 The nearby cursor variants include a red barred-circle marker, parchment/speech marker, flame marker, and hand marker. Their appearances are catalogued, but their exact in-game meanings have not been confirmed by tracing the executable's cursor-selection logic.
 
-Selecting menu item 4 («Новая игра», New game) opens the `KONUNG.1` scene. It draws terrain, flat decorations, a screen-sized shadow layer (all shadows unioned, then drawn as 50% black once), and static objects plus `GAME.0` characters and creatures, sorted by bottom edge. Only on-screen items are drawn. NPCs and creatures play their idle loop at 10 steps/s, each phase-offset; the original tick rate is not traced.
+Selecting menu item 4 («Новая игра», New game) opens the `KONUNG.1` scene. It draws terrain, flat decorations, a screen-sized shadow layer (all shadows unioned, then drawn as 50% black once), and static objects plus `GAME.0` characters and creatures, sorted by bottom edge. Only on-screen items are drawn. NPCs and creatures play their idle loop at 10 steps/s, each phase-offset; the original tick rate is not traced. When the hero dies, the menu returns about 2 s later and the next «Новая игра» loads a fresh scene ([combat: hero death](konung_combat.md#melee-flow-verified)).
 
 The player, Volk (Type 0 model 0, placeholder palette), is controllable (`internal/game/hero.go`):
 

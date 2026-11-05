@@ -68,7 +68,16 @@ type look struct {
 }
 
 func lookOf(e gamestate.Entity) look {
-	return look{typ: e.Type, weapon: e.WeaponMode, stance: e.InStance(), equipment: e.Equipment}
+	return look{typ: animBase(e.Type), weapon: e.WeaponMode, stance: e.InStance(), equipment: e.Equipment}
+}
+
+// animBase is the animation set an action type belongs to: 0 (combat
+// stance, also animated models) or 6.
+func animBase(typ int) int {
+	if typ >= 6 {
+		return 6
+	}
+	return 0
 }
 
 type animKey struct {
@@ -231,6 +240,23 @@ func (w *walker) turnToward(d mapdata.Direction) {
 	w.dir = mapdata.Direction(cur)
 }
 
+// halt ends a walk at once, releasing the cell being stepped into.
+func (w *walker) halt() {
+	if w.walking && w.release != nil && len(w.path) > 0 {
+		w.release(w.path[0])
+	}
+	w.walking, w.stepT, w.path = false, 0, nil
+}
+
+// stopWalk ends a walk after the step in progress.
+func (w *walker) stopWalk() {
+	if w.walking {
+		w.path = w.path[:1]
+		return
+	}
+	w.path = nil
+}
+
 // chase plans a path that ends on goal even though goal is occupied (the
 // target's cell); stopAt keeps the walker from entering it.
 func (w *walker) chase(goal mapdata.Cell) {
@@ -255,7 +281,7 @@ func entityLoader(game *gamestate.Game, p gamestate.Placed, cur func() gamestate
 	return func(kind, dir int) []sceneFrame {
 		q := p
 		q.Entity = cur()
-		q.Type, q.Variant, q.Step = q.Type+kind*walkTypeOffset, dir, 0
+		q.Type, q.Variant, q.Step = animBase(q.Type)+kind*walkTypeOffset, dir, 0
 		anim, err := game.LoadAnimation(q, objects, graph, t)
 		if err != nil {
 			onErr(fmt.Errorf("entity %d type %d dir %d: %w", p.Index, q.Type, dir, err))
@@ -278,6 +304,7 @@ type npcMode int
 const (
 	npcStill    npcMode = iota // creatures while calm, and groups without a ported AI: stay put
 	npcVillager                // village group (kind 0x80): ported AI 0x00416934
+	npcCreature                // creature group (kind 0x40): combat AI 0x004123BC (combat.go)
 )
 
 // npc is a non-player character.
@@ -291,9 +318,8 @@ const (
 // loop while their group is calm: the calm case of 0x00412E00 only restarts
 // the idle animation, and the idle case of the type switch (0x0041291C) only
 // advances it. Their group rectangle is a territory: 0x00412C30 alarms the
-// group when a party member is inside it and sends members outside it home.
-// Alarm, attacks and return are not ported yet; characters hit by the hero
-// flinch and die (combat.go).
+// group when a party member is inside it and sends members outside it home;
+// alarmed members chase and fight (combat.go).
 type npc struct {
 	walker
 	mode   npcMode
@@ -301,7 +327,15 @@ type npc struct {
 	post   gamestate.Post
 	posted bool
 	moveAt int // village roll threshold (gamestate.VillageMoveThreshold)
-	rng    func(int) int
+
+	// Creature combat state (npcCreature): group index, the attack target
+	// (entity +6, -1 = none) and its cell (+0x0C/+0x0E), and the +2 intent
+	// bits (intentMelee, intentRetaliate, intentWalk).
+	group      int
+	target     int
+	targetCell mapdata.Cell
+	intent     byte
+	rng        func(int) int
 }
 
 const (

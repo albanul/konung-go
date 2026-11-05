@@ -24,6 +24,7 @@ type Menu struct {
 	selected    int
 	buttonRects [menuItems]rect
 	world       *startScene
+	newWorld    func() (*startScene, error) // a fresh New Game scene (after a game over)
 	inWorld     bool
 }
 
@@ -77,7 +78,10 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, err
 	}
-	world, err := loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath, 0, 1)
+	newWorld := func() (*startScene, error) {
+		return loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath, 0, 1)
+	}
+	world, err := newWorld()
 	if err != nil {
 		return nil, fmt.Errorf("load KONUNG.1 scene: %w", err)
 	}
@@ -86,6 +90,7 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		background: ebiten.NewImageFromImage(frames[0]),
 		sword:      ebiten.NewImageFromImage(swordFrame),
 		world:      world,
+		newWorld:   newWorld,
 	}
 	for i := range m.cursors {
 		img, err := loadGraphSprite(graphPath, i)
@@ -116,6 +121,16 @@ func (m *Menu) Update() error {
 			m.inWorld = false
 		}
 		m.world.Update()
+		if m.world.gameOver() {
+			// 0x004376A8: the hero died; the game plays GAMEOVER.FLM (not in
+			// the installed files) and leaves the game loop for the menu.
+			m.inWorld = false
+			w, err := m.newWorld()
+			if err != nil {
+				return err
+			}
+			m.world = w
+		}
 		return nil
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {

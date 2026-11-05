@@ -37,9 +37,11 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 |---|---|---|
 | `+0x00` | `int16` | first entity index |
 | `+0x08` | `uint16` | group fine-grid **row** (the party is placed around it, `0x00411B15`) |
-| `+0x0A`, `+0x0C`, `+0x0E` | `uint16` | `+0x0C` = group rectangle max row (with `+0x08` as min; `0x0041F5D8`, `0x00413A84`); `+0x0A`/`+0x0E` not traced |
+| `+0x0A`, `+0x0C`, `+0x0E` | `uint16` | `+0x0C` = territory (inner rectangle) max row, with `+0x08` as min (`0x0041F5D8`, `0x00412C30`); `+0x0A`..`+0x0E` = leash (outer rectangle) rows (`0x0041FD74`, `0x00411FD0`) |
 | `+0x10` | `uint16` | group fine-grid **column** |
-| `+0x12`, `+0x14`, `+0x16` | `uint16` | `+0x14` = group rectangle max col (with `+0x10` as min); `+0x12`/`+0x16` not traced |
+| `+0x12`, `+0x14`, `+0x16` | `uint16` | `+0x14` = territory max col, with `+0x10` as min; `+0x12`..`+0x16` = leash cols. `gamestate.Group.WanderArea` / `LeashArea` |
+| `+0x1A` | int8 | enemy group of an alarmed creature group (`Group.Enemy`) |
+| `+0x1D` | byte | creature alarm state: 0 calm, 1 attack, `0x20` return (`Group.Alarm`); `0x80` in the files, cleared on map load |
 | `+0x1B` | byte | map number (`KONUNG.N`) |
 | `+0x1C` | byte | entity count (consecutive from `+0x00`) |
 | `+0x1E` | byte | 0 = inactive. Bits `0x40`/`0x80` and the value range `0x41..0x50` select loader paths; meaning not decoded. |
@@ -174,7 +176,7 @@ Code: `resfmt.ExeTables` (`ItemOverlay`, `DrawOrder`, `CombatDrawOrder`, `Overla
 
 ## NPC AI (village AI traced)
 
-**Dispatcher `0x00421DA4`**, called once per game tick from the main loop (`0x00437854`/`0x00437888`, next to the animation step). It resets the path-search budget `0x00A3E720` and walks groups 0–199 that are active on the current map. Kind (`+0x1E`) bit `0x40` → creature AI `0x004123BC` ([below](#creature-ai-partly-traced)). Otherwise bit `0x80` → village AI `0x00416058`. Otherwise → party AI (contains `0x0041F11C`).
+**Dispatcher `0x00421DA4`**, called once per game tick from the main loop (`0x00437854`/`0x00437888`, next to the animation step). It resets the path-search budget `0x00A3E720` and walks groups 0–199 that are active on the current map. Kind (`+0x1E`) bit `0x40` → creature AI `0x004123BC` ([below](#creature-ai-traced)). Otherwise bit `0x80` → village AI `0x00416058`. Otherwise → party AI (contains `0x0041F11C`).
 
 **Budget `0x004116CC`.** An entity may think only while `0x00A3E720 < 3` (incremented by each path search) and while it comes after the last served entity (`0x00A3E690`), so members are served round-robin.
 
@@ -199,14 +201,11 @@ Other bytes are not traced (`+0x3D2` per slot is also tested by the dismiss path
 
 **Dismissing a party member** (`0x00433AF8`). The entity is copied into the next slot of the settlement's village group, gets `+5` = that group and `+2 = 0x60`, and the party count drops. That matches the observed behaviour: the dismissed member runs into the village and stays there.
 
-### Creature AI (partly traced)
+### Creature AI (traced)
 
-`0x004123BC(group)` runs for every creature group on the current map, once per game tick. Group byte `+0x1D` is the alarm state, cleared when the map loads (`0x0043C66D`); in `GAME.N` it is `0x80` in every creature group.
+`0x004123BC(group)` runs for every creature group (`+0x1E` bit `0x40`) on the current map, once per game tick. The alarm check, the decisions by alarm state and creature kind, and the action cases are in [combat: creature AI](konung_combat.md#creature-ai-verified). Calm creatures do not move.
 
-* **Alarm check `0x00412C30(group)`** (called from `0x0041D16A`): if a living party member stands inside the group rectangle (rows `+0x08`..`+0x0C`, cols `+0x10`..`+0x14`), `+0x1A` = the hero's group byte (`+5`) and `+0x1D` = 1 (alarmed). Otherwise, if a living member of the group is outside the rectangle, `+0x1D` = `0x20` (return home). Otherwise `+0x1D` = 0 (calm). The rectangle is a **territory**, not a wander area. Being hit also alarms the group (`0x00412989`, `0x00412A21`).
-* **Per member**: an idle member (`+2` bit `0x40`, type not 2/3/9) gets `0x00412E00` when the path budget allows. Otherwise the member's action type (`+0`) selects a case (table `0x00412BE0`, types 0–9): 0/6 idle (`0x0041291C`: advance the animation, restart it at the end), 1/7 walk along the stored path (`0x00412717`), 2/8, 3/9, 4 and 5 not traced.
-* **`0x00412E00` by alarm state** (`+0x1D`): 0 calm → only restarts the idle animation (type 0 in stance, else 6); **calm creatures do not move**. 1 alarmed → by creature kind `+4`: `0x41`, `0x4D`, `0x4E`, `0x4F` → `0x00420178`; `0x43`, `0x45` → `0x004203A0`; `0x44`, `0x57` → `0x00412F62` (looks at the 8 neighbours); `0x46`, `0x4C`, `0x54`, `0x55` → `0x0041309D`; others → `0x004130EE`. `0x20` → return home (`0x0041FD74`, then the same handlers). Not traced further.
-* Creature kinds `+4` and their `OBJECTS.RES` models in `GAME.0`: `0x41` model 0, `0x42` 1, `0x43` 2, `0x44` 3, `0x45` 4 (the man-eating flower, maps 32 and 36), `0x46` 5, `0x47` 6, `0x48` 7, `0x49` 8/23, `0x4A` 9, `0x4B` 10, `0x4C` 11, `0x4D`/`0x4F` 12, `0x4E`/`0x50` 13.
+Creature kinds `+4` and their `OBJECTS.RES` models in `GAME.0`: `0x41` model 0, `0x42` 1, `0x43` 2, `0x44` 3 (the man-eating flower: walk set of 1 frame, stationary; maps 3, 37, 40), `0x45` 4 (a skeleton-like walker, maps 32 and 36), `0x46` 5, `0x47` 6, `0x48` 7, `0x49` 8/23, `0x4A` 9, `0x4B` 10, `0x4C` 11, `0x4D`/`0x4F` 12, `0x4E`/`0x50` 13. Kinds `0x46`, `0x4C`, `0x55` start dormant (action type 4, step 0). Humanoid members of creature groups (bandits, `+4` = 1, 2, 3, 5) start at type 6.
 
 ### Party/return routine `0x0041F5D8(group, entity)` (partly traced)
 
@@ -217,7 +216,7 @@ It is reached only from `0x0041F11C` (AI step `0x00422415`), and only when entit
 
 ### Port
 
-`internal/game` `npc` with `npcMode`, and `gamestate` `Settlements`, `PostOf`, `VillageMoveThreshold`, `VillageStepTarget`. Village groups run the village AI above once per game tick (`walkTicksPerStep` updates), with the 3-search budget served round-robin and the 800×600 ranges. Paths are not limited to the rectangle; only targets are. Creature groups (kind bit `0x40`) stand still and play their idle loop, as they do while calm in the game (see below); alarm and return home are not ported. Groups without a rectangle stand still too. The party branch is not ported. Characters reserve the cell they step into, so they don't overlap.
+`internal/game` `npc` with `npcMode`, and `gamestate` `Settlements`, `PostOf`, `VillageMoveThreshold`, `VillageStepTarget`. Village groups run the village AI above once per game tick (`walkTicksPerStep` updates), with the 3-search budget served round-robin and the 800×600 ranges. Paths are not limited to the rectangle; only targets are. Creature groups (kind bit `0x40`) run the creature combat AI ([combat](konung_combat.md#creature-ai-verified)). Groups without a rectangle stand still too. The party branch is not ported. Characters reserve the cell they step into, so they don't overlap.
 
 ## Placement of entities without coordinates
 
@@ -272,8 +271,8 @@ Validation: `go test ./internal/gamestate -run Exits` checks the count, the `KON
 * The character-creation screen: the hero template's palette (`0x00A3E65C`) and other fields.
 * The game's animation tick rate. The scene uses 10 steps/s and offsets each entity's phase so neighbours don't move in lockstep; both are presentation choices.
 * Exact runtime spawn positions for groups whose entities have no coordinates.
-* Group fields `+0x0A`, `+0x0E`, `+0x12`, `+0x16`, `+0x1D` (calm/alarm), `+0x1E` beyond bits `0x40` (creature AI) / `0x80` (village AI); the conditional spawn check at `0x00411DE4`.
+* Group fields `+0x18` (respawn maximum?), village use of `+0x1D`, `+0x1E` beyond bits `0x40` (creature AI) / `0x80` (village AI); the conditional spawn check at `0x00411DE4`.
 * The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation. Actions other than idle/walk (attacks, hits, death) are not ported; the combat stance and drawn weapons are.
 * Item record fields other than category and type (`+4`/`+8` condition is a hypothesis); the gear table's remaining fields; which jewellery box is which; combat animation types 2, 4, 5; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
 * `GAME.N` section 4 (map exits) bytes `+0`, `+1`; the settlement gate bytes `+0x40`/`+0x41`; the spawn check `0x00411DE4` and monster respawn `0x00420CCC` on map entry; travel by item (`0x00422AD8`). Settlement bytes outside the posts.
-* Creature AI `0x004123BC`: the alarmed and return-home handlers (`0x00420178`, `0x004203A0`, `0x0041FD74`, …), action types 2–5, where `0x0041D16A` runs the alarm check. The port keeps calm creatures still. Village alarm state (group `+0x1D` ≠ 0, `0x00416DA6`) and the `+4` bits `0x38` post path.
+* Creature AI leftovers: see [combat](konung_combat.md#open-questions). Village alarm state (group `+0x1D` ≠ 0, `0x00416DA6`) and the `+4` bits `0x38` post path.

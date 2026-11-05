@@ -91,6 +91,8 @@ type startScene struct {
 	byEntity   map[int]*npc // non-party characters on this map by entity index
 	target     int          // hero's attack target (entity +6), -1 = none; see combat.go
 	targetCell mapdata.Cell // the target's cell when last checked (+0x0C/+0x0E)
+	deadAt     int          // frame the hero was first seen dead (gameOver)
+	aiBudget   int          // creature path searches left this game tick
 }
 
 // sceneAssets is what stays loaded across map changes: resource files, exe
@@ -352,7 +354,16 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		gr := game.Groups[p.Group]
 		area, hasArea := gr.WanderArea()
 		n.area = area
+		n.target = -1
 		switch {
+		case gr.CreatureGroup():
+			n.mode, n.group = npcCreature, p.Group
+			n.blocked = s.blocked
+			game.Groups[p.Group].Alarm = gamestate.AlarmCalm // 0x0043C66D
+			if p.Type%6 == gamestate.ActShoot {
+				n.act = gamestate.ActShoot // dormant (kinds 0x46, 0x4C, 0x55)
+			}
+			s.setStopAt(n)
 		case gr.VillageGroup() && hasArea:
 			n.mode = npcVillager
 			n.post, n.posted = game.PostOf(p.Entity)
@@ -388,7 +399,9 @@ func (s *startScene) updateNPCs() {
 		}
 	}
 	for _, n := range s.npcs {
-		n.update()
+		if n.act == 0 {
+			n.update()
+		}
 	}
 }
 
@@ -412,7 +425,7 @@ func (s *startScene) updateNPCs() {
 // (0x00429194(1) at 0x004217BA, 0x00421948, 0x00424635); any click ends the
 // shovel's dig mode first.
 func (s *startScene) updateControls(mx, my int) {
-	if len(s.party) == 0 || s.party[0].Index != s.hero.entity {
+	if len(s.party) == 0 || s.party[0].Index != s.hero.entity || s.party[0].Dead() || s.hero.act == gamestate.ActDeath {
 		return
 	}
 	hero := &s.party[0]
@@ -508,7 +521,6 @@ func (s *startScene) click(hero *gamestate.Entity, mx, my, spot int, right bool)
 		s.startFight(s.hovered) // 0x00423C8B: attack the character under the cursor
 	default:
 		s.endFight()
-		s.hero.act = 0
 		s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY))
 		s.pickIntent = right
 	}
@@ -614,17 +626,46 @@ func (s *startScene) showMessage(m []byte) { s.msg, s.msgEnd = m, s.frame+messag
 
 // cursorSprite is the GRAPH.RES Type 5 cursor to draw: the hand's sprite
 // (0x00A3E790, 0x00428AC0) over the HUD, the window and the bag strip, while
-// holding an item or digging; the pointer otherwise (the map cursor rules
-// are not ported beyond piles).
+// holding an item or digging; on the map the rules of 0x00428A50
+// (characterCursor, piles, occupied cells).
 func (s *startScene) cursorSprite() int {
 	mx, my := ebiten.CursorPosition()
 	if !inView(mx, my) || s.inv.open || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
 		return s.hand.Cursor
 	}
-	if c, ok := s.pileUnderCursor(); ok && !s.occ[c] {
+	if s.hovered >= 0 && len(s.party) > 0 {
+		return s.characterCursor(s.entity(s.hovered))
+	}
+	c, ok := s.pileUnderCursor()
+	switch {
+	case ok && !s.occ[c]:
 		return gamestate.CursorTake // 0x00428D7F: visible pile on a free cell
+	case s.occ[mapdata.CellAt(mx+s.camX, my+s.camY)]:
+		return gamestate.CursorBlocked // 0x00428DB7: someone stands there
 	}
 	return gamestate.CursorPointer
+}
+
+// characterCursor is 0x00428BDE: the cursor over character e. Party members
+// keep the hand's cursor; anyone else shows the attack cursor while a living
+// selected member (the port's selection: the hero) is in the stance, the
+// talk cursor when e has a dialogue, and the barred circle otherwise. The
+// port shows the corpse of a dead character like an occupied cell (the
+// game's hit test for the dead is not traced). The flame cursor 6 (bow and
+// fire arrows over a settlement building, 0x00428AF3) is not ported.
+func (s *startScene) characterCursor(e gamestate.Entity) int {
+	hero := s.party[0]
+	switch {
+	case e.Group == 0:
+		return s.hand.Cursor
+	case e.Dead():
+		return gamestate.CursorBlocked
+	case !hero.Dead() && hero.InStance():
+		return gamestate.CursorAttack
+	case e.Dialogue != gamestate.NoDialogue:
+		return gamestate.CursorTalk
+	}
+	return gamestate.CursorBlocked
 }
 
 // centerOn puts world point (x, y) at the centre of the game view (the part
@@ -662,9 +703,6 @@ func (s *startScene) Update() {
 		}
 		s.updateSpeed()
 		s.updateControls(mx, my)
-		if inpututil.IsKeyJustPressed(ebiten.KeyH) && len(s.party) > 0 {
-			s.party[0] = debugDamage(s.party[0])
-		}
 	}
 	// One drawn frame runs 1 + speed game ticks (0x00437849–0x004378CC);
 	// the extra ticks stop when the hero is dead.
@@ -702,7 +740,9 @@ func (s *startScene) step() {
 	s.tick++
 	if s.hero != nil {
 		moving := s.hero.walking || len(s.hero.path) > 0
-		s.hero.update()
+		if s.hero.act == 0 {
+			s.hero.update()
+		}
 		stopped := !s.hero.walking && len(s.hero.path) == 0
 		switch {
 		case s.pickIntent && stopped:
@@ -887,22 +927,6 @@ func (s *startScene) entity(i int) gamestate.Entity {
 		}
 	}
 	return s.game.Entities[i]
-}
-
-// debugDamage is a test hook until combat exists: each press takes 400 HP
-// (one portrait state); after death the hero is healed to full.
-func debugDamage(e gamestate.Entity) gamestate.Entity {
-	switch {
-	case e.Dead():
-		e.Flags4 &^= 0x80
-		e.HP = gamestate.HPFull
-	case e.HP <= 400:
-		e.HP = 0
-		e.Flags4 |= 0x80
-	default:
-		e.HP -= 400
-	}
-	return e
 }
 
 func toEbiten(img *image.RGBA) *ebiten.Image { return ebiten.NewImageFromImage(img) }
