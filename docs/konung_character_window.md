@@ -19,10 +19,9 @@ Positions come from exe tables of `(x640, y640, x800, y800)` int32 rows; `resfmt
 | Jewellery | items `+0xB2`…`+0xBA`, jewellery-table icons, centred on `0x00465814 + i·16` |
 | In-hand box | item `0x00A3E7A0`, icon by category centred on `0x00465864` (`0x0042E5C0`); the item is hidden from its own box or bag cell meanwhile; see [potions](konung_potions.md#controls) |
 | 25 numbers | small font `0x005A31F4`, top-left at `0x00465874 + i·16`, see below |
-| Raise column | `0x0042F2B6`: XP pool and level/stat-raise costs (`0x00410B08`) with INTR slot 171; not ported |
-| Stance icon | INTR slot `0xAA` if `+3` bit `0x02`, else `0xA9`; not ported |
+| Raise column | `0x0042F1F5`–`0x0042F48F`: «Свободный опыт», raise buttons and the auto-level toggle, see [below](#raise-column-verified) |
 
-**The 25 numbers** (`gamestate.CharSheet`, constants `Sheet*`): 0 `+0x3C` Опыт · 1 `+0x33` Уровень · 2–5 effective Хар/Сил/Лов/Вын (`+0x58`, `+0x5E`, `+0x54`, `+0x62`, column «сейчас») · 6 Здоровье = (HP + 15)/16 · 7–10 base values (`+0x5A`, `+0x60`, `+0x56`, `+0x64`, «базовая») · 11 Меткость `+0x44`/100 · 12 Фехтование `+0x40`/100 · 13–17 skills `+0x4A`, `+0x42`, `+0x48`, `+0x4C`, `+0x46` (identification, trade, healing, smithing, building) · 18 Текущий вес · 19 Максим. вес (both `%4.1f` of grams·0.001) · 20 Отравление `+0x50` · 21 Броня · 22 Удар · 23 Золото `+0x34` · 24 Свободный опыт `+0x38`.
+**The 25 numbers** (`gamestate.CharSheet`, constants `Sheet*`): 0 `+0x3C` Опыт · 1 `+0x33` Уровень · 2–5 effective Хар/Сил/Лов/Вын (`+0x58`, `+0x5E`, `+0x54`, `+0x62`, column «сейчас») · 6 Здоровье = (HP + 15)/16 · 7–10 base values (`+0x5A`, `+0x60`, `+0x56`, `+0x64`, «базовая») · 11 Меткость `+0x44`/100 · 12 Фехтование `+0x40`/100 · 13–17 skills `+0x4A`, `+0x42`, `+0x48`, `+0x4C`, `+0x46` (identification, trade, healing, smithing, building) · 18 Текущий вес · 19 Максим. вес (both `%4.1f` of grams·0.001) · 20 Отравление `+0x50` · 21 Броня · 22 Удар · 23 Золото `+0x34` · 24 Свободный опыт `+0x38` (only its y is used; see the [raise column](#raise-column-verified)).
 
 ## Bag strip (`0x0042F50C`)
 
@@ -48,7 +47,7 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 | 13 | ammunition (`+0xCC`) | `0x0041E500(12)` |
 | 14–18 | jewellery `+0xB2`[0–4] | `0x0041E778(id)` |
 | 19 | in-hand box | `0x00422D50`: `0x0041E96C` (put in / take out) or herb use on the boxed item (`0x0041DB64`); misc use `0x00414E64` for the torch only ([potions](konung_potions.md#controls)) |
-| 40–45 | raise buttons (right column) | not ported |
+| 40–44, 45 | raise buttons, auto-level toggle | [raise column](#raise-column-verified) |
 | bag cell | `+0x72`[(cell + scroll) & 31] | `0x0042342A` |
 
 **The hand** (`gamestate.Hand`): item `0x00A3E528`, source `0x00A3E524` (= source array length: 6 equipment, 32 bag, 5 jewellery, 1 ammunition), entity `0x00A3E520`, backups `0x00A3E52C` (equipment), `0x00A3E538` (bag), `0x00A3E578` (jewellery). Cursor mode `0x00A3E790` = 4 when empty; picking up sets it by category (`0x00425104`, table `0x00425170`): 0, 2 → 10 (large sword); 1, 12 → 2 (arrow); 3–5 → 0 (crate); 9 → 8 (globe with hand); others → 9 (starburst). Over the HUD and the window the cursor is GRAPH.RES Type 5 sprite number `0x00A3E790` (`0x00428AC0`).
@@ -61,6 +60,29 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 * **Bag** (`0x0042342A`): empty hand → lift the clicked item, unless it is the in-hand box's item (`0x004234A0`). Holding → `0x004246F8`: if carried weight + the item's weight (`0x0041B164`, same per-category rule as the bag) > max weight, «Превышен вес» (`0x0045C57C`); if the bag is full, «Мешок у тебя не резиновый!» (`0x0045BD7C`); either way the item returns. Otherwise it goes to the front of the bag. The clicked cell doesn't matter.
 
 **Messages** (`0x0042F9B8`): small font at (view left + 10, view bottom + 5), the status-line position; counter `0x00A3E84C` = 12 main-loop passes. The port shows them for 12 animation steps. Sounds (`0x0042A664`) are not ported.
+
+## Raise column (verified)
+
+The rules are `0x00410B08` (`Game.RaiseCost`) and `0x0041079C` (`Game.GainExperience`), see [combat: experience and levels](konung_combat.md#experience-and-levels-verified). Costs, caps and the level check use the **base** stats (`+0x56`, `+0x5A`, `+0x60`, `+0x64`), not the effective ones. A new hero starts above the level-1 caps of its non-favoured stats, so at first only the favoured stat's button shows ([why](konung_combat.md#experience-and-levels-verified)).
+
+**Drawing** (`0x0042F1F5`–`0x0042F48F`, table `0x00465754`, rows of `(x640, y640, x800, y800)`, `resfmt.CharWindow.Raise`/`AutoLevel`; 800×600 values):
+
+| Row | Id (`0x00410B08`) | Point | Hotspot | Click |
+|---|---|---|---|---|
+| 0 level | 0 | (722, 89) | 40 | `0x004230D3`: `+0x33` += 1, free |
+| 1 Хар | 3 | (716, 138) | 41 | `0x0042310E`: base `+0x5A` |
+| 2 Сил | 5 | (716, 158) | 42 | `0x00423167`: base `+0x60` |
+| 3 Лов | 2 | (716, 181) | 43 | `0x004231C0`: base `+0x56` |
+| 4 Вын | 6 | (716, 203) | 44 | `0x00423219`: base `+0x64` |
+| 5 toggle | — | (644, 379) | 45 (shaped like the icon) | `0x00423272` |
+
+* **«Свободный опыт»** (`+0x38`): small font, x = row 0 x + (width of INTR slot 171 − text width)/2 (the width is the image's first word, `0x0043FE18`), y = the 25th number's y (63). The 25-number table's x for it (700) is unused.
+* **Rows 0–4** (jump table `0x0042F328`): if `0x00410B08(e, id)` = 0 nothing is drawn. Otherwise a stat row prints the cost (small font) at the point and draws INTR slot 171 (a 10×10 marker, `resfmt.RaiseButtonSlot`) at (x + 24, y + 2); the level row draws only the marker, at (x, y + 2). The labels («Поднять уровень:», «поднять») are part of the art.
+* **Toggle**: INTR slot `0xAA` («АВТО» lit) when `+3` bit `0x02` is set, else `0xA9`, top-left at row 5.
+
+**Clicks** (left button, handler `0x00422864`, any hand state): hotspots 40–44 call `0x00410B08` again and do nothing on 0; a stat moves its cost from `+0x38` to `+0x3C` and its base goes up by one. The level row is free. Hotspot 45 clears a set bit `0x02`; otherwise it sets it and calls `0x0041079C(e, 0)`, which spends the free experience at once. Every change redraws the window (`0x0042DBBC(2)`, which recomputes the stats) and the bag strip. No hover text (`0x004244B3` has no case for 40–45).
+
+Port: `gamestate.Game.RaiseCosts`, `Raise`, `ToggleAutoLevel` (`levels.go`, test `TestRaiseGame0`); drawing `charWindow.drawRaise`, clicks `startScene.windowClick`. Validation: `resfmt.TestItemTablesAndCharWindow` checks that each drawn button falls on its hotspot; a composite of slot 2 with the markers puts them next to the printed labels.
 
 ## Right click and the quick bag
 
@@ -121,6 +143,5 @@ Port: `startScene.statusText` (a click message still wins for its short lifetime
 
 ## Open questions
 
-* The raise column's drawing and buttons (hotspots 40–45, handler `0x00422864`; the cost rule `0x00410B08` is traced and ported as `Game.RaiseCost`, see [combat: experience and levels](konung_combat.md#experience-and-levels-verified)), the auto-level toggle (`+3` bit `0x02`, `0x00423272`; `Game.GainExperience`), the XP-pool text, and the stance icon slots 0xA9/0xAA.
 * `0x00A3E768` (god mode, see [combat](konung_combat.md#open-questions)).
 * Misc items on the in-hand box or a portrait (cursor mode 9, `0x00414E64`), and the background tiling flag `0x00A3E744` (`0x0043141C` tiles INTR slot 5).

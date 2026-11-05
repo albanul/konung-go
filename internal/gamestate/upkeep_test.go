@@ -111,7 +111,7 @@ func TestLootAndLevels(t *testing.T) {
 	if _, ok := g.DropLoot(&empty, 0, 0, 1, -1, true, &curios, tb, func(n int) int { return n - 1 }); ok {
 		t.Error("an empty creature dropped a pile")
 	}
-	// Level costs: Volk (race (kind 5 & 7) − 1 = 4, favoured stat id 5 Сил).
+	// Level costs: Volk is Воин (class (+4 & 7) − 1 = 4, favoured stat id 5 Сил).
 	volk := g.Entities[g.Groups[0].First]
 	volk.FreeExp = 1000
 	if c := g.RaiseCost(volk, tb, 5); c != 5 { // Сил 15 < 19 on the favoured row

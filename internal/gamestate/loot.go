@@ -201,17 +201,22 @@ func (g *Game) RaiseCost(e Entity, t *resfmt.ExeTables, id int) int {
 	if e.PotionTimer != 0 {
 		return 0
 	}
-	race := int(e.Flags4&7) - 1
+	// The class is the window title's index (+4 & 7) − 1: 0 Храбрец,
+	// 1 Купец, 2 Охотник, 3 Вождь, 4 Воин; animated creatures use 1.
+	class := int(e.Flags4&7) - 1
 	if e.Animated() {
-		race = 1
+		class = 1
 	}
-	if race < 0 || race > 4 {
+	if class < 0 || class > 4 {
 		return 0
 	}
 	stat := map[int]int{2: 0, 3: 1, 5: 2, 6: 3}
-	value := [4]int{e.Stats[2], e.Stats[0], e.Stats[1], e.Stats[3]} // Лов, Хар, Сил, Вын
+	// The game reads the high word of the dwords at +0x54, +0x58, +0x5E,
+	// +0x62 (sar 0x10): the base values +0x56, +0x5A, +0x60, +0x64, not the
+	// effective ones. Enchantments and potions do not count.
+	value := [4]int{e.BaseStats[2], e.BaseStats[0], e.BaseStats[1], e.BaseStats[3]} // Лов, Хар, Сил, Вын
 	pair := func(s, level int) (minV, capV int) {
-		b := t.Bytes(0x0045B10C+race*0x68+s*0x1A+level*2, 2)
+		b := t.Bytes(0x0045B10C+class*0x68+s*0x1A+level*2, 2)
 		return int(b[0]), int(b[1])
 	}
 	if id == 0 {
@@ -233,7 +238,7 @@ func (g *Game) RaiseCost(e Entity, t *resfmt.ExeTables, id int) int {
 		return 0
 	}
 	col := 1
-	if int(t.Bytes(0x0045AE88+race, 1)[0]) == id {
+	if int(t.Bytes(0x0045AE88+class, 1)[0]) == id {
 		col = 0
 	}
 	for row := range 13 {
@@ -252,9 +257,9 @@ func (g *Game) RaiseCost(e Entity, t *resfmt.ExeTables, id int) int {
 
 // GainExperience is 0x0041079C(e, xp): free experience += xp; entities with
 // the auto-level toggle (+3 bit 0x02) then level up and buy Вын, Сил, Лов,
-// Хар in turn while they can. The game does not recompute the effective
-// stats inside the loop, so costs and caps are read from the stats before
-// the call (as the port does with e unchanged).
+// Хар in turn while they can. RaiseCost reads the base stats this loop
+// raises, so every purchase sees the previous one and the caps hold; the
+// effective stats are recomputed only by the window redraw at the end.
 func (g *Game) GainExperience(e *Entity, t *resfmt.ExeTables, xp int) {
 	e.FreeExp += xp
 	if e.Flags3&0x02 == 0 {

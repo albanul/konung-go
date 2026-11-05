@@ -706,9 +706,9 @@ const hotspotPortrait = 30
 const hotspotInHand = 19
 
 // windowClick handles a left click on the character window's doll boxes
-// (hotspots 8–18) and the in-hand box (19, where herbs are mixed and
-// applied), as the click handler 0x00422864 does, and returns a message VA
-// or 0.
+// (hotspots 8–18), the in-hand box (19, where herbs are mixed and applied),
+// the raise buttons (40–44) and the auto-level toggle (45), as the click
+// handler 0x00422864 does, and returns a message VA or 0.
 func (s *startScene) windowClick(hero *gamestate.Entity, spot int) int {
 	switch {
 	case spot >= 8 && spot <= 13:
@@ -722,6 +722,10 @@ func (s *startScene) windowClick(hero *gamestate.Entity, spot int) int {
 		return s.game.ClickJewellery(&s.hand, hero, s.tables, spot-14)
 	case spot == hotspotInHand:
 		return s.game.ClickBox(&s.hand, hero, s.tables)
+	case spot >= gamestate.HotspotRaise && spot < gamestate.HotspotRaise+gamestate.RaiseRows:
+		s.game.Raise(hero, s.tables, spot-gamestate.HotspotRaise)
+	case spot == gamestate.HotspotAutoLevel:
+		s.game.ToggleAutoLevel(hero, s.tables)
 	}
 	return 0
 }

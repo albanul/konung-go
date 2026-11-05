@@ -146,6 +146,8 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00437301` | code | Keyboard switch of the in-game key handler (keys: Space, 1/2/3, A, F, I, L, M, Q, S, T, Tab, numpad +/− speed, ` quick bag) | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |
 | `0x004392F4`, `0x00439A28` | routines | HUD hotspot id under the cursor; RLE hotspot-map lookup (maps `0x004577A0`/`0x004543DC` for 800×600) | [interface](konung_interface_res.md#hud-hotspots-verified) |
 | `0x00422864` | routine | HUD click handler: switch on the hotspot id | [interface](konung_interface_res.md#hud-hotspots-verified) |
+| `0x00437B91`, `0x0043850A`, `0x00438589`, `0x00438F3F`, `0x00439034` | routines | Character creation: hero init (level 10, class preset); stat −/+ under the caps; game start restores the chosen stats over `GAME.N` and sets level 1 | [combat: levels](konung_combat.md#experience-and-levels-verified) |
+| `0x0042F1F5`, `0x00465754`, `0x004230D3`, `0x00423272` | routine, data, routines | Character window raise column drawing; its position table; raise click cases (40–44); auto-level toggle (45) | [character window](konung_character_window.md#raise-column-verified) |
 | `0x0042D21A` (in loader) | routine | `INTR<width>R.RES` loader: table → `0x006304B8`, data → `[0x00A3E6B8]` | [interface](konung_interface_res.md) |
 | `0x0042D574` | routine | Party portrait + HP bar draw for one entity (cells `0x0045AF70`) | [interface](konung_interface_res.md#party-hud-portrait-routine-0x0042d574-verified-against-code-and-data) |
 | `0x0042DA30`, `0x004290D8` | routines | HUD panel buttons: draw (positions `0x0045AF00`) / set slot bytes `0x00A3E090..96` | [interface](konung_interface_res.md) |

@@ -86,7 +86,7 @@ All conversions truncate (`0x0043FE4C`); `rand()%101` is the roll. Stats: Лов
 | `0x0041C480(target, attacker, attack)` | `Game.Damage` | −2 if god mode `0x00A3E768` and the target is the hero (not ported). Dodge −2: facing table `0x00450E14[target dir][attacker dir]` ≠ 0 (they roughly face each other) and roll ≤ `trunc(Лов·0.5)`. `x = max(0, attack·0.7 − Armour)` (float), `dmg = trunc(((attack·0.3 + x) / Вын + 1)·16)`. HP ≤ dmg → 1; else HP −= dmg, result 0 if dmg ≥ `0x30`, else −1. Then: target poison `+0x50` += `0x00A3E828`; armour/helmet/shield condition (item float `+4`) −= gear `+0x2C`·0.001·min(1, attack/Armour); attacker's axe or blade loses one charge (item `+0xC`) and attack·0.00025 condition. Condition ≤ 0 destroys the item (category `0xFF`, slot cleared). |
 | `0x0041AF48` side effect | `Game.poisonOf` | `0x00A3E828` = creature `+0x52`, the melee weapon's item `+0xC`, or 0 |
 | `0x0041B70C(victim)` | `Game.KillExperience` | creatures `trunc(Armour·0.1 + Лов·0.2 + Сил·0.3 + Вын·0.3)`; characters add `Фехт·0.002 + Метк·0.003`, then with a melee weapon `trunc(xp + gear·0.2)` |
-| kill path `0x00422082`, `0x0041079C` | `Game.Kill` | killer «Свободный опыт» `+0x38` += xp/4 and Фехтование `+0x40` += xp. With `+3` bit `0x02` (not Volk) `0x0041079C` also spends free experience on stats (`0x00410B08`); not ported. |
+| kill path `0x00422082`, `0x0041079C` | `Game.Kill` | killer «Свободный опыт» `+0x38` += xp/4 and Фехтование `+0x40` += xp. With `+3` bit `0x02` (the auto-level toggle) `0x0041079C` also spends free experience on levels and stats (`0x00410B08`; `Game.GainExperience`, below). |
 
 Example (`gamestate.TestMeleeGame0`): Volk with the knife, hit 37 %, attack 120. Against giant ant 921 (Лов 1, Сил 8, Вын 3, armour 10) a hit does 602, so three hits kill it; it is worth 4 experience.
 
@@ -170,13 +170,18 @@ A bow shot spawns a **projectile**. The hit is decided by what the arrow flies i
 
 ## Experience and levels (verified)
 
-`0x0041079C(e, xp)`: free experience `+0x38` += xp. With `+3` bit `0x02` (the character window's auto-level toggle, `0x00423272`) it then loops: level up while `0x00410B08(e, 0)` allows it, and buy Вын, Сил, Лов, Хар in turn (ids 6, 5, 2, 3 → base `+0x64`, `+0x60`, `+0x56`, `+0x5A`; `+0x38` −= cost, `+0x3C` += cost) until nothing is affordable.
+`0x0041079C(e, xp)`: free experience `+0x38` += xp. With `+3` bit `0x02` (the character window's auto-level toggle, `0x00423272`) it then loops: level up while `0x00410B08(e, 0)` allows it, and buy Вын, Сил, Лов, Хар in turn (ids 6, 5, 2, 3 → base `+0x64`, `+0x60`, `+0x56`, `+0x5A`; `+0x38` −= cost, `+0x3C` += cost) until nothing is affordable. `0x00410B08` reads the base stats this loop raises, so each purchase sees the previous ones and the caps hold (a Воин with unlimited experience ends at level 13 with base 120/150/120/120, `TestRaiseUsesBaseStats`). The effective stats are not recomputed inside the loop (no `0x0041C750`); when something changed for the entity shown in the window, it ends with the redraw `0x0042DBBC(2)`/`0x0042F50C`.
+
+**Starting heroes are above their level-1 caps (by design).** Character creation (`0x00437B91`, hero `0x00A3E694`) sets level `+0x33` = 10, free experience 0, a class preset (Воин: Лов 3, Хар 3, Сил 15, Вын 10, `+4` = 5; other classes at `0x00438107`…), and its −/+ buttons trade points under the level-10 caps (`0x0043850A`: base −1, refund `0x00410B08` evaluated with +1000 free experience; `0x00438589`: base +1, pay). On game start (`0x00438F3F`) the hero is copied to `0x00A3E584`, the map and `GAME.N` load, the chosen skills, base stats, free experience, name, model and class are written back, and the level is forced to 1 (`0x00439034`). So a new hero (and `GAME.0`'s Volk, 10/15/10/10 at level 1) can at first raise only the favoured stat: for a Воин, Сил to 16 → level 2, Сил to 22 → level 3, and only then do Хар/Лов/Вын open (cap 14).
+
+The manual raise buttons and the toggle are in the [character window](konung_character_window.md#raise-column-verified).
 
 `0x00410B08(e, id)`, also used by the character window's raise buttons (`0x00422864`) and character creation:
 * 0 while a potion timer `+0xCE` runs.
-* race = 1 for animated models, else (kind & 7) − 1. The favoured stat is `0x0045AE88[race]` = {3, 6, 2, 3, 5}.
-* Requirement and cap pairs at `0x0045B10C` + race·0x68 + stat·0x1A + level·2 (stat 0 Лов, 1 Хар, 2 Сил, 3 Вын).
-* **id 0:** level < 13 and all four stats ≥ min[level].
+* class = (`+4` & 7) − 1, the window title's index (`0x0045AE20`): 0 Храбрец, 1 Купец, 2 Охотник, 3 Вождь, 4 Воин; animated models use 1. The favoured stat is `0x0045AE88[class]` = {3 Хар, 6 Вын, 2 Лов, 3 Хар, 5 Сил}.
+* Requirement and cap pairs at `0x0045B10C` + class·0x68 + stat·0x1A + level·2 (stat 0 Лов, 1 Хар, 2 Сил, 3 Вын). The favoured stat uses the high row: minimums 10, 16, 22, 30, 38, 48, 58, 68, 77, 85, 92, 96, 98; caps 19, 26, 34, 43, 53, 63, 74, 80, 90, 95, 97, 100, 150. The other stats use the low row (minimums 3, 5, 8, 12, 16, 20, 24, 28, 31, 34, 36, 38, 40; caps 7, 10, 14, 18, 22, 26, 30, 32, 35, 37, 39, 41, 120), except Купец (class 1), whose other three use a middle row (minimums 7, 11, 17, 24, 32, 40, 48, 56, 63, 68, 73, 77, 80; caps 14, 20, 28, 36, 44, 52, 60, 65, 70, 75, 78, 81, 84). Volk is Воин (`+4` & 7 = 5).
+* **Stats are the base values.** Each read is `mov eax,[e+0x54]; sar eax,0x10` (and `+0x58`, `+0x5E`, `+0x62`): the high word, i.e. base Лов `+0x56`, Хар `+0x5A`, Сил `+0x60`, Вын `+0x64`. Enchantments and potion effects don't count; a potion's timer blocks raising instead.
+* **id 0:** level `+0x33` < 13 and all four stats ≥ min[level].
 * **ids 2/3/5/6:** stat < cap[level − 1]; then the cost from the 13-row table `0x0045B010` {threshold favoured, threshold other, cost}: thresholds 13/9, 19/14, 26/20, 34/28, 43/36, 53/44, 63/52, 74/60, 80/65, 90/70, 95/75, 100/80; costs 2, 5, 11, 14, 18, 23, 29, 35, 72, 100, 150, 200 (999 beyond). The first row whose threshold exceeds the stat applies; the cost is returned if free experience covers it.
 
 ## Village anger (verified)
@@ -236,6 +241,7 @@ Engine-free rules live in `gamestate`:
 * `creature.go`: alarm, tactics, revival.
 * `bow.go`: `CanShoot`, `LineOfFire`, `Shoot`, `Arrow.Fly`, `ArrowAttack`, `ArrowDamage`, `KillByArrow`, `ReEquip`.
 * `loot.go`: `DropLoot`, `RaiseCost`, `GainExperience`.
+* `levels.go`: the character window's raise column (`RaiseCosts`, `Raise`, `ToggleAutoLevel`).
 * `anger.go`: `InitSettlementFlags`, `Anger`, `VillageAlarm`, `Surrenders`.
 * `upkeep.go`: `Upkeep`, `EnterMap`, `PlaceInTerritory`, `NewMember`.
 * `leave.go`: `LeaveMap`.

@@ -1,6 +1,8 @@
 package game
 
 import (
+	"strconv"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/resfmt"
@@ -168,9 +170,42 @@ func (w *charWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfm
 		drawAt(dst, img, l.InHand.X-b.Dx()/2, l.InHand.Y-b.Dy()/2)
 	}
 	for i, v := range g.CharSheet(e, t) {
-		w.small.drawLine(dst, []byte(v), l.Stats[i].X, l.Stats[i].Y)
+		if i != gamestate.SheetFreeExp {
+			w.small.drawLine(dst, []byte(v), l.Stats[i].X, l.Stats[i].Y)
+		}
 	}
+	w.drawRaise(dst, h, g, t, e)
 	w.drawBag(dst, h, g, t, e, box)
+}
+
+// drawRaise draws the raise column (0x0042F1F5–0x0042F48F): «Свободный опыт»
+// centred in the button's width; per row with a nonzero RaiseCost the
+// button (and on the stat rows the cost to its left); then the auto-level
+// toggle.
+func (w *charWindow) drawRaise(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfmt.ExeTables, e gamestate.Entity) {
+	l := &w.layout
+	btn := h.slot(resfmt.RaiseButtonSlot)
+	if btn == nil {
+		return
+	}
+	free := []byte(g.CharSheet(e, t)[gamestate.SheetFreeExp])
+	w.small.drawLine(dst, free, l.Raise[0].X+(btn.Bounds().Dx()-w.small.font.Width(free))/2, l.Stats[gamestate.SheetFreeExp].Y)
+	for row, c := range g.RaiseCosts(e, t) {
+		if c == 0 {
+			continue
+		}
+		p, dx := l.Raise[row], 0
+		if row > 0 {
+			w.small.drawLine(dst, []byte(strconv.Itoa(c)), p.X, p.Y)
+			dx = resfmt.RaiseButtonDX
+		}
+		drawAt(dst, btn, p.X+dx, p.Y+resfmt.RaiseButtonDY)
+	}
+	toggle := resfmt.AutoLevelOffSlot
+	if e.AutoLevel() {
+		toggle = resfmt.AutoLevelOnSlot
+	}
+	h.draw(dst, toggle, l.AutoLevel.X, l.AutoLevel.Y)
 }
 
 // drawBag draws the bag strip (0x0042F50C): arrows at both ends, then one

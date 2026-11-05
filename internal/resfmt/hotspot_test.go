@@ -1,6 +1,7 @@
 package resfmt
 
 import (
+	"image"
 	"os"
 	"testing"
 )
@@ -53,6 +54,23 @@ func TestItemTablesAndCharWindow(t *testing.T) {
 	// Axe and blade share the hand box; the 25th number is «Свободный опыт».
 	if w.Equipment[0] != w.Equipment[2] || w.Equipment[3].X != 255 || w.Stats[24].X != 700 || w.NameY != 9 || w.TitleY != 31 {
 		t.Errorf("layout %+v", w)
+	}
+	// The raise column lines up with the hotspots: level 40 at x 725–750,
+	// y 87–105; stat buttons 41–44 from x 725; the toggle 45 at (648, 375).
+	if w.Raise[0] != image.Pt(722, 89) || w.Raise[1] != image.Pt(716, 138) || w.Raise[4] != image.Pt(716, 203) || w.AutoLevel != image.Pt(644, 379) {
+		t.Errorf("raise column %v, toggle %v", w.Raise, w.AutoLevel)
+	}
+	for row, p := range w.Raise {
+		dx := RaiseButtonDX
+		if row == 0 {
+			dx = 0
+		}
+		if id := tb.HUDHotspot800(p.X+dx+5, p.Y+RaiseButtonDY+5); id != 40+row {
+			t.Errorf("raise row %d button hotspot %d", row, id)
+		}
+	}
+	if id := tb.HUDHotspot800(w.AutoLevel.X+50, w.AutoLevel.Y+40); id != 45 {
+		t.Errorf("auto-level hotspot %d", id)
 	}
 	if got := CP866ToUTF8(tb.CharWindowTitle(5)); got != "Воин" {
 		t.Errorf("title 5 = %q", got)

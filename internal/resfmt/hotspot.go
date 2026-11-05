@@ -9,8 +9,8 @@ import "encoding/binary"
 // zero length or the screen edge. The lookup is 0x00439A28; the main HUD
 // dispatcher 0x004392F4 returns ids 1..7 for the panel buttons (0x00439584).
 // Ids seen in the 800x600 map: 1..7 panel buttons in 0x0045AF00 order,
-// 30..39 portrait cells, 40..45 and 120/121 other HUD controls, 8..19 an
-// overlay screen (not identified).
+// 30..39 portrait cells, 120/121 the bag strip arrows; the character window's
+// 8..19 doll boxes, 40..44 raise buttons and 45 auto-level toggle.
 const (
 	hotspotRows800VA = 0x004577A0
 	hotspotRuns800VA = 0x004543DC
