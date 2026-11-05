@@ -53,7 +53,8 @@ State `0x00A3E6D8` = 6. Opening it (`0x00437DDD`) copies the current values to a
 
 * All screens run at 800×600. The video choice is stored and written to `KONUNG.CFG`, but the port does not switch modes.
 * **Shadows** and **day/night** are honoured: `startScene.shadows` gates the shadow pass, `startScene.dayNight` the [day/night tint](konung_daylight.md) (the menu sets both from the config each frame).
-* Transparency, lighting, music and sound are stored, written and saved, but have no effect: the port has no flames, lit terrain or audio.
+* **Световые эффекты** is honoured: at night it switches the terrain to the [lit path](konung_daylight.md#lit-terrain-path-0x004257a9) (`startScene.lighting`).
+* Transparency, music and sound are stored, written and saved, but have no effect: the port has no flames or audio.
 * Saving puts day/night and lighting into `Game.Options`; loading copies them back into the config (`Menu.updateSaves`).
 * `KONUNG.CFG` is read from and written to the game directory (next to `KONUNG.1`), like the saves.
 

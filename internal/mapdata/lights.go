@@ -37,3 +37,24 @@ func ParseLitCells(data []byte) (*LitCells, error) {
 func (l *LitCells) Lit(row, col int) bool {
 	return l != nil && row >= 0 && row < WalkRows && col >= 0 && col < WalkCols && l[row][col] != 0
 }
+
+// TerrainLights is the terrain part of LIGHTS.N (0x00671440, indexed
+// row*0x50 + col): per terrain cell, 0 = unlit, otherwise 1 + the
+// LIGHTS.RES light mask that the lit terrain path (0x004257A9) uses.
+type TerrainLights [Rows][Cols]byte
+
+// ParseTerrainLights reads the terrain part of LIGHTS.N. nil data (no file)
+// gives an all-zero grid.
+func ParseTerrainLights(data []byte) (*TerrainLights, error) {
+	l := &TerrainLights{}
+	if data == nil {
+		return l, nil
+	}
+	if len(data) != LightsFileSize {
+		return nil, fmt.Errorf("LIGHTS.N has size %d, want %d", len(data), LightsFileSize)
+	}
+	for r := range Rows {
+		copy(l[r][:], data[r*Cols:][:Cols])
+	}
+	return l, nil
+}

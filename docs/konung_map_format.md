@@ -25,7 +25,7 @@ Expansion of section 1 (loop at `0x0043C498`): byte `0xFF` → word `0x0FFF`; if
 
 ## Projection and draw order (verified)
 
-Terrain renderer at VA `0x0042562F` (simple path; a second path at `0x004257A9` also reads the `LIGHTS.N` buffer at `0x00671440`, not ported):
+Terrain renderer at VA `0x0042562F` (simple path; the lit path at `0x004257A9`, night only, also reads the `LIGHTS.N` buffer at `0x00671440`, see [day and night](konung_daylight.md#lit-terrain-path-0x004257a9)):
 
 ```
 x = originX + col * 0x74 + (row odd ? 0x3A : 0)   // 116 px, odd rows shifted 58 px
@@ -139,4 +139,4 @@ So `KONUNG.1` (Volk's start) is «Родники», and «Старый лаге�
 * ID substitution from the game-state table at `0x0043CB21`.
 * Objects anchored above y = 0 are clipped in `map-render` PNGs; the game scrolls past them.
 * Section 1 semantics beyond walls (`0xFFF`) and arrow obstacles (bits `0xC0`): the other bits.
-* The `LIGHTS.N` shading path. The loader reads `0x3200` bytes to `0x00671440` (80 × 160, one byte per terrain cell, indexed `row*0x50 + col` by the lit draw path) and `0xC800` bytes to `0x00664C40` (fine-grid lit cells, decoded: [day and night](konung_daylight.md#lightsn-lit-cells)).
+* The `LIGHTS.N` shading path. The loader reads `0x3200` bytes to `0x00671440` (80 × 160, one byte per terrain cell, indexed `row*0x50 + col` by the lit draw path) and `0xC800` bytes to `0x00664C40` (both parts decoded: [day and night](konung_daylight.md#lightsn-lit-cells)).

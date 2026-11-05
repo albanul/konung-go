@@ -63,6 +63,13 @@ type startScene struct {
 	dayNight       bool // setting 0x00A3E71C: tint the world by the time of day
 	moon           bool // 0x00A3E738: this night is moonlit
 	lit            *mapdata.LitCells
+	terrainLights  *mapdata.TerrainLights
+	lighting       bool // setting 0x00A3E734: the lit terrain path at night
+	litPath        bool // this frame draws lit terrain cells (0x0042565D)
+	flicker        resfmt.LitTerrainLight
+	litCells       map[[2]int]*litCell // composed lit terrain cells, relit each frame
+	litTables      *resfmt.LitTables
+	litBuf         *image.RGBA
 	tint           resfmt.Tint    // 0x0051EC7C, this frame's light
 	tintU          map[string]any // shader tables for tint
 	tintSh         *ebiten.Shader // nil if the shader failed to compile
@@ -120,6 +127,7 @@ type sceneAssets struct {
 	rawTiles       []*image.RGBA
 	tiles          []*ebiten.Image
 	glow           *ebiten.Image // LIGHTS.RES glow map (resfmt.GlowMask); nil if the file is missing
+	lightMasks     [][]byte      // LIGHTS.RES light masks for the lit terrain path; nil if missing
 }
 
 // loadStartScene loads the shared resources and the GAME.N start state and
@@ -176,6 +184,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 		log.Printf("%s: %v", lightsPath, err)
 	} else {
 		a.glow = ebiten.NewImageFromImage(resfmt.GlowMask(glow))
+		a.lightMasks, _ = resfmt.LightMasks(data)
 	}
 	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
 	game.InitSettlementFlags(gameNumber) // 0x0043BD5C
@@ -277,14 +286,14 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		follow:      true,
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
 	}
-	if s.lit, err = loadLitCells(a.mapDir, mapNumber); err != nil {
+	if s.lit, s.terrainLights, err = loadLights(a.mapDir, mapNumber); err != nil {
 		log.Printf("LIGHTS.%d: %v", mapNumber, err)
 	}
 	if s.tintSh, err = loadTintShader(); err != nil {
 		log.Print(err)
 	}
 	if prev != nil {
-		s.moon, s.dayNight, s.shadows = prev.moon, prev.dayNight, prev.shadows
+		s.moon, s.dayNight, s.shadows, s.lighting = prev.moon, prev.dayNight, prev.shadows, prev.lighting
 		s.inv, s.hand, s.follow, s.speed = prev.inv, prev.hand, prev.follow, prev.speed
 		s.tick, s.frame, s.msg, s.msgEnd = prev.tick, prev.frame, prev.msg, prev.msgEnd
 		s.shadowLayer = prev.shadowLayer
@@ -942,6 +951,9 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	for r := rowMin; r <= rowMax; r++ {
 		for c := colMin; c <= colMax; c++ {
 			x, y := mapdata.CellOrigin(r, c)
+			if s.litPath && s.drawLitCell(screen, r, c, x-s.camX, y-s.camY) {
+				continue
+			}
 			for _, b := range s.m.Cells[r][c] {
 				if b != 0 && int(b) <= len(s.tiles) && s.tiles[b-1] != nil {
 					s.drawTinted(screen, s.tiles[b-1], x-s.camX, y-s.camY, false)

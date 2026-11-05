@@ -1,6 +1,6 @@
 # Day and night
 
-The world's light tint by time of day. Status: **verified** against `konung.exe` code and the exe data, and ported. Port: `gamestate.DayTint`, `resfmt.ExeTables.DayThresholds` / `MapLight`, `resfmt.TintTable`, `mapdata.ParseLitCells`, and `startScene.updateLight` / `drawTinted` (`internal/game/daylight.go`). Tests: `gamestate.TestDayTint`, `mapdata.TestParseLitCells`, `game.TestTintShaderCompiles`.
+The world's light tint by time of day. Status: **verified** against `konung.exe` code and the exe data, and ported. Port: `gamestate.DayTint`, `resfmt.ExeTables.DayThresholds` / `MapLight`, `resfmt.TintTable`, `resfmt.LightMasks` / `ComposeTerrainCell` / `NewLitTables` / `LightTerrainCell`, `mapdata.ParseLitCells` / `ParseTerrainLights`, and `startScene.updateLight` / `drawTinted` / `drawLitCell` (`internal/game/daylight.go`). Tests: `gamestate.TestDayTint`, `mapdata.TestParseLitCells`, `resfmt.TestLightMasks`, `resfmt.TestLightTerrainCell`, `game.TestTintShaderCompiles`.
 
 ## Light tint `0x0051EC7C`
 
@@ -31,8 +31,8 @@ The scene draw `0x0042894C` calls `0x00429330` once per drawn frame and stores t
 | else | ramp 120: (v/2 − 30, v − 60, v/3 − 20), then 0 | 0 |
 
 * The moonrise segment is 30 ticks but its ramp is written for 40, so on a moonlit night green jumps from −56 to −50 at 11910. Every other step is at most 1.
-* Night lights `0x00A4E2A0` (8100 ≤ d < 18900) is the second condition, after «Световые эффекты» `0x00A3E734`, for the lit terrain path `0x004257A9` (`0x0042565D`). Not ported.
-* After `0x00429330`, the scene draw also calls `0x0043FD18(16 + rand()%8, 8 + rand()%4, 0)`, a flickering warm tint in the tables `0x0051EC78`/`0x0051EC88`/`0x0051ECB8`. Its consumer is probably the lit path; not traced.
+* Night lights `0x00A4E2A0` (8100 ≤ d < 18900) is the second condition, after «Световые эффекты» `0x00A3E734`, for the [lit terrain path](#lit-terrain-path-0x004257a9) (`0x0042565D`). Caves (fixed light) and day/night off leave it 0.
+* After `0x00429330`, the scene draw rolls the flicker `0x00A4E2A4` = 8 + rand()%4 (green), then `0x00A4E2A8` = 16 + rand()%8 (red), every drawn frame. It also calls `0x0043FD18(red, green, 0)`, but the lit path overwrites those tables (`0x0051EC78`/`88`/`B8`) before any terrain blit uses them, so that call has no visible effect.
 
 ## Tinted palettes `0x0043ED09`
 
@@ -48,7 +48,8 @@ Who draws through it (tinted) and who doesn't (raw):
 
 | Draw | Palette |
 |---|---|
-| Terrain (`0x0042571D`), decorations (`0x00425A0E`…) | tinted |
+| Terrain (`0x0042571D`, `0x00425772`; on the lit path the unlit cells `0x00425A0E`, `0x00425A63`), decorations (`0x00425AE3`) | tinted |
+| Lit terrain cells (night, «Световые эффекты») | [lit path](#lit-terrain-path-0x004257a9) |
 | Piles (`0x00426645`) | tinted; raw while the loot highlight `0x00A3E758` is on |
 | Map objects (sprite pass kind 2, `0x0042754E`) | raw if header `+0x08` ≥ 2 (`resfmt.MapObject.SelfLit`, also no shadow), else tinted |
 | Characters (kind 4, `0x00427285`), corpses | raw on a lit cell (`LIGHTS.N`, below), else tinted |
@@ -56,16 +57,40 @@ Who draws through it (tinted) and who doesn't (raw):
 
 ## `LIGHTS.N` lit cells
 
-`LIGHTS.<map>` is 64000 bytes. The map loader reads `0x3200` bytes to `0x00671440` (80 × 160, terrain cells, for the lit terrain path) and `0xC800` bytes to `0x00664C40`. The second part is 320 × 160 bytes on the fine grid, indexed `row·0xA0 + col`. Any non-zero byte marks a lit cell; `KONUNG.1` has about 450, around the fires. A missing file means zeros. The values (1–9 and more) and the terrain part are only used by the lit path; they are not decoded.
+`LIGHTS.<map>` is 64000 bytes, two parts; a missing file means zeros.
+
+* `0x0000`, `0x3200` bytes → `0x00671440`: one byte per terrain cell, 160 rows × 80 columns, indexed `row·0x50 + col` (`mapdata.TerrainLights`). 0 = unlit; otherwise 1 + the `LIGHTS.RES` light mask the lit path uses (`KONUNG.1`: 163 cells, values up to 18).
+* `0x3200`, `0xC800` bytes → `0x00664C40`: one byte per fine cell, 320 × 160, indexed `row·0xA0 + col` (`mapdata.LitCells`). Any non-zero byte marks a lit cell (`KONUNG.1`: about 450, around the fires); characters there are drawn untinted. The values are not used by the traced code.
+
+## Lit terrain path (`0x004257A9`)
+
+Taken instead of the simple terrain pass when night lights `0x00A4E2A0` and «Световые эффекты» `0x00A3E734` are both set (`0x0042565D`).
+
+1. **Flicker** (`0x004257A9`): if the map has a settlement (`0x00A3E6A8`) whose village group is alarmed (group `+0x1D` = 1), call `0x0043FB99(red, green)` with the flicker; otherwise with both halved.
+2. **`0x0043FB99`** sets the blue/green/red tables from the day tint `0x0051EC7C`. It then builds, for light L = 0…31, the green pointer `0x004798AC[L]` and red pointer `0x0047FE70[L]`: the darken table for day + L, or the identity (darken 0) once day + L ≥ 0, so light never brightens past the flicker. It also builds the flickered channels: `0x0047982C[g]` = brighten(green flicker)[g] and `0x0047FDF0[r]` = brighten(red flicker)[r].
+3. **Per terrain cell** in draw order, with L = terrain byte: if 0, draw both layers with the tinted palette as usual (`0x00425A0E`, `0x00425A63`). Otherwise compose both layers into the 114 × 64 buffer `0x004DEA70` (`0x0043FD85`, 4 bytes per pixel: b, g, r, 0, from the per-palette tables `0x00625FD8` built for terrain palettes 11–18 by `0x0043B524`). Then blit it at the cell origin with mask L − 1 (`0x0043DFE1`).
+4. **`0x0043DFE1`** (RGB555 path), per buffer pixel that is not 0 (uncovered and black pixels are skipped), with mask byte m:
+   * blue = day(B)[b];
+   * if m ≠ 0: green = `0x004798AC[m]`[`0x0047982C[g]`], red = `0x0047FE70[m]`[`0x0047FDF0[r]`];
+   * if m = 0: green = day(G)[g], red = day(R)[r].
+   Only 114 of the tile's 116 columns and 64 rows are drawn.
+
+**Light masks** (`LIGHTS.RES` from `0x1AC0`: 19 × `0x1C80` bytes → `0x005B1010`, `resfmt.LightMasks`): 114 × 64 bytes, light 0–31 per pixel. Mask 0 lights the whole cell; the others are soft gradients from the edges, corners, top or bottom, for cells at the rim of a light.
+
+Pitfalls:
+
+* The buffer is never cleared, so pixels a cell's layers don't cover keep the previous lit cell's colours. The port starts each cell empty (terrain tiles are diamonds that cover the same area, so this should rarely differ).
+* The lit cells' sharp diamond edges next to unlit cells come from the data (mask 0 cells beside unlit ones), not from a decoding error.
 
 ## Port
 
 * `startScene.updateLight` runs at the start of each `Draw` with the port's game time (`gameTime`, the value saved as `0x00A3E770`). It rolls the moon at time-of-day 0 and takes the fixed map light or `gamestate.DayTint`. The menu sets `dayNight` from the setting.
 * A Kage shader (`tintShaderSrc`) applies the three 32-entry tables to the decoded RGBA sprites. Because the tint is a per-channel lookup on the 5-bit values, this gives the same colours as tinting the palette.
 * The day passes at the port's game time rate: one time unit per 4 ticks (`walkTicksPerStep`), so a day takes 21600 units. The original tick rate is not traced, so how long a day lasts in real time may differ.
-* Not ported: the lit terrain path (`0x00A4E2A0` and «Световые эффекты»), the flicker tint, flames.
+* The lit path is computed on the CPU (`resfmt.LightTerrainCell`) per visible lit cell and frame, because the flicker changes every frame. The cell's composed layers are cached (`litCell`), and the frame's tables are built once (`resfmt.NewLitTables`). This costs about 34 µs per cell.
+* Not ported: flames.
 
 ## Open questions
 
-* The lit terrain path `0x004257A9`: how it uses both `LIGHTS.N` parts and the flicker tint.
+* The values in the fine-grid part of `LIGHTS.N` (only zero / non-zero is used by the traced code).
 * The in-game start time of a new game (the port starts at 0, i.e. day).
