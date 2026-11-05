@@ -94,35 +94,9 @@ func (g *Game) Damage(target, attacker *Entity, t *resfmt.ExeTables, attack int,
 		}
 	}
 	armour := g.Armour(*target, t)
-	x := float32(float64(attack)*0.7 - float64(armour))
-	if x < 0 {
-		x = 0
-	}
-	dmg := truncInt(((float64(attack)*0.3+float64(x))/float64(tr.Stats[3]) + 1) * 16)
-	if target.HP <= dmg {
-		result = StrikeKill
-	} else {
-		target.HP -= dmg
-		damage = dmg
-		result = StrikeLight
-		if dmg >= HeavyHit {
-			result = StrikeHeavy
-		}
-	}
-	f := float32(1)
-	if armour != 0 {
-		if r := float32(attack) / float32(armour); r <= 1 {
-			f = r
-		}
-	}
+	result, damage = applyDamage(target, tr, attack, armour)
 	target.Poison += g.poisonOf(*attacker)
-	for _, slot := range []int{EquipArmour, EquipHelmet, EquipShield} {
-		if it, ok := g.Item(target.Equipment[slot]); ok {
-			if g.wear(it.Index, float64(t.GearValue(it.Type))*0.001*float64(f)) {
-				target.Equipment[slot] = 0
-			}
-		}
-	}
+	g.wearArmour(target, attack, armour, t)
 	if m := attacker.WeaponMode; !attacker.Animated() && (m == WeaponAxe || m == WeaponBlade) && attacker.Equipment[m] != 0 {
 		i := attacker.Equipment[m]
 		if c := g.itemWord(i, 0xC); c != 0 {
@@ -133,6 +107,44 @@ func (g *Game) Damage(target, attacker *Entity, t *resfmt.ExeTables, attack int,
 		}
 	}
 	return result, damage
+}
+
+// applyDamage is the damage step shared by melee and arrows: x = max(0,
+// attack·0.7 − armour) as a float, damage = trunc(((attack·0.3 + x) / Вын
+// + 1)·16); HP ≤ damage is a kill, else HP drops (tr: the recomputed
+// target, for Вын).
+func applyDamage(target *Entity, tr Entity, attack, armour int) (result, damage int) {
+	x := float32(float64(attack)*0.7 - float64(armour))
+	if x < 0 {
+		x = 0
+	}
+	dmg := truncInt(((float64(attack)*0.3+float64(x))/float64(tr.Stats[3]) + 1) * 16)
+	if target.HP <= dmg {
+		return StrikeKill, 0
+	}
+	target.HP -= dmg
+	if dmg >= HeavyHit {
+		return StrikeHeavy, dmg
+	}
+	return StrikeLight, dmg
+}
+
+// wearArmour wears the target's armour, helmet and shield by gear
+// value·0.001·min(1, attack/armour) (armour 0 counts as 1).
+func (g *Game) wearArmour(target *Entity, attack, armour int, t *resfmt.ExeTables) {
+	f := float32(1)
+	if armour != 0 {
+		if r := float32(attack) / float32(armour); r <= 1 {
+			f = r
+		}
+	}
+	for _, slot := range []int{EquipArmour, EquipHelmet, EquipShield} {
+		if it, ok := g.Item(target.Equipment[slot]); ok {
+			if g.wear(it.Index, float64(t.GearValue(it.Type))*0.001*float64(f)) {
+				target.Equipment[slot] = 0
+			}
+		}
+	}
 }
 
 // poisonOf is the global 0x00A3E828 that 0x0041AF48 leaves behind: a
@@ -168,13 +180,13 @@ func (g *Game) KillExperience(v Entity, t *resfmt.ExeTables) int {
 
 // Kill applies the kill path of the attack case (0x00422082): the victim's
 // HP becomes 0 and its action state 0; the killer gains xp/4 free experience
-// (0x0041079C, which also raises stats for entities with +3 bit 0x02 — not
-// ported) and xp on Фехтование (+0x40). It returns xp.
+// (GainExperience) and xp on Фехтование (+0x40). It returns xp. The caller
+// drops the loot (DropLoot).
 func (g *Game) Kill(killer, victim *Entity, t *resfmt.ExeTables) int {
 	victim.HP = 0
 	victim.Flags2 = 0
 	xp := g.KillExperience(*victim, t)
-	killer.FreeExp += xp / 4
+	g.GainExperience(killer, t, xp/4)
 	killer.Fencing = int(uint16(killer.Fencing + xp))
 	return xp
 }

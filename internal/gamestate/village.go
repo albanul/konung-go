@@ -41,13 +41,15 @@ type Settlement struct {
 	Group int // +2: village group
 	Map   int // +3: KONUNG.N number; 0 = unused record
 	Posts [postCount]Post
+	Fence int  // +1: fence pieces (non-zero = fortified)
+	Flags byte // +0x4B2: SettlementHostile, SettlementStrangers, SettlementIndependent, … (anger.go)
 }
 
 func parseSettlements(data []byte) []Settlement {
 	var out []Settlement
 	for i := 0; i < settlementCount; i++ {
 		r := data[settlementOffset+i*settlementStride:][:settlementStride]
-		s := Settlement{Index: i, Group: int(r[2]), Map: int(r[3])}
+		s := Settlement{Index: i, Group: int(r[2]), Map: int(r[3]), Fence: int(r[1]), Flags: r[0x4B2]}
 		for k := range s.Posts {
 			p := r[postOffset+k*8:]
 			s.Posts[k] = Post{

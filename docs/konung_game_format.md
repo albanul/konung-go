@@ -36,10 +36,13 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 | Offset | Type | Meaning |
 |---|---|---|
 | `+0x00` | `int16` | first entity index |
+| `+0x02` | int32 | creature respawn debt (`Group.Debt`; [respawn](konung_combat.md#upkeep-poison-and-respawn-verified)) |
+| `+0x06` | int16 | creature respawn countdown (`Group.Countdown`) |
 | `+0x08` | `uint16` | group fine-grid **row** (the party is placed around it, `0x00411B15`) |
 | `+0x0A`, `+0x0C`, `+0x0E` | `uint16` | `+0x0C` = territory (inner rectangle) max row, with `+0x08` as min (`0x0041F5D8`, `0x00412C30`); `+0x0A`..`+0x0E` = leash (outer rectangle) rows (`0x0041FD74`, `0x00411FD0`) |
 | `+0x10` | `uint16` | group fine-grid **column** |
 | `+0x12`, `+0x14`, `+0x16` | `uint16` | `+0x14` = territory max col, with `+0x10` as min; `+0x12`..`+0x16` = leash cols. `gamestate.Group.WanderArea` / `LeashArea` |
+| `+0x18`, `+0x19` | int8 | creature population target and maximum (`Group.Target`, `MaxPop`; the maximum = reserved entity slots) |
 | `+0x1A` | int8 | enemy group of an alarmed creature group (`Group.Enemy`) |
 | `+0x1D` | byte | creature alarm state: 0 calm, 1 attack, `0x20` return (`Group.Alarm`); `0x80` in the files, cleared on map load |
 | `+0x1B` | byte | map number (`KONUNG.N`) |
@@ -194,7 +197,11 @@ Code: `resfmt.ExeTables` (`ItemOverlay`, `DrawOrder`, `CombatDrawOrder`, `Overla
 | Offset | Type | Meaning |
 |---|---|---|
 | `+0x02` | byte | village group index |
+| `+0x01` | byte | fence pieces (non-zero = fortified; `Settlement.Fence`) |
 | `+0x03` | byte | map number (`KONUNG.N`); records 15–19 are empty |
+| `+0x10`, `+0x14` | int32 | tribute pool and counter (not ported) |
+| `+0x18 + k*8` | 8 bytes | building records: int8 type (−1 empty), int8 state (0–2 building, 3 built or burning with a timer, 4–5 burning, 6 ruin), `uint16` map object, `uint16` ?, int16 timer. `+0x40`/`+0x41` = record 5, the map-exit gate. Not ported. |
+| `+0x4B2` | byte | flags: hostile, strangers, independent, loan, surrendered (`Settlement.Flags`; [village anger](konung_combat.md#village-anger-verified)) |
 | `+0x3D0 + k*8`, k = 0..4 | 8 bytes | **post**: byte facing, byte dialogue ID (copy of entity `+0xD0`), `uint16` entity index (0 = empty), `uint16` row, `uint16` col |
 
 Other bytes are not traced (`+0x3D2` per slot is also tested by the dismiss path `0x00433AF8`). In every village, post 0 is the elder (unique dialogue) and posts 1–4 hold the role characters with dialogues 101, 103, 102 and 100, which recur in every village (merchant, healer, …; the ID-to-role mapping is not verified). Post cells and facings equal the entities' file position and variant. `KONUNG.1` = settlement 9, group 27: posts 355 (elder), 356, 357, 358; slot 4 is empty. Child 371 has its own dialogue but no post, so it roams.
@@ -259,7 +266,7 @@ Section 4 holds 250 × `0x11`-byte records; the loader (`0x0043BCEF`) counts the
 * **Placement** (`0x004118DC`): the hero goes to the group cell when it is inside the map and free (occupant bits `0xFFF` = 0); the other members are placed around it.
 * **No per-map save.** Every entity lives in the one global array `0x007AB378` all game; the AI (`0x00421DA4`) runs only for groups whose map byte `+0x1B` is the current map, so other maps stay frozen and characters keep their position, HP, inventory and deaths.
   * Leaving a map (`0x00436AD0(map)`): for each group on it, dead members (`+4` bit `0x80`) are removed. Their items are freed (`0x00422778`), the later members move down (memmove, group count `+0x1C` − 1) and the settlement's post indices (`+0x3D2`, 5 × 8 bytes, settlement from `0x0043A1F8(map)`) are fixed up. If post 0 is then empty, the first living member with `+0xD3` < 3, `+4` bits `0x38` clear and `0x0041182C` = 0 takes it: its dialogue `+0xD0` becomes settlement byte `+0x3D1`, `+2` = 0, then `0x00414AB4`.
-  * Entering a map (`0x0043C0FC(0)`, group loop `0x0043C612`): members go back on their stored cells (`+8`/`+0x0A` into the fine-grid word map), animated models get `+2` = `0x40` (idle) and every member's animation is reset (`0x004143DC`). Creature groups (`+0x1E` bit `0x40`) get their alarm `+0x1D` cleared. `0x00411DE4` can cut a group's count at a member (not decoded). Groups with `+0x1E` bit `0x40` and `+0x1B` in `0x41..0x50` may add members (`0x00420CCC`) while the count `+0x1C` is below `+0x18`, i.e. monster respawn (not decoded).
+  * Entering a map (`0x0043C0FC(0)`, group loop `0x0043C612`): villagers and the party go back on their stored cells; animated models get `+2` = `0x40` (idle) and every member's animation is reset (`0x004143DC`). Creature groups get their alarm `+0x1D` cleared, every creature is placed at random in its territory (`0x00411DE4`), and respawn runs (`0x00420CCC`). See [combat: upkeep and respawn](konung_combat.md#upkeep-poison-and-respawn-verified); port `Game.EnterMap`. The port keeps the villagers' cells across visits (`startScene.storeWorld`).
 * **Travel by item** (`0x00422AD8`, click mode `0x00A3E740` = 5): uses up an item (`0x00421D24`) and takes the first exit whose target is the chosen map. Not ported.
 
 **Port** (`startScene.step`, `startScene.changeMap`, `gamestate.Game.ExitAt`, `Game.TakeExit`): a hero walk that ends on an exit without the pick-up intent writes the party back into the game, moves group 0 and rebuilds the scene for the target map. The hero is placed on the arrival cell or the nearest free one. Before the change, `startScene.storeWorld` writes the party and every other character's cell and facing back into `gamestate.Game`, so a map looks as it was left on the next visit (`OnMap` uses the stored cells). Piles, the held item, the game clock and speed carry over. The leave cleanup, the enter-time respawn and the settlement gate are not ported.
@@ -271,7 +278,7 @@ Validation: `go test ./internal/gamestate -run Exits` checks the count, the `KON
 * The character-creation screen: the hero template's palette (`0x00A3E65C`) and other fields.
 * The game's animation tick rate. The scene uses 10 steps/s and offsets each entity's phase so neighbours don't move in lockstep; both are presentation choices.
 * Exact runtime spawn positions for groups whose entities have no coordinates.
-* Group fields `+0x18` (respawn maximum?), village use of `+0x1D`, `+0x1E` beyond bits `0x40` (creature AI) / `0x80` (village AI); the conditional spawn check at `0x00411DE4`.
+* Group field `+0x1E` beyond bits `0x40` (creature AI), `0x80` (village AI, low 2 bits = tribe) and `0x20` (party); kind `0x53` groups.
 * The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation. Actions other than idle/walk (attacks, hits, death) are not ported; the combat stance and drawn weapons are.
 * Item record fields other than category and type (`+4`/`+8` condition is a hypothesis); the gear table's remaining fields; which jewellery box is which; combat animation types 2, 4, 5; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
 * `GAME.N` section 4 (map exits) bytes `+0`, `+1`; the settlement gate bytes `+0x40`/`+0x41`; the spawn check `0x00411DE4` and monster respawn `0x00420CCC` on map entry; travel by item (`0x00422AD8`). Settlement bytes outside the posts.

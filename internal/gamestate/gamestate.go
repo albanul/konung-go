@@ -26,15 +26,19 @@ const (
 
 // Group is a 32-byte entity group record. Group 0 is the player's party.
 type Group struct {
-	Index    int
-	First    int  // +0x00 int16: first entity index
-	Row, Col int  // +0x08, +0x10: group position on the map's fine grid
-	Map      int  // +0x1B: KONUNG.N number
-	Count    int  // +0x1C: number of consecutive entities
-	Kind     byte // +0x1E: 0 = unused; bit 0x40 creature group, 0x80 village; other values not fully decoded
-	Enemy    int  // +0x1A int8: the group an alarmed group attacks (set by AlarmState's caller)
-	Alarm    int  // +0x1D: AlarmCalm / AlarmAttack / AlarmReturn (creature.go); 0x80 in the files, cleared on map load
-	Raw      [groupStride]byte
+	Index     int
+	First     int  // +0x00 int16: first entity index
+	Row, Col  int  // +0x08, +0x10: group position on the map's fine grid
+	Map       int  // +0x1B: KONUNG.N number
+	Count     int  // +0x1C: number of consecutive entities
+	Kind      byte // +0x1E: 0 = unused; bit 0x40 creature group, 0x80 village; other values not fully decoded
+	Debt      int  // +0x02 int32: respawn debt; members are respawned on map entry while it is negative
+	Countdown int  // +0x06 int16: upkeep passes until the population target grows
+	Target    int  // +0x18 int8: population target (creature groups)
+	MaxPop    int  // +0x19 int8: population maximum = reserved entity slots
+	Enemy     int  // +0x1A int8: the group an alarmed group attacks (set by AlarmState's caller)
+	Alarm     int  // +0x1D: AlarmCalm / AlarmAttack / AlarmReturn (creature.go); 0x80 in the files, cleared on map load
+	Raw       [groupStride]byte
 }
 
 // Entity is a 256-byte entity record (fields that are understood).
@@ -63,7 +67,9 @@ type Entity struct {
 	BaseStats     [4]int  // words +0x5A, +0x60, +0x56, +0x64: base Хар, Сил, Лов, Вын («базовая» column)
 	Quiver        int     // +0xCC word: ammunition item in the box next to the bow (0 = empty)
 	HitBonus      int     // +0xCA int16: added to the hit chance while HitBonusOn != 0 (0x0041B5EE)
-	HitBonusOn    int     // +0xCE word: see HitBonus; meaning not traced further
+	HitBonusOn    int     // +0xCE word: potion timer in upkeep passes (Upkeep); while set, nothing can be raised
+	SavedBase     [4]int  // words +0xBC, +0xBE, +0xC0, +0xC2: base Лов, Хар, Сил, Вын restored when the potion ends
+	Throttle      int     // +0x11: walk throttle mask (walk steps only on ticks where time & m == m)
 	PoisonDealt   int     // +0x52 int16: poison a creature adds to its target's +0x50 per hit (0x0041AF5D)
 	ArmourBase    int     // +0x4E int16: armour without gear («Броня», 0x0041AC1C)
 	Bonus         [3]int  // +0xC4, +0xC6, +0xC8 int16: armour, attack and stat-9 bonuses written by Game.Recompute
@@ -131,15 +137,19 @@ func Parse(data []byte) (*Game, error) {
 	for i := 0; i < groupCount; i++ {
 		r := data[groupOffset+i*groupStride:][:groupStride]
 		gr := Group{
-			Index: i,
-			First: int(int16(binary.LittleEndian.Uint16(r))),
-			Row:   int(binary.LittleEndian.Uint16(r[0x08:])),
-			Col:   int(binary.LittleEndian.Uint16(r[0x10:])),
-			Map:   int(r[0x1B]),
-			Count: int(r[0x1C]),
-			Kind:  r[0x1E],
-			Enemy: int(int8(r[0x1A])),
-			Alarm: int(r[0x1D]),
+			Index:     i,
+			First:     int(int16(binary.LittleEndian.Uint16(r))),
+			Row:       int(binary.LittleEndian.Uint16(r[0x08:])),
+			Col:       int(binary.LittleEndian.Uint16(r[0x10:])),
+			Map:       int(r[0x1B]),
+			Count:     int(r[0x1C]),
+			Kind:      r[0x1E],
+			Enemy:     int(int8(r[0x1A])),
+			Debt:      int(int32(binary.LittleEndian.Uint32(r[2:]))),
+			Countdown: int(int16(binary.LittleEndian.Uint16(r[6:]))),
+			Target:    int(int8(r[0x18])),
+			MaxPop:    int(int8(r[0x19])),
+			Alarm:     int(r[0x1D]),
 		}
 		copy(gr.Raw[:], r)
 		g.Groups = append(g.Groups, gr)
@@ -183,6 +193,8 @@ func Parse(data []byte) (*Game, error) {
 			Quiver:        u16(e, 0xCC),
 			HitBonus:      s16(e, 0xCA),
 			HitBonusOn:    u16(e, 0xCE),
+			SavedBase:     [4]int{u16(e, 0xBC), u16(e, 0xBE), u16(e, 0xC0), u16(e, 0xC2)},
+			Throttle:      int(e[0x11]),
 			PoisonDealt:   s16(e, 0x52),
 			ArmourBase:    int(int16(binary.LittleEndian.Uint16(e[0x4E:]))),
 			Bonus:         [3]int{s16(e, 0xC4), s16(e, 0xC6), s16(e, 0xC8)},

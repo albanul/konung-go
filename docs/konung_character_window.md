@@ -121,6 +121,6 @@ Port: `startScene.statusText` (a click message still wins for its short lifetime
 
 ## Open questions
 
-* The raise column (`0x00410B08`: per-face stat caps `0x0045B10A`, costs `0x0045B010`), the XP-pool text, and the stance icon slots 0xA9/0xAA.
+* The raise column's drawing and buttons (hotspots 40–45, handler `0x00422864`; the cost rule `0x00410B08` is traced and ported as `Game.RaiseCost`, see [combat: experience and levels](konung_combat.md#experience-and-levels-verified)), the auto-level toggle (`+3` bit `0x02`, `0x00423272`; `Game.GainExperience`), the XP-pool text, and the stance icon slots 0xA9/0xAA.
 * `0x00A3E768` (god mode, see [combat](konung_combat.md#open-questions)).
 * The in-hand box (hotspot 19, `0x00A3E7A0`) and using items on characters (cursor modes 8/9), and the background tiling flag `0x00A3E744` (`0x0043141C` tiles INTR slot 5).

@@ -184,3 +184,19 @@ func (t *ExeTables) StatName(id int) []byte {
 // ItemSpecialName returns the text of special property i (record start
 // 0x0046238C + i·64; ItemSpecial reads its +0x2C/+0x2E), e.g. ", на червяков".
 func (t *ExeTables) ItemSpecialName(i int) []byte { return t.CString(0x0046238C + i*64) }
+
+// RespawnRule is the creature-group respawn record for group kind k (+0x1E):
+// int16 cost and int16 period at 0x0045E278 + k*4 (0x0041BDF0, 0x0043C949).
+// The period is how many 16-tick upkeep passes add one to the population
+// target; the cost is how much respawn debt one new member pays off.
+func (t *ExeTables) RespawnRule(kind int) (cost, period int) {
+	if kind < 0x40 || kind > 0x50 {
+		return 0, 0
+	}
+	b := t.at(0x0045E278 + kind*4)
+	return int(int16(binary.LittleEndian.Uint16(b))), int(int16(binary.LittleEndian.Uint16(b[2:])))
+}
+
+// Bytes returns n bytes of DGROUP data at va (exe tables without their own
+// accessor: the level requirement/cap and cost tables of 0x00410B08).
+func (t *ExeTables) Bytes(va, n int) []byte { return t.at(va)[:n] }

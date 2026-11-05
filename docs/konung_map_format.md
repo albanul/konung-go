@@ -15,7 +15,7 @@ Every installed `KONUNG.N` is 128,800 bytes (`0x1F720`). The map loader at VA `0
 | `0x12C00` | `0x3E80` | `0x00828378` | **Flat decorations**: up to 999 × 16-byte records (verified, below) |
 | `0x16A80` | `0x8CA0` | `0x0082CE78` | **Static object placements**: up to 999 × 36-byte records (verified, below) |
 
-Expansion of section 1 (loop at `0x0043C498`): byte `0xFF` → word `0x0FFF`; if `(b & 0x0F) == 0x0F` → `(b << 8) | 0x0FFF`; otherwise → `b << 8`.
+Expansion of section 1 (loop at `0x0043C498`): byte `0xFF` → word `0x0FFF`; if `(b & 0x0F) == 0x0F` → `(b << 8) | 0x0FFF`; otherwise → `b << 8`. Arrows stop at word bits `0xC000`, i.e. byte bits `0xC0` (`0x0041130C`, `0x00421170`; `WalkGrid.ArrowBlocked`), while plain walls (`0xFFF` only) let them pass ([bows](konung_combat.md#bows-verified)).
 
 ## Terrain cells (verified)
 
@@ -111,6 +111,6 @@ Validation: the `KONUNG.1` render shows a palisaded village (log houses, a smith
 * Animated static objects (header `+0x18` > 0, frame cycling) and random variants: the port always draws variant 0.
 * ID substitution from the game-state table at `0x0043CB21`.
 * Objects anchored above y = 0 are clipped in `map-render` PNGs; the game scrolls past them.
-* Section 1 semantics (walkability is a hypothesis).
+* Section 1 semantics beyond walls (`0xFFF`) and arrow obstacles (bits `0xC0`): the other bits.
 * The `LIGHTS.N` shading path. The loader reads `0x3200` bytes to `0x00671440` (80 × 160, one byte per terrain cell, indexed `row*0x50 + col` by the lit draw path) and `0xC800` bytes to `0x00664C40`.
 * `KONUNG.1 = Old Camp` remains provisional.

@@ -187,3 +187,14 @@ func (g *WalkGrid) Blocked(row, col int) bool {
 	b := g[row][col]
 	return b == 0xFF || b&0x0F == 0x0F
 }
+
+// ArrowBlocked reports a cell that stops arrows: the game's fine-grid word
+// is this byte << 8 (plus 0xFFF for walls), and arrows stop at bits 0xC000
+// (0x0041130C, 0x00421170), i.e. byte bits 0xC0. Plain walls (0xFFF only,
+// e.g. water) let arrows pass.
+func (g *WalkGrid) ArrowBlocked(row, col int) bool {
+	if row < 0 || row >= WalkRows || col < 0 || col >= WalkCols {
+		return true
+	}
+	return g[row][col]&0xC0 != 0
+}

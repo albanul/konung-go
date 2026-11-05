@@ -93,7 +93,9 @@ type startScene struct {
 	deadAt     int          // frame the hero was first seen dead (gameOver)
 	aiBudget   int          // creature path searches left this game tick
 	melee      bool         // hero's melee intent (+2 bit 0x01): keeps finding targets after a kill
-	hideHelp   bool         // F1 hides the key help (help.go)
+	shoot      bool         // hero's shoot intent (+2 bit 0x04), ranged.go
+	arrows     []gamestate.Arrow
+	hideHelp   bool // F1 hides the key help (help.go)
 }
 
 // sceneAssets is what stays loaded across map changes: resource files, exe
@@ -157,6 +159,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	}
 	a.tiles = make([]*ebiten.Image, len(a.rawTiles))
 	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
+	game.InitSettlementFlags(gameNumber) // 0x0043BD5C
 	return a.buildScene(game, mapNumber, nil)
 }
 
@@ -176,6 +179,7 @@ func (s *startScene) changeMap(x gamestate.MapExit) {
 		s.game.Entities = entities
 		return
 	}
+	s.game.LeaveMap(s.mapNumber) // 0x00436AD0: the dead of the map left are removed
 	*s = *ns
 }
 
@@ -327,6 +331,22 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		return true
 	}
 	release := func(c mapdata.Cell) { delete(s.occ, c) }
+	// Map entry (0x0043C612): creatures are placed at random in their
+	// territory and respawned; villagers and the party keep their cells.
+	taken := map[[2]int]bool{}
+	for _, gr := range game.Groups[1:] {
+		if gr.Map != mapNumber || gr.Kind == 0 || (gr.Kind&0x80 == 0 && int8(gr.Kind) < 0x51) {
+			continue
+		}
+		for k := 0; k < gr.Count; k++ {
+			if e := game.Entities[gr.First+k]; !e.Dead() && (e.Row != 0 || e.Col != 0) {
+				taken[[2]int{e.Row, e.Col}] = true
+			}
+		}
+	}
+	game.EnterMap(mapNumber, tables, s.rng.IntN,
+		func(r, c int) bool { return walk.Blocked(r, c) || taken[[2]int{r, c}] },
+		func(r, c int) { taken[[2]int{r, c}] = true })
 	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
 		if p.Group != 0 && p.Dead() {
 			continue // the leave cleanup (0x00436AD0) removes the dead
@@ -366,6 +386,8 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 			}
 			s.setStopAt(n)
 		case gr.VillageGroup() && hasArea:
+			n.group = p.Group
+			s.setStopAt(n)
 			n.mode = npcVillager
 			n.post, n.posted = game.PostOf(p.Entity)
 			n.moveAt = gamestate.VillageMoveThreshold(p.Entity)
@@ -391,7 +413,7 @@ func (s *startScene) updateNPCs() {
 		budget := gamestate.VillagePathBudget
 		for i := range s.npcs {
 			k := (s.aiNext + i) % len(s.npcs)
-			if n := s.npcs[k]; n.mode == npcVillager {
+			if n := s.npcs[k]; n.mode == npcVillager && !s.fighting(n) {
 				if used := n.villageTick(budget); used > 0 {
 					budget -= used
 					s.aiNext = k + 1
@@ -525,6 +547,11 @@ func (s *startScene) click(hero *gamestate.Entity, mx, my, spot int, right bool)
 	case !right && s.hand.Holding():
 		s.dropHeld(hero)
 	case right && hero.InStance() && s.hovered >= 0 && s.hovered != hero.Index && !s.entity(s.hovered).Dead():
+		if gamestate.CanShoot(*hero) {
+			s.endFight()
+			s.target, s.shoot = s.hovered, true // 0x00423BEF: +2 = 0x44
+			break
+		}
 		s.startFight(s.hovered) // 0x00423C8B: attack the character under the cursor
 	default:
 		s.endFight()
@@ -881,6 +908,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	for ; ci < len(chars); ci++ {
 		drawFrame(&chars[ci])
 	}
+	s.drawArrows(screen)
 	s.hovered = s.hitTest(chars, owners)
 	if s.inv.open {
 		s.hovered = -1 // the window covers the characters

@@ -43,6 +43,7 @@ func TestHeroKillsAnt(t *testing.T) {
 		occ:      map[mapdata.Cell]bool{antCell: true, heroCell: true},
 		rng:      rand.New(rand.NewPCG(1, 2)),
 		target:   -1,
+		pileAt:   map[mapdata.Cell]int{},
 	}
 	s.startFight(921)
 	for i := 0; i < 1000 && !g.Entities[921].Dead(); i++ {
@@ -79,7 +80,7 @@ func TestHeroChasesTarget(t *testing.T) {
 	hero := &walker{entity: 0, cell: mapdata.Cell{Row: 92, Col: 36}, searchCap: pathSearchLimit}
 	hero.blocked = func(c mapdata.Cell) bool { return occ[c] }
 	s := &startScene{game: g, party: []gamestate.Entity{g.Entities[0]}, hero: hero, npcs: []*npc{ant},
-		byEntity: map[int]*npc{921: ant}, occ: occ, target: -1}
+		byEntity: map[int]*npc{921: ant}, occ: occ, target: -1, pileAt: map[mapdata.Cell]int{}}
 	s.startFight(921)
 	for i := 0; i < 5000 && hero.act != gamestate.ActAttack; i++ {
 		hero.update()
@@ -134,6 +135,7 @@ func TestCreatureFightsBack(t *testing.T) {
 		occ:      occ,
 		rng:      rand.New(rand.NewPCG(3, 4)),
 		target:   -1,
+		pileAt:   map[mapdata.Cell]int{},
 	}
 	s.setStopAt(ant)
 	attacked, struck := false, false
@@ -180,7 +182,16 @@ func TestCreatureReturnsHome(t *testing.T) {
 		return true
 	}
 	ant.release = func(c mapdata.Cell) { delete(occ, c) }
-	s := &startScene{game: g, npcs: []*npc{ant}, byEntity: map[int]*npc{921: ant}, occ: occ, target: -1}
+	exe, err := os.ReadFile("../../assets/Konung/konung.exe")
+	if err != nil {
+		t.Skip("konung.exe not available:", err)
+	}
+	tb, err := resfmt.NewExeTables(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &startScene{game: g, tables: tb, npcs: []*npc{ant}, byEntity: map[int]*npc{921: ant}, occ: occ, target: -1,
+		pileAt: map[mapdata.Cell]int{}}
 	s.walk = &mapdata.WalkGrid{}
 	s.worldW, s.worldH = 1<<20, 1<<20
 	for i := 0; i < 20000 && !area.Contains(ant.cell.Row, ant.cell.Col); i++ {
@@ -224,7 +235,7 @@ func TestAttackOrderFindsNextEnemy(t *testing.T) {
 	cells := map[int]mapdata.Cell{921: near[0].Cell, 922: near[4].Cell, 923: {Row: 100, Col: 40 + attackRangeCols*2}}
 	occ := map[mapdata.Cell]bool{heroCell: true}
 	s := &startScene{game: g, tables: tb, byEntity: map[int]*npc{}, occ: occ, target: -1,
-		rng: rand.New(rand.NewPCG(7, 8))}
+		rng: rand.New(rand.NewPCG(7, 8)), pileAt: map[mapdata.Cell]int{}}
 	for i, c := range cells {
 		n := &npc{walker: walker{entity: i, cell: c}, target: -1} // calm: they don't move
 		s.npcs = append(s.npcs, n)
@@ -245,5 +256,111 @@ func TestAttackOrderFindsNextEnemy(t *testing.T) {
 	if s.melee || !g.Entities[921].Dead() || !g.Entities[922].Dead() || g.Entities[923].Dead() {
 		t.Fatalf("intent %v; dead: 921 %v, 922 %v, 923 (out of range) %v", s.melee,
 			g.Entities[921].Dead(), g.Entities[922].Dead(), g.Entities[923].Dead())
+	}
+}
+
+// TestHeroShootsAnt: Volk with a bow and arrows from GAME.0's item records
+// shoots an ant six cells away until it dies; arrows fly as projectiles.
+func TestHeroShootsAnt(t *testing.T) {
+	gameData, err := os.ReadFile("../../assets/Konung/GAME.0")
+	if err != nil {
+		t.Skip("GAME.0 not available:", err)
+	}
+	exe, err := os.ReadFile("../../assets/Konung/konung.exe")
+	if err != nil {
+		t.Skip("konung.exe not available:", err)
+	}
+	g, err := gamestate.Parse(gameData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, err := resfmt.NewExeTables(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bow, arrows := 0, 0
+	for i := 1; i < 8192 && (bow == 0 || arrows == 0); i++ {
+		if it, ok := g.Item(i); ok && it.Category == gamestate.CatBow && bow == 0 {
+			bow = i
+		} else if ok && it.Category == gamestate.CatArrows && it.Count >= 5 && arrows == 0 {
+			arrows = i
+		}
+	}
+	if bow == 0 || arrows == 0 {
+		t.Skip("no bow or arrows in GAME.0")
+	}
+	frames := func(int, int) []sceneFrame { return make([]sceneFrame, 12) }
+	heroCell, antCell := mapdata.Cell{Row: 100, Col: 40}, mapdata.Cell{Row: 100, Col: 46}
+	occ := map[mapdata.Cell]bool{heroCell: true, antCell: true}
+	ant := &npc{walker: walker{entity: 921, cell: antCell, load: frames}, target: -1}
+	volk := g.Entities[g.Groups[0].First]
+	volk.Flags3 |= 0x04
+	volk.Equipment[gamestate.WeaponBow], volk.Quiver, volk.WeaponMode = bow, arrows, gamestate.WeaponBow
+	s := &startScene{game: g, tables: tb, party: []gamestate.Entity{volk}, npcs: []*npc{ant},
+		byEntity: map[int]*npc{921: ant}, occ: occ, target: 921, shoot: true, walk: &mapdata.WalkGrid{},
+		hero: &walker{entity: volk.Index, cell: heroCell, load: frames,
+			blocked: func(c mapdata.Cell) bool { return occ[c] }},
+		rng: rand.New(rand.NewPCG(9, 9)), pileAt: map[mapdata.Cell]int{}}
+	shots := 0
+	for i := 0; i < 3000 && !g.Entities[921].Dead() && s.shoot; i++ {
+		before := len(s.arrows)
+		s.flyArrows()
+		s.heroTick()
+		if len(s.arrows) > before {
+			shots++
+		}
+		s.actTick(&ant.walker, &g.Entities[921], ant)
+	}
+	if shots == 0 {
+		t.Fatal("no arrow was shot")
+	}
+	if !g.Entities[921].Dead() && s.party[0].Quiver != 0 {
+		t.Fatalf("after %d shots the ant has HP %d (shoot intent %v)", shots, g.Entities[921].HP, s.shoot)
+	}
+	if s.party[0].Marksmanship <= volk.Marksmanship && g.Entities[921].Dead() {
+		t.Error("the kill gave no Меткость")
+	}
+}
+
+// TestAngryVillagerAttacks: in an alarmed, hostile village a man next to the
+// hero takes the stance, then goes for the hero (0x00416DA6).
+func TestAngryVillagerAttacks(t *testing.T) {
+	gameData, err := os.ReadFile("../../assets/Konung/GAME.0")
+	if err != nil {
+		t.Skip("GAME.0 not available:", err)
+	}
+	g, err := gamestate.Parse(gameData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := g.SettlementOnMap(1)
+	gr := g.Groups[st.Group]
+	man := -1
+	for k := 0; k < gr.Count; k++ {
+		if e := g.Entities[gr.First+k]; e.Model < 3 && e.Flags4 != 0x51 && e.Flags4 != 0x52 {
+			man = gr.First + k
+			break
+		}
+	}
+	if man < 0 {
+		t.Skip("no man in the village")
+	}
+	g.Anger(st)
+	cell := mapdata.Cell{Row: 100, Col: 40}
+	heroCell := mapdata.Neighbors(cell)[0].Cell
+	n := &npc{walker: walker{entity: man, cell: cell}, mode: npcVillager, group: st.Group, target: -1}
+	volk := g.Entities[g.Groups[0].First]
+	s := &startScene{game: g, party: []gamestate.Entity{volk}, npcs: []*npc{n}, byEntity: map[int]*npc{man: n},
+		hero: &walker{entity: volk.Index, cell: heroCell}, target: -1, pileAt: map[mapdata.Cell]int{}, aiBudget: 3}
+	s.villagerTick(n)
+	if !g.Entities[man].InStance() {
+		t.Fatal("the villager did not take the stance")
+	}
+	s.villagerTick(n)
+	if n.target != volk.Index || n.act != gamestate.ActAttack {
+		t.Fatalf("villager target %d, action %d; want the hero, swing", n.target, n.act)
+	}
+	if !s.fighting(n) {
+		t.Error("the village AI would still run for a fighting villager")
 	}
 }

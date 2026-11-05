@@ -63,17 +63,21 @@ var (
 // press the button, and give every living party member the melee intent
 // without a target, entering the stance. The planner then picks the nearest
 // enemy (nearestEnemy). With the bow active the game sets the shoot intent
-// (+2 = 0x44); bows are not ported, so the order does nothing then.
+// (+2 = 0x44) instead (heroShoot).
 func (s *startScene) attackOrder(hero *gamestate.Entity) {
 	s.hand.Return(hero)
 	s.hud.press(hudAttackButton, hudAttackImage)
-	if hero.Dead() || s.hero.act == gamestate.ActDeath || hero.WeaponMode == gamestate.WeaponBow {
+	if hero.Dead() || s.hero.act == gamestate.ActDeath {
 		return
 	}
 	if !hero.InStance() {
 		gamestate.ToggleStance([]*gamestate.Entity{hero})
 	}
 	s.endFight()
+	if hero.WeaponMode == gamestate.WeaponBow {
+		s.shoot = true // +2 = 0x44: the planner shoots or drops the order
+		return
+	}
 	s.hero.path = s.hero.path[:min(len(s.hero.path), 1)] // finish the step in progress
 	s.pickIntent = false
 	s.melee = true
@@ -134,7 +138,7 @@ func (s *startScene) startFight(target int) {
 // endFight drops the hero's target and intent (a new walk order, the target
 // dead or gone).
 func (s *startScene) endFight() {
-	s.target, s.melee = -1, false
+	s.target, s.melee, s.shoot = -1, false, false
 	if s.hero != nil {
 		s.hero.stopAt = nil
 		if s.hero.act == gamestate.ActAttack {
@@ -196,16 +200,24 @@ func alive(w *walker, e *gamestate.Entity) bool {
 // combatTick runs once per game tick: the alarm check, the hero, the
 // creatures, then everyone's hit reactions and deaths.
 func (s *startScene) combatTick() {
+	s.flyArrows() // 0x00421170 runs before the AI
 	if s.gameTime()%gamestate.AlarmCheckTicks == 0 {
 		s.alarmCheck()
+		s.upkeep()
+	}
+	if (s.gameTime()+gamestate.SettlementTickOffset)%gamestate.UpkeepTicks == 0 {
+		s.settlementTick()
 	}
 	if s.hero != nil && len(s.party) > 0 {
 		s.heroTick()
 	}
 	s.aiBudget = creatureBudget
 	for _, n := range s.npcs {
-		if n.mode == npcCreature {
+		switch {
+		case n.mode == npcCreature:
 			s.creatureTick(n)
+		case n.mode == npcVillager:
+			s.villagerTick(n)
 		}
 	}
 	if s.hero != nil && len(s.party) > 0 {
@@ -228,7 +240,7 @@ func (s *startScene) swing(aw *walker, a *gamestate.Entity, target int, targetCe
 		return false
 	}
 	if aw.actStep == 2 && a.Group == 0 {
-		s.alarmGroup(t.Group) // 0x00421F64
+		s.provoke(t.Group) // 0x00421F00: village anger, then 0x004248A0
 	}
 	if aw.advanceAct() {
 		return false
@@ -236,15 +248,10 @@ func (s *startScene) swing(aw *walker, a *gamestate.Entity, target int, targetCe
 	a.Variant, t.Variant = int(aw.dir), int(tw.dir)
 	switch r, _ := s.game.Strike(a, t, s.tables, s.rng.IntN); r {
 	case gamestate.StrikeKill:
-		s.game.Kill(a, t, s.tables)
-		tw.halt()
-		tw.startAct(gamestate.ActDeath)
+		s.kill(a, tw, t, false)
 		return true
 	case gamestate.StrikeHeavy:
-		if !tw.walking {
-			tw.path = nil
-			tw.startAct(gamestate.ActFlinch)
-		}
+		s.flinch(tw)
 	}
 	if a.Group == 0 {
 		aw.look = lookOf(*a) // a worn-out weapon or armour disappears
@@ -256,6 +263,7 @@ func (s *startScene) swing(aw *walker, a *gamestate.Entity, target int, targetCe
 // actTick plays hit reactions and deaths (n is nil for the hero).
 func (s *startScene) actTick(w *walker, e *gamestate.Entity, n *npc) {
 	creature := n != nil && n.mode == npcCreature
+	villager := n != nil && s.game.Groups[n.group].VillageGroup()
 	switch w.act {
 	case gamestate.ActFlinch:
 		if !w.advanceAct() {
@@ -263,9 +271,15 @@ func (s *startScene) actTick(w *walker, e *gamestate.Entity, n *npc) {
 			if creature {
 				s.alarmGroup(n.group) // 0x00412A21
 			}
+			if villager {
+				s.provoke(n.group) // 0x0041658E: a hurt villager angers the village
+			}
 		}
 	case gamestate.ActDeath:
 		if !e.Dead() && w.actStep >= w.actSteps()-2 {
+			if villager {
+				s.provoke(n.group) // 0x0041651C
+			}
 			if creature {
 				s.alarmGroup(n.group) // 0x00412989
 				if gamestate.Revives(e) {
@@ -282,6 +296,50 @@ func (s *startScene) actTick(w *walker, e *gamestate.Entity, n *npc) {
 			}
 		}
 		w.advanceAct()
+	}
+}
+
+// provoke is what a blow or an arrow does to the victim's group: a village
+// gets angry (settlement +0x4B2 |= 0x15) and every group is alarmed
+// (0x004248A0).
+func (s *startScene) provoke(g int) {
+	if g <= 0 || g >= len(s.game.Groups) {
+		return
+	}
+	if st := s.game.SettlementOf(g); st != nil {
+		s.game.Anger(st)
+		s.game.Groups[g].Enemy = 0
+		return
+	}
+	s.alarmGroup(g)
+}
+
+// kill is the kill path (0x00422082 party, 0x0041263E creatures, 0x004215BA
+// arrows): experience (gamestate.Kill / KillByArrow), the victim's death and
+// its loot. Party and village killers pass their kill experience and level
+// to the loot (0x00418510(victim, xp, level)); creatures pass 0, 0.
+func (s *startScene) kill(a *gamestate.Entity, tw *walker, t *gamestate.Entity, arrow bool) {
+	var xp int
+	if arrow {
+		xp = s.game.KillByArrow(a, t, s.tables)
+	} else {
+		xp = s.game.Kill(a, t, s.tables)
+	}
+	tw.halt()
+	tw.startAct(gamestate.ActDeath)
+	bonus, level := xp, a.Level
+	if a.Group > 0 && s.game.Groups[a.Group].CreatureGroup() {
+		bonus, level = 0, 0
+	}
+	s.dropLoot(t, tw.cell, bonus, level)
+}
+
+// flinch starts the hit reaction (type 2/8) of a character that isn't
+// walking.
+func (s *startScene) flinch(tw *walker) {
+	if !tw.walking {
+		tw.path = nil
+		tw.startAct(gamestate.ActFlinch)
 	}
 }
 
@@ -319,6 +377,10 @@ func (s *startScene) alarmCheck() {
 func (s *startScene) heroTick() {
 	h, hero := s.hero, &s.party[0]
 	if !alive(h, hero) || h.act == gamestate.ActFlinch {
+		return
+	}
+	if s.shoot {
+		s.heroShoot()
 		return
 	}
 	if s.target >= 0 {
@@ -411,6 +473,11 @@ func (s *startScene) creatureTick(n *npc) {
 			}
 		}
 		return
+	case n.act == gamestate.ActShoot && n.intent&intentShoot != 0: // bow shot (0x00412AE5)
+		if s.shotTick(&n.walker, e, n.targetCell) {
+			n.act, n.intent = 0, n.intent&^intentShoot
+		}
+		return
 	case n.act == gamestate.ActShoot && n.actStep > 0: // waking up (0x00412A36)
 		if !n.advanceAct() {
 			n.act = 0
@@ -463,8 +530,12 @@ func (s *startScene) creatureDecide(n *npc, e *gamestate.Entity, g *gamestate.Gr
 			}
 		case gamestate.TacticNearest:
 			if !e.Animated() && !e.InStance() {
-				e.Flags3 |= 0x04 // humanoids take the stance first (0x00413108)
+				s.game.ReEquip(e) // 0x004105A0
+				e.Flags3 |= 0x04  // humanoids take the stance first (0x00413108)
 				n.look = lookOf(*e)
+				return
+			}
+			if !e.Animated() && gamestate.CanShoot(*e) && s.npcShoot(n) {
 				return
 			}
 		}
