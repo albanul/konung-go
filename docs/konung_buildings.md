@@ -1,6 +1,6 @@
-# Village buildings and the voevoda's training
+# Village buildings, the bridge gate and the voevoda's training
 
-Status: traced against `konung.exe`. The map-load object IDs are checked against every `GAME.N` and `KONUNG.N`. Ported: `gamestate.Game.SettlementPass` (`production.go`), `buildingPass`, `voevodaPass`, `BuildingObjects` (`buildings.go`), `startScene.updateBuildings` / `placeObjects` (`internal/game/buildings.go`). `cmd/map-render -game` draws the buildings in their state. Tests: `TestBuildingObjectsMatchMaps`, `TestRuinRebuilt`, `TestBuildingBurns`, `TestVoevodaTrains`, `TestBuildingSpriteFollowsState`.
+Status: traced against `konung.exe`. The map-load object IDs are checked against every `GAME.N` and `KONUNG.N`. Ported: `gamestate.Game.SettlementPass` (`production.go`), `buildingPass`, `voevodaPass`, `BuildingObjects` (`buildings.go`), `startScene.updateBuildings` / `placeObjects` (`internal/game/buildings.go`); setting buildings on fire (`Game.ArrowOnBuilding`, `LineOfFireBuilding`, `startScene.shootBuilding` / `arrowOnBuilding`); the bridge gate (`Game.ExitOpen`). `cmd/map-render -game` draws the buildings in their state. Tests: `TestBuildingObjectsMatchMaps`, `TestRuinRebuilt`, `TestBuildingBurns`, `TestVoevodaTrains`, `TestBuildingSpriteFollowsState`, `TestArrowsSetBuildingOnFire`, `TestArrowOnBuilding`, `TestLineOfFireBuilding`, `TestExitGate`.
 
 Both run in the settlement pass `0x0041D39F`, every 16 ticks (`(time + 7) & 0xF == 0`), for all 20 settlements. The rest of the pass (tribute, healer, smith) is in [trade: production](konung_trade.md#shop-stock-production). The surrender and alarm checks are in [combat](konung_combat.md).
 
@@ -86,8 +86,48 @@ Post 4 (`+0x3F2`). If it is empty, nothing happens. Timer `+0xC` −1 per pass; 
 
 Net effect: each member gains at most one point per stat per period, up to the class caps, and free experience is unchanged.
 
+## Setting a building on fire
+
+Only the selection's bow can do it. Placements with flag `+0x22` bit `0x01` are the settlement buildings: every building placement has `0xFF`, other objects 0 (a few `0xFF`).
+
+1. **Hover** (`0x00A3E6A4`): the object draw pass (`0x004270A6` and three siblings) tests each flagged placement it draws with `0x0043F89C` (an opaque pixel of the drawn image under the cursor). The last one drawn, so the front-most, wins; `0x0042AD2E` clears it. Port: `startScene.buildingUnderCursor` (in `Draw`, after the world).
+2. **Cursor 6** (flame, `0x00428AF3`): checked before the character cursor. It needs a building hovered, a settlement on the map (`0x00A3E6A8`), and a selected member that is alive (`+4` bit `0x80` clear, `+0` not 9 or 3), in the stance (`+3 & 4`), with the bow active (`+0x12` = 1), a bow `+0x68`, a quiver `+0xCC` and **incendiary arrows** (quiver item `+2` = 0). Port: `fireReady`.
+3. **Order** (right click, `0x00423BB8`), for a member in the stance with the bow active, a bow and arrows:
+   * a character under the cursor → shoot it;
+   * else with incendiary arrows → `+6` = −(hovered placement + 1), `+0x0C/+0x0E` = the clicked cell, `+2` = `0x44`;
+   * else nothing (the bow stance does not walk).
+
+   The game does not check that a building is hovered; with none, `+6` gets a meaningless value. The port gives no order then.
+4. **Planner** (`0x0041EF10`, `+6` < 0):
+   * Without a settlement on the map, the order ends.
+   * With a flagged target placement, the line of fire `0x0041130C` runs with the building as the target. At the first arrow-blocking cell (`0xC000`), the ray point (x, y + 30) is tested against the building's drawn image (`0x0043F89C`). On a hit, the aim `+0x0C/+0x0E` moves to that cell and the result is 1. Otherwise the result is 0.
+   * A result of 1 shoots (action 4) and keeps the order, so the hero keeps shooting until the line is lost or the arrows run out. 0 or −1 ends it.
+
+   Port: `startScene.shootBuilding`, `gamestate.LineOfFireBuilding`.
+5. **Flight** (`0x0042135D`): an arrow point on a blocking cell removes the arrow. Before that, the game checks that the **shooter's current target** is a flagged building of the map's settlement and that the point is on its image. If so, the first building record on that placement (`0x0042138A`):
+   * on `rand() % 100 < 21`: state 3, timer 1;
+   * in any case: `+0x4B2 |= 0x15` (angry), and the village group is alarmed (`0x004248A0`).
+
+   The flight does not test the arrow's special; the incendiary check is only in the order. A ruin or a building under construction that is hit also jumps to state 3 and burns. Port: `startScene.arrowOnBuilding`, `gamestate.Game.ArrowOnBuilding`.
+6. The settlement pass then burns the building down (states 4, 5, then 6, [above](#pass-0x0041d939)) and swaps its sprite. Burning objects carry flames. The villagers rebuild it when they can.
+
+## The bridge gate
+
+Exit trigger `0x00421BB8`, check at `0x00421C82`. The first exit whose rectangle holds the cell is taken. If its index i equals the index of the current map's settlement (`0x00A3E6A8`, cleared and set by the map loader at `0x0043CABC`), the exit needs that settlement's record 5 (the bridge, `+0x40` type / `+0x41` state):
+* type < 0, or state 3 → the exit is taken;
+* otherwise the trigger returns without doing anything (no message, and no later exit is tried).
+
+Only settlements 0–2 have their exit at the same index:
+
+| Map | Exit | Leads to | Bridge in `GAME.0`–`GAME.2` |
+|---|---|---|---|
+| 14 | 0 | 6 | type 14, state 0: closed |
+| 19 | 1 | 8 | type 15, state 0: closed |
+| 22 | 2 | 12 | type 15, state 0: closed |
+
+Building the bridge (dialogue script 360, [dialogues](konung_dialogue.md#script-functions-verified)) and finishing it in the settlement pass opens the way. A bridge that burns (state 4–6) closes it again. The other villages' record 5 never gates anything. Port: `gamestate.Game.ExitOpen`, checked in `startScene` before `changeMap`.
+
 ## Not ported / open
 
-* Setting a standing building on fire (timer > 0 at state 3): incendiary arrows ([combat](konung_combat.md#open-questions)).
-* The map-exit gate (record 5) and other building effects outside the pass.
+* The incendiary arrows' 64×64 glow (`0x005B0010`).
 * Record `+4`.

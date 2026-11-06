@@ -38,10 +38,15 @@ type sceneFrame struct {
 // animation steps), ready to draw.
 type sceneObject struct {
 	placement int // KONUNG.N section-3 record (mapdata.Placement.Index)
-	frames    []sceneFrame
-	phase     int // step offset so neighbours don't animate in lockstep
-	depth     int // bottom-edge sort key (from the first step)
-	flames    []flame
+	// building is the decoded image of a placement with flag bit 0x01
+	// (settlement buildings), for the pixel tests of the hover
+	// (0x00A3E6A4), the line of fire and the arrows (0x0043F89C); nil for
+	// other objects.
+	building *image.RGBA
+	frames   []sceneFrame
+	phase    int // step offset so neighbours don't animate in lockstep
+	depth    int // bottom-edge sort key (from the first step)
+	flames   []flame
 }
 
 func (o *sceneObject) frame(tick int) *sceneFrame {
@@ -119,8 +124,15 @@ type startScene struct {
 	fightNext  int          // round-robin start of the combat AI's path budget
 	melee      bool         // hero's melee intent (+2 bit 0x01): keeps finding targets after a kill
 	shoot      bool         // hero's shoot intent (+2 bit 0x04), ranged.go
-	arrows     []gamestate.Arrow
-	hideHelp   bool // F1 hides the key help (help.go)
+	// burnTarget is placement + 1 of the building the hero shoots at (the
+	// game's +6 = −(placement + 1), incendiary arrows), 0 = none.
+	burnTarget int
+	// hoveredBuilding is placement + 1 of the front-most settlement
+	// building under the cursor (0x00A3E6A4, set by the object draw
+	// pass), 0 = none.
+	hoveredBuilding int
+	arrows          []gamestate.Arrow
+	hideHelp        bool // F1 hides the key help (help.go)
 }
 
 // sceneAssets is what stays loaded across map changes: resource files, exe
@@ -673,6 +685,15 @@ func (s *startScene) click(hero *gamestate.Entity, mx, my, spot int, right bool)
 			break
 		}
 		s.startFight(s.hovered) // 0x00423C8B: attack the character under the cursor
+	case right && hero.InStance() && gamestate.CanShoot(*hero):
+		// 0x00423C2A: no character under the cursor; with incendiary
+		// arrows the hovered building becomes the target, else nothing
+		// happens (the bow stance does not walk).
+		if s.game.Incendiary(*hero) && s.hoveredBuilding != 0 && s.game.SettlementOnMap(s.mapNumber) != nil {
+			s.endFight()
+			s.burnTarget, s.shoot = s.hoveredBuilding, true
+			s.targetCell = mapdata.CellAt(mx+s.camX, my+s.camY)
+		}
 	case right && s.canTalk(*hero):
 		s.talkTo(s.hovered) // 0x00423B6E: at once, wherever the hero stands
 	default:
@@ -838,6 +859,9 @@ func (s *startScene) cursorSprite() int {
 	if !inView(mx, my) || s.inv.open || s.talk.open() || s.trade.open() || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
 		return s.hand.Cursor
 	}
+	if s.fireReady() && s.hoveredBuilding != 0 {
+		return gamestate.CursorFire // 0x00428AF3, before the character cursor
+	}
 	if s.hovered >= 0 && len(s.party) > 0 {
 		return s.characterCursor(s.entity(s.hovered))
 	}
@@ -856,8 +880,8 @@ func (s *startScene) cursorSprite() int {
 // selected member (the port's selection: the hero) is in the stance, the
 // talk cursor when e has a dialogue, and the barred circle otherwise. The
 // port shows the corpse of a dead character like an occupied cell (the
-// game's hit test for the dead is not traced). The flame cursor 6 (bow and
-// fire arrows over a settlement building, 0x00428AF3) is not ported.
+// game's hit test for the dead is not traced). The flame cursor 6 over a
+// settlement building comes first (cursorSprite, fireReady).
 func (s *startScene) characterCursor(e gamestate.Entity) int {
 	hero := s.party[0]
 	switch {
@@ -990,7 +1014,8 @@ func (s *startScene) step() {
 		case moving && stopped:
 			// 0x00422346: a walk that ends without the pick-up intent on an
 			// exit cell takes the exit (0x00421BB8).
-			if x, ok := s.game.ExitAt(s.mapNumber, s.hero.cell.Row, s.hero.cell.Col); ok {
+			// A village's exit needs its bridge (ExitOpen, 0x00421C82).
+			if x, ok := s.game.ExitAt(s.mapNumber, s.hero.cell.Row, s.hero.cell.Col); ok && s.game.ExitOpen(x) {
 				s.changeMap(x)
 				return
 			}
@@ -1033,8 +1058,9 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	} else {
 		chars, owners := s.drawWorld(screen)
 		s.hovered = s.hitTest(chars, owners)
+		s.hoveredBuilding = s.buildingUnderCursor()
 		if window {
-			s.hovered = -1 // the window covers the characters
+			s.hovered, s.hoveredBuilding = -1, 0 // the window covers the world
 		}
 	}
 	if s.hero != nil {

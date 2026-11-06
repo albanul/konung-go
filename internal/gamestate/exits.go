@@ -83,3 +83,18 @@ func (g *Game) TakeExit(x MapExit) {
 		}
 	}
 }
+
+// ExitOpen is the gate check of the exit trigger (0x00421C82): exit i is
+// closed while the party is in settlement i (the settlement of the exit's
+// map, 0x00A3E6A8) and that village has a bridge (building record 5, type
+// ≥ 0) that does not stand (state ≠ 3). Only exits 0–2 pair with their
+// village this way (maps 14, 19, 22). On a closed exit the game does
+// nothing; it does not try a later exit.
+func (g *Game) ExitOpen(x MapExit) bool {
+	s := g.settlementOn(x.From)
+	if s == nil || s.Index != x.Index {
+		return true
+	}
+	b := s.building(BuildingBridge)
+	return int8(b[0]) < 0 || b[1] == BuildingStanding
+}

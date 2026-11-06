@@ -175,3 +175,84 @@ func TestVoevodaTrains(t *testing.T) {
 	}
 	t.Skip("no trainee below a voevoda")
 }
+
+// TestExitGate: the exits of the villages on maps 14, 19 and 22 (exits
+// 0–2) need the village's bridge to stand; other exits are always open.
+func TestExitGate(t *testing.T) {
+	g, err := Parse(readAsset(t, "GAME.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, m := range []int{14, 19, 22} {
+		x := g.Exits[i]
+		if x.From != m || g.Settlements[i].Map != m {
+			t.Fatalf("exit %d: %+v", i, x)
+		}
+		if g.ExitOpen(x) {
+			t.Errorf("map %d: open without a bridge", m)
+		}
+		b := g.Settlements[i].building(BuildingBridge)
+		b[1] = BuildingStanding
+		if !g.ExitOpen(x) {
+			t.Errorf("map %d: closed with the bridge standing", m)
+		}
+		b[1] = 5 // burning
+		if g.ExitOpen(x) {
+			t.Errorf("map %d: open with the bridge burning", m)
+		}
+	}
+	for _, x := range g.Exits[3:] {
+		if !g.ExitOpen(x) {
+			t.Errorf("exit %d (map %d → %d) closed", x.Index, x.From, x.To)
+		}
+	}
+}
+
+// TestArrowOnBuilding: the targeted building catches fire on rolls below
+// 21; any hit reports the record so the village is angered.
+func TestArrowOnBuilding(t *testing.T) {
+	g, err := Parse(readAsset(t, "GAME.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := g.SettlementOnMap(1)
+	b := s.building(0)
+	p := int(binary.LittleEndian.Uint16(b[2:]))
+	if !g.ArrowOnBuilding(s, p, func(int) int { return 21 }) || binary.LittleEndian.Uint16(b[6:]) != 0 {
+		t.Error("roll 21 lit the house")
+	}
+	b[1] = BuildingRuin
+	if !g.ArrowOnBuilding(s, p, func(int) int { return 20 }) || b[1] != BuildingStanding || binary.LittleEndian.Uint16(b[6:]) != 1 {
+		t.Errorf("roll 20: %v", b)
+	}
+	if g.ArrowOnBuilding(s, 9999, func(int) int { return 0 }) {
+		t.Error("unknown placement found")
+	}
+	arrows := g.newStock(CatArrows, 30)
+	e := Entity{Quiver: arrows}
+	if g.Incendiary(e) {
+		t.Error("special −1 counted as incendiary")
+	}
+	g.items[arrows*itemStride+2] = 0
+	if !g.Incendiary(e) {
+		t.Error("special 0 not incendiary")
+	}
+}
+
+// TestLineOfFireBuilding: a ray toward a building stops at the first
+// blocking cell; it is a hit (with the aim moved there) only on the image.
+func TestLineOfFireBuilding(t *testing.T) {
+	from, to := mapdata.Cell{Row: 100, Col: 40}, mapdata.Cell{Row: 80, Col: 40}
+	wall := func(c mapdata.Cell) bool { return c.Row <= 90 }
+	none := func(mapdata.Cell) bool { return false }
+	r, aim := LineOfFireBuilding(from, 2, to, 20, wall, none, func(x, y int) bool { return true })
+	if r != 1 || aim.Row > 90 || aim.Row < 85 {
+		t.Errorf("hit: %d at %v", r, aim)
+	}
+	if r, _ := LineOfFireBuilding(from, 2, to, 20, wall, none, func(x, y int) bool { return false }); r != 0 {
+		t.Errorf("miss: %d", r)
+	}
+	if r := LineOfFire(from, 2, to, 20, wall, none); r != 0 {
+		t.Errorf("character target through a wall: %d", r)
+	}
+}

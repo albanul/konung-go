@@ -47,7 +47,7 @@ The screenshot's plain blade cursor visually matches sprite 4. Sprite 1 is a cur
 
 * Character under the mouse (`0x00A3E6A0`): party member → the hand's sprite (5 when `0x00A3E714` is set, not traced). Anyone else → **1** (attack) if a living selected member is in the combat stance; else **5** (talk) if it has a dialogue (`+0xD0` ≠ `0xFF`, `0x00A3E754` clear, hero not in stance); else **3** (barred circle).
 * Nothing under the mouse: **7** over a visible pile on a free cell; **3** over a cell someone occupies; else the hand.
-* **6** (flame): a selected member in the stance with a bow, arrows and quiver item `+2` = 0, while the mouse is over a settlement building (`0x00A3E6A4` record `+0x22` bit 1); not ported.
+* **6** (flame), checked first: a selected member in the stance with a bow, arrows and quiver item `+2` = 0, while the mouse is over a settlement building (`0x00A3E6A4`, placement `+0x22` bit 1). Port `fireReady` ([buildings](konung_buildings.md#setting-a-building-on-fire)).
 
 The sprite numbers, dimensions, payload lengths, offsets, and visible image contents above were checked against the resource bytes by decoding the leading Type 5 blocks. The runtime meaning of each pictured marker is still unknown. An external [Konung GRAPH.RES extractor source](https://www.ctpax-x.org/index.php?goto=files&show=147&view=sources/kngrpres.c) independently supports the 256×256 palette-before-blocks layout.
 

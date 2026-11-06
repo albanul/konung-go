@@ -195,3 +195,34 @@ func (g *Game) voevodaPass(s *Settlement, t *resfmt.ExeTables) {
 		g.Entities[id] = m
 	}
 }
+
+// IgniteChance is the percent roll (rand() % 100 < 21) with which an arrow
+// that hits the targeted building sets it on fire (0x004213DC).
+const IgniteChance = 21
+
+// ArrowOnBuilding is the arrow flight's building hit (0x0042138A): the
+// first building record of s on placement p catches fire on a 21 % roll
+// (state 3, timer 1: it burns down in the next passes). found reports a
+// record; the caller then angers the village and alarms it (+0x4B2 |=
+// 0x15, 0x004248A0) whatever the roll.
+func (g *Game) ArrowOnBuilding(s *Settlement, p int, rand func(int) int) (found bool) {
+	for r := range s.buildingCount() {
+		b := s.building(r)
+		if int(binary.LittleEndian.Uint16(b[2:])) != p {
+			continue
+		}
+		if rand(100) < IgniteChance {
+			b[1] = BuildingStanding
+			binary.LittleEndian.PutUint16(b[6:], 1)
+		}
+		return true
+	}
+	return false
+}
+
+// Incendiary reports incendiary arrows in e's quiver (item +2 = 0): the
+// bow order may then target a settlement building (0x00423C39).
+func (g *Game) Incendiary(e Entity) bool {
+	it, ok := g.Item(e.Quiver)
+	return ok && it.Special == 0
+}

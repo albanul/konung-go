@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/mapdata"
 )
 
 // TestBuildingSpriteFollowsState: a building of «Родники» turned into a
@@ -38,5 +39,79 @@ func TestBuildingSpriteFollowsState(t *testing.T) {
 		if s.objects[i].depth < s.objects[i-1].depth {
 			t.Fatal("objects out of depth order")
 		}
+	}
+}
+
+// TestArrowsSetBuildingOnFire: the hero shooting at the elder's house of
+// «Родники» (the burn order of incendiary arrows) hits its image, angers
+// and alarms the village, and on a 21 % roll sets the house burning; the
+// settlement pass then turns it into a burning sprite.
+func TestArrowsSetBuildingOnFire(t *testing.T) {
+	s := newVolkScene(t)
+	g := s.game
+	st := g.SettlementOnMap(s.mapNumber)
+	b := st.Raw[0x18 : 0x18+8] // record 0, the elder's house
+	p := int(binary.LittleEndian.Uint16(b[2:]))
+	o := s.buildingObject(p)
+	if o == nil {
+		t.Fatalf("placement %d is not a building object", p)
+	}
+	f := o.frames[0]
+	bb := o.building.Bounds()
+	cx, cy := f.x+bb.Dx()/2, f.y+bb.Dy()*3/4
+	if !o.buildingHit(cx, cy) {
+		t.Fatal("no opaque pixel at the house's centre")
+	}
+	target := mapdata.CellAt(cx, cy)
+	bow, arrows := 0, 0
+	for i := 1; i < 8192 && (bow == 0 || arrows == 0); i++ {
+		if it, ok := g.Item(i); ok && it.Category == gamestate.CatBow && bow == 0 {
+			bow = i
+		} else if ok && it.Category == gamestate.CatArrows && it.Count >= 20 && arrows == 0 {
+			arrows = i
+		}
+	}
+	hero := &s.party[0]
+	hero.Equipment[gamestate.WeaponBow], hero.Quiver = bow, arrows
+	gamestate.SelectWeapon(hero, gamestate.WeaponBow)
+	gamestate.EnterStance(hero)
+	s.hero.cell = mapdata.Cell{Row: target.Row + 14, Col: target.Col}
+	s.hero.path, s.hero.walking = nil, false
+	s.hero.look = lookOf(*hero)
+
+	// Without incendiary arrows a right click on the house does nothing.
+	s.hoveredBuilding = p + 1
+	from := s.hero.cell
+	s.click(hero, viewLeft+100, viewTop+100, 0, true)
+	if s.burnTarget != 0 || s.hero.walking || len(s.hero.path) > 0 || s.hero.cell != from {
+		t.Fatal("plain arrows: the click gave an order")
+	}
+
+	s.endFight()
+	s.burnTarget, s.shoot, s.targetCell = p+1, true, target
+	shots := 0
+	for i := 0; i < 4000 && s.shoot && binary.LittleEndian.Uint16(b[6:]) == 0; i++ {
+		n := len(s.arrows)
+		s.flyArrows()
+		s.heroTick()
+		if len(s.arrows) > n {
+			shots++
+		}
+	}
+	if shots == 0 {
+		t.Fatalf("no arrow was shot (shoot %v, act %d, cell %v, target %v)", s.shoot, s.hero.act, s.hero.cell, target)
+	}
+	if st.Flags&0x15 != 0x15 || g.Groups[st.Group].Alarm != gamestate.AlarmAttack {
+		t.Errorf("village not angered: flags %#x alarm %d", st.Flags, g.Groups[st.Group].Alarm)
+	}
+	if b[1] != gamestate.BuildingStanding || binary.LittleEndian.Uint16(b[6:]) != 1 {
+		t.Fatalf("after %d shots: record %v (shoot %v)", shots, b, s.shoot)
+	}
+	t.Logf("caught fire after %d shots", shots)
+	img := o.frames[0].img
+	s.game.SettlementPass(s.tables, hero.Index, s.mapNumber, false)
+	s.updateBuildings()
+	if b[1] != 4 || s.buildingObject(p) == nil || s.buildingObject(p).frames[0].img == img || len(s.buildingObject(p).flames) == 0 {
+		t.Errorf("not burning after the pass: %v", b)
 	}
 }

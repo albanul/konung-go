@@ -86,24 +86,43 @@ func pointCell(x, y float64) mapdata.Cell {
 // range·8 sub-steps, 0 when it meets an arrow-blocking cell, another
 // occupant first, or falls short. occupied reports cells someone stands on.
 func LineOfFire(from mapdata.Cell, dir int, to mapdata.Cell, rangeCells int, blocked, occupied func(mapdata.Cell) bool) int {
+	r, _ := LineOfFireBuilding(from, dir, to, rangeCells, blocked, occupied, nil)
+	return r
+}
+
+// LineOfFireBuilding is 0x0041130C with a building as the target (+6 < 0):
+// at an arrow-blocking cell the ray hits when building(x, y) reports an
+// opaque pixel of the building's image at the point (x, y + 30)
+// (0x0043F89C); the aim then moves to that cell (+0x0C/+0x0E = aim). A nil
+// building is the character case: blocking cells stop the ray.
+func LineOfFireBuilding(from mapdata.Cell, dir int, to mapdata.Cell, rangeCells int, blocked, occupied func(mapdata.Cell) bool, building func(x, y int) bool) (int, mapdata.Cell) {
 	if Dist(to.Row, to.Col, from.Row, from.Col) < 3 {
-		return -1
+		return -1, to
 	}
 	x, y, vx, vy := ray(from, dir, to)
 	for range rangeCells * ArrowSubSteps {
 		c := pointCell(x, y)
 		switch {
 		case c == to:
-			return 1
+			return 1, to
 		case blocked(c):
-			return 0
+			if building != nil {
+				if px, py := ArrowPoint(x, y); building(px, py) {
+					return 1, c
+				}
+			}
+			return 0, to
 		case occupied(c):
-			return 0
+			return 0, to
 		}
 		x, y = x+vx, y+vy
 	}
-	return 0
+	return 0, to
 }
+
+// ArrowPoint is the pixel an arrow point is tested at (0x00592CE4 and
+// 0x00592CF0: the truncated position, 30 px lower).
+func ArrowPoint(x, y float64) (int, int) { return int(x), int(y) + arrowAimLift }
 
 // Shoot is 0x0041BFF8 at the shot step: an arrow from shooter s (on cell
 // from, facing dir) toward cell to. The quiver loses one arrow (the item is

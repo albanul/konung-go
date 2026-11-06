@@ -96,7 +96,7 @@ A bow shot spawns a **projectile**. The hit is decided by what the arrow flies i
 
 * **Order** (`0x00423BB8`): right click with slot `+0x12` = 1, a bow `+0x68`, a quiver `+0xCC` and the stance.
   * On a character: `+6` = index+1, `+2` = `0x44`.
-  * On a settlement building: only with incendiary arrows (quiver item `+2` = 0). `+6` = −(object index + 1), and `+0x0C/+0x0E` = the clicked cell.
+  * No character under the cursor: with incendiary arrows (quiver item `+2` = 0) `+6` = −(hovered building placement + 1) and `+0x0C/+0x0E` = the clicked cell; otherwise nothing. See [buildings: fire](konung_buildings.md#setting-a-building-on-fire).
   * The A order sets `+2` = `0x44` when the bow is active.
 * **Planner** `0x0041ED8C` (bit `0x04`): without bow, quiver or slot 1 → drop the bit and go idle. With no target, `0x00410E84` takes the **first** living member of the enemy group (`0x0041FD74`) with a clear line. Then:
   * `0x0041130C` > 0 → action 4;
@@ -134,7 +134,7 @@ A bow shot spawns a **projectile**. The hit is decided by what the arrow flies i
 
   The bow loses 0.1 condition per shot and is destroyed at ≤ 0.
 * **Flight** `0x00421170`, every game tick before the AI: lifetime − 1 (removed at 0), then 8 sub-steps (32 px per tick). At each point (x, y + 30):
-  * A cell with `0xC000` → removed. A building hit with incendiary arrows → that building's record `+1` = 3, `+6` = 1 on a 21 % roll; the village gets angry (below) and is alarmed.
+  * A cell with `0xC000` → removed. If the shooter's target is a building and the point is on its image: that building's record `+1` = 3, `+6` = 1 on a 21 % roll, and the village gets angry (below) and is alarmed ([buildings: fire](konung_buildings.md#setting-a-building-on-fire)).
   * An occupant other than the shooter → victim V. If V is not in the hero's group: a village V angers its village (`+0x4B2 |= 0x15`), and V's group is alarmed (`0x004248A0`). A dead V lets the arrow pass. Otherwise:
     * attack = `0x0041ACE0`: the slayer special's value (`0x0046238C` + s·64: `+0x2C` value, `+0x2E` target kind) when the arrow's special matches V's kind, else the arrow's gear value; times the bow value; then the `+0xC6` bonus;
     * damage = `0x0041C29C(V, attack)`, which is `0x0041C480` without god mode, the facing condition and weapon wear (dodge roll ≤ trunc(Лов·0.5); poison += the arrow's `+0xC`);
@@ -239,7 +239,7 @@ Settlement byte `+0x4B2` (`Settlement.Flags`):
 Engine-free rules live in `gamestate`:
 * `combat.go`: melee, `Damage`/`applyDamage`, `Kill`.
 * `creature.go`: alarm, tactics, revival.
-* `bow.go`: `CanShoot`, `LineOfFire`, `Shoot`, `Arrow.Fly`, `ArrowAttack`, `ArrowDamage`, `KillByArrow`, `ReEquip`.
+* `bow.go`: `CanShoot`, `LineOfFire`, `LineOfFireBuilding`, `Shoot`, `Arrow.Fly`, `ArrowAttack`, `ArrowDamage`, `KillByArrow`, `ReEquip`.
 * `loot.go`: `DropLoot`, `RaiseCost`, `GainExperience`.
 * `levels.go`: the character window's raise column (`RaiseCosts`, `Raise`, `ToggleAutoLevel`).
 * `anger.go`: `InitSettlementFlags`, `Anger`, `VillageAlarm`, `Surrenders`.
@@ -269,8 +269,6 @@ Approximations:
 * The party is the hero alone, so every target selector resolves to the hero.
 
 Not ported:
-* incendiary arrows and buildings (burning, the map-exit gate);
-* tribute, loans and the village economy;
 * the surrender film;
 * item use and the healer (the only HP gains);
 * the character window's raise buttons (`RaiseCost` is ready for them).
@@ -278,6 +276,5 @@ Not ported:
 ## Open questions
 
 * Grid bits `0xC000` (obstacle kinds); the incendiary glow buffer `0x005B0010`; `0x004104D4` (equip best), `0x00418364` (usable).
-* Settlement buildings: what sets a standing building on fire (the burn stages and rebuilding are ported, [buildings](konung_buildings.md)), building 5 (types 14/15) as the map-exit gate.
 * The god-mode toggle `0x00436E93`; kind `0x49` retreat `0x004101E4`; HUD feedback `0x0042D574`; field `+0x11` (walk throttle), `+0x14`.
 * Films `GAMEOVER.FLM`, `DEFEAT<n>.FLM` (`0x0042B690`), not in the installed files.

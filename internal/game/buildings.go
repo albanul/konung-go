@@ -7,6 +7,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 )
 
@@ -47,6 +48,7 @@ func (s *startScene) placeObjects(placements []mapdata.Placement, where string, 
 		img, sh := upload(sp.Image, sp.Shadow)
 		out = append(out, sceneObject{
 			placement: sorted[i].Index,
+			building:  buildingImage(sorted[i]),
 			frames:    []sceneFrame{{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY, raw: sp.Raw}},
 			depth:     sp.Depth,
 			flames:    s.newFlames(sp.Flames),
@@ -85,4 +87,65 @@ func (s *startScene) updateBuildings() {
 		a, b := s.objects[i], s.objects[j]
 		return a.depth < b.depth || a.depth == b.depth && a.placement < b.placement
 	})
+}
+
+// buildingImage keeps the image of a settlement building placement (flag
+// bit 0x01, tested by the hover 0x004270A6 and the arrows 0x0041EF56).
+func buildingImage(p mapdata.SortedPlacement) *image.RGBA {
+	if p.Flags&0x01 == 0 {
+		return nil
+	}
+	return p.Object.Image
+}
+
+// buildingObject returns the scene object of placement p, or nil.
+func (s *startScene) buildingObject(p int) *sceneObject {
+	for i := range s.objects {
+		if o := &s.objects[i]; o.placement == p && o.building != nil {
+			return o
+		}
+	}
+	return nil
+}
+
+// buildingHit is 0x0043F89C for a building: world pixel (x, y) is an
+// opaque pixel of its drawn image.
+func (o *sceneObject) buildingHit(x, y int) bool {
+	f := &o.frames[0]
+	b := o.building.Bounds()
+	p := image.Pt(x-f.x+b.Min.X, y-f.y+b.Min.Y)
+	return p.In(b) && o.building.RGBAAt(p.X, p.Y).A != 0
+}
+
+// buildingUnderCursor is 0x00A3E6A4 as the object draw pass leaves it: the
+// last drawn (front-most) visible building with an opaque pixel under the
+// cursor, as placement + 1 (0 = none).
+func (s *startScene) buildingUnderCursor() int {
+	mx, my := ebiten.CursorPosition()
+	if !inView(mx, my) {
+		return 0
+	}
+	found := 0
+	for i := range s.objects {
+		o := &s.objects[i]
+		if o.building == nil {
+			continue
+		}
+		f := &o.frames[0]
+		if s.visible(f.x, f.y, f.img.Bounds().Dx(), f.img.Bounds().Dy()) && o.buildingHit(mx+s.camX, my+s.camY) {
+			found = o.placement + 1
+		}
+	}
+	return found
+}
+
+// fireReady is the cursor test of 0x00428AF3 for the selection (the
+// port's: the hero): in the map's settlement, alive and able to act, in
+// the stance with the bow active, a bow and incendiary arrows.
+func (s *startScene) fireReady() bool {
+	if len(s.party) == 0 || s.game.SettlementOnMap(s.mapNumber) == nil {
+		return false
+	}
+	h := s.party[0]
+	return !h.Dead() && h.Type != 9 && h.Type != 3 && h.InStance() && gamestate.CanShoot(h) && s.game.Incendiary(h)
 }

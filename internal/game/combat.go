@@ -139,7 +139,7 @@ func (s *startScene) startFight(target int) {
 // endFight drops the hero's target and intent (a new walk order, the target
 // dead or gone).
 func (s *startScene) endFight() {
-	s.target, s.melee, s.shoot = -1, false, false
+	s.target, s.melee, s.shoot, s.burnTarget = -1, false, false, 0
 	if s.hero != nil {
 		s.hero.stopAt = nil
 		if s.hero.act == gamestate.ActAttack {

@@ -8,8 +8,8 @@ import (
 
 // Bows (docs/konung_combat.md#bows-verified): the shoot intent (+2 bit
 // 0x04), the line-of-fire test, the shot (action 4) that spawns an arrow,
-// and the arrows' flight and hits. Buildings as targets (incendiary arrows)
-// are not ported.
+// and the arrows' flight and hits, including a settlement building as the
+// hero's target (incendiary arrows, burnTarget).
 
 const intentShoot = 0x04
 
@@ -59,6 +59,10 @@ func (s *startScene) heroShoot() {
 		s.endFight()
 		return
 	}
+	if s.burnTarget != 0 {
+		s.shootBuilding(h, hero)
+		return
+	}
 	if s.target < 0 {
 		s.target = s.firstShootable(h, hero)
 		if s.target < 0 {
@@ -78,6 +82,30 @@ func (s *startScene) heroShoot() {
 	default: // too close, blocked or out of range: the hero drops the order
 		s.endFight()
 	}
+}
+
+// shootBuilding is the planner's building branch (0x0041EF10): without a
+// settlement on the map, or when the line of fire misses the building, the
+// order ends; a hit moves the aim to the building cell the ray met and
+// shoots.
+func (s *startScene) shootBuilding(h *walker, hero *gamestate.Entity) {
+	o := s.buildingObject(s.burnTarget - 1)
+	bow, ok := s.game.Item(hero.Equipment[gamestate.WeaponBow])
+	if s.game.SettlementOnMap(s.mapNumber) == nil || o == nil || !ok {
+		s.endFight()
+		return
+	}
+	occupied := s.occupants()
+	r, aim := gamestate.LineOfFireBuilding(h.cell, int(h.dir), s.targetCell, s.tables.GearRange(bow.Type),
+		func(c mapdata.Cell) bool { return s.walk.ArrowBlocked(c.Row, c.Col) },
+		func(c mapdata.Cell) bool { _, ok := occupied[c]; return ok },
+		o.buildingHit)
+	if r <= 0 {
+		s.endFight()
+		return
+	}
+	s.targetCell = aim
+	h.startAct(gamestate.ActShoot)
 }
 
 // firstShootable is 0x00410E84: the enemy group (0x0041FD74, here the group
@@ -146,7 +174,13 @@ func (s *startScene) flyArrows() {
 	for i := range s.arrows {
 		a := &s.arrows[i]
 		hit, gone := a.Fly(
-			func(c mapdata.Cell) bool { return s.walk.ArrowBlocked(c.Row, c.Col) },
+			func(c mapdata.Cell) bool {
+				if !s.walk.ArrowBlocked(c.Row, c.Col) {
+					return false
+				}
+				s.arrowOnBuilding(a)
+				return true
+			},
 			func(c mapdata.Cell) int {
 				v, ok := occupied[c]
 				if !ok || v == a.Shooter {
@@ -169,6 +203,27 @@ func (s *startScene) flyArrows() {
 		}
 	}
 	s.arrows = kept
+}
+
+// arrowOnBuilding is the blocked-cell branch of the flight (0x0042135D):
+// when the shooter's target is a building and the arrow point is on its
+// image, that building may catch fire and its village turns hostile and is
+// alarmed (gamestate.ArrowOnBuilding).
+func (s *startScene) arrowOnBuilding(a *gamestate.Arrow) {
+	if len(s.party) == 0 || a.Shooter != s.party[0].Index || s.burnTarget == 0 {
+		return
+	}
+	st := s.game.SettlementOnMap(s.mapNumber)
+	o := s.buildingObject(s.burnTarget - 1)
+	if st == nil || o == nil {
+		return
+	}
+	if x, y := gamestate.ArrowPoint(a.X, a.Y); !o.buildingHit(x, y) {
+		return
+	}
+	if s.game.ArrowOnBuilding(st, s.burnTarget-1, s.rng.IntN) {
+		s.provoke(st.Group)
+	}
 }
 
 // arrowHit applies an arrow to entity v (0x0041ACE0, 0x0041C29C).

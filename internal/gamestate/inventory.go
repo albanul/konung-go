@@ -42,6 +42,7 @@ const (
 	CursorAttack  = 1 // crossed swords: a living selected member is in the combat stance
 	CursorBlocked = 3 // red barred circle: a character without dialogue, or an occupied cell
 	CursorTalk    = 5 // parchment: a character with a dialogue (+0xD0 ≠ 0xFF), no one in the stance
+	CursorFire    = 6 // flame: a settlement building under the cursor and a selected member ready to shoot incendiary arrows (0x00428AF3)
 )
 
 // EquipAmmo is the slot argument of the ammunition box (entity +0xCC) in
