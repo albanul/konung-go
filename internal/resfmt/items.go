@@ -131,6 +131,7 @@ func (t *ExeTables) GearRequirement(typ int) (stat, min int) {
 // Enchant is an entry of the enchantment table 0x00458590 (16 bytes), indexed
 // by item byte +1 or entity bytes +0xD2/+0xD3.
 type Enchant struct {
+	Value           int // +0 int16: added to the item's price (0x0041B348)
 	ReqStat, ReqMin int // +2, +3: required stat (StatGetter id) and minimum; ReqMin 0 = none
 	Effects         [3]EnchantEffect
 }
@@ -145,7 +146,7 @@ const enchantTableVA = 0x00458590
 // Enchant returns enchantment i (i ≥ 0).
 func (t *ExeTables) Enchant(i int) Enchant {
 	b := t.at(enchantTableVA + i*16)
-	e := Enchant{ReqStat: int(b[2]), ReqMin: int(b[3])}
+	e := Enchant{Value: int(int16(binary.LittleEndian.Uint16(b))), ReqStat: int(b[2]), ReqMin: int(b[3])}
 	for k := range e.Effects {
 		r := b[4+k*4:]
 		e.Effects[k] = EnchantEffect{Stat: int(r[0]), Mask: int(r[1]), Value: int(int16(binary.LittleEndian.Uint16(r[2:])))}
@@ -236,4 +237,18 @@ func (t *ExeTables) Recipes() []Recipe {
 			Skill: int(int8(b[4])), Mode: int(b[5])}
 	}
 	return r
+}
+
+// ItemPrice is an item type's base price (0x0041B348): int16 at gear record
+// +0x36, at +0x78 in the other tables.
+func (t *ExeTables) ItemPrice(table, typ int) int {
+	va := t.itemRecord(table, typ)
+	if va < 0 {
+		return 0
+	}
+	off := 0x78
+	if table == ItemTableGear {
+		off = 0x36
+	}
+	return int(int16(binary.LittleEndian.Uint16(t.at(va + off))))
 }

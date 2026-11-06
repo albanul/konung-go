@@ -40,7 +40,7 @@ The pile draw is part of the terrain pass, after the terrain and decorations and
 * **The shovel.** Right-clicking «Лопата» in the bag (misc use `0x00414E64`, case 24 at `0x00415504`) closes the window, plays sound 10 and sets cursor mode `0x00A3E790` = 7 (dig cursor, sprite 7). The next left or right click resets the mode (`0x0042296C`, `0x004238FB`, `0x00423412`) and proceeds as usual, so digging is a right click on the spot. The arrival check above only requires the shovel to be **in the bag**: the code doesn't check the dig mode. A right click on a buried pile's cell digs it up even without activating the shovel. Otherwise a map exit on that cell is taken (`0x00421BB8`, see [GAME.N](konung_game_format.md#file-layout-verified)).
 * **Pick-up** (`0x004110EC`), skipped while the member's character window is open:
   * The pile's gold goes to the hero, and the pile's gold becomes 0.
-  * Then each item goes to the front of the picker's bag (`0x00424918` logic), until the bag is full («Мешок у тебя не резиновый!») or the weight would exceed the maximum («Превышен вес»). In those cases the game opens the pile window (`0x004170A0`, not ported; the port leaves the rest in the pile).
+  * Then each item goes to the front of the picker's bag (`0x00424918` logic), until the bag is full («Мешок у тебя не резиновый!») or the weight would exceed the maximum («Превышен вес»). In those cases the game opens the pile window (`0x004170A0`, [trade](konung_trade.md#entry-points), ported), where bag items and the pile's items can be swapped.
   * A record with index 0 is special: it runs a script (`0x0042B690(0x00450004)`, not ported).
 * **Removal and respawn** (`0x0041093C`): the cell flag is cleared and the copy dropped from the active list.
   * If the record held exactly one item of category 9, type 1 «Земляной орех» or type 2 «Белый корень», the game allocates a free item record (`0x004399AC`: first index ≥ 1 with a negative category), copies the item into it, stores it as the record's item and sets `+0 = +4 = −time`. The herb is back on the next map load at least 5400 ticks later.
@@ -50,5 +50,5 @@ The pile draw is part of the terrain pass, after the terrain and decorations and
 
 ## Open questions
 
-* `0x004170A0` (the pile window), the index-0 script pile.
+* The index-0 script pile.
 * Whether berries other than «Белый корень» exist as respawning piles on other maps. Only types 1 and 2 respawn.

@@ -126,8 +126,8 @@ func (g *Game) CanPickUp(p Pile, hero Entity) bool {
 // PickUp is 0x004110EC for picker e (the hero's gold receives the pile's
 // gold; in the port picker and hero are the same entity). Items move one by
 // one to the front of e's bag until the weight limit or a full bag stops it
-// (message returned; the rest stays in the pile, where the game would open
-// the pile window 0x004170A0, not ported). An emptied pile is removed
+// (message returned; the rest stays in the pile and the caller opens the
+// pile window 0x004170A0, OpenPileTrade). An emptied pile is removed
 // (0x0041093C); a single «Земляной орех» or «Белый корень» (category 9,
 // type 1 or 2) instead gets a fresh copy of the item and a respawn timer.
 // It reports a message VA (0 = none) and whether the pile was removed.
@@ -154,15 +154,22 @@ func (g *Game) PickUp(e *Entity, t *resfmt.ExeTables, pile, now int) (msg int, r
 		copy(p.Items[:], p.Items[1:])
 		p.Items[pileMaxItems-1] = 0
 	}
-	// 0x00410973: the record still holds what the map loader copied.
+	g.removePile(pile, orig, now)
+	return 0, true
+}
+
+// removePile is the removal 0x0041093C of an emptied pile. orig is the
+// pile as the map loader copied it (0x00410973 reads the record, not the
+// active copy): a record that held exactly one «Земляной орех» or «Белый
+// корень» gets a fresh copy of it and a respawn timer.
+func (g *Game) removePile(pile int, orig Pile, now int) {
+	p := &g.Piles[pile]
 	if it, ok := g.Item(orig.Items[0]); ok && orig.Index >= 0 && orig.Items[1] == 0 && it.Category == 9 && (it.Type == 1 || it.Type == 2) {
 		if fresh := g.allocItem(orig.Items[0]); fresh != 0 {
 			p.Taken, p.TakenRef = -now, -now
 			p.Items[0] = fresh
-			return 0, true
 		}
 	}
-	return 0, true
 }
 
 // allocItem is 0x004399AC followed by a copy of item src: the first free

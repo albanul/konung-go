@@ -99,6 +99,7 @@ type startScene struct {
 	font   *gameFont // small status-line font (resfmt.FontSmallVA)
 	inv    *charWindow
 	talk   *talkWindow    // dialogue (window 1) and quest log (window 2), dialogue.go
+	trade  *tradeWindow   // trade and pile window (window 7), trade.go
 	hand   gamestate.Hand // item being moved in the character window
 	msg    []byte         // status-line message (0x0042F9B8) and when it ends
 	msgEnd int
@@ -324,12 +325,13 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		s.moon, s.dayNight, s.shadows, s.lighting = prev.moon, prev.dayNight, prev.shadows, prev.lighting
 		s.transparency = prev.transparency
 		s.inv, s.hand, s.follow, s.speed = prev.inv, prev.hand, prev.follow, prev.speed
-		s.talk = prev.talk
+		s.talk, s.trade = prev.talk, prev.trade
 		s.tick, s.frame, s.msg, s.msgEnd = prev.tick, prev.frame, prev.msg, prev.msgEnd
 		s.shadowLayer = prev.shadowLayer
 	} else {
 		s.inv = newCharWindow(a.hud, tables, a.largeFont, a.font)
 		s.talk = newTalkWindow(tables, a.quests, a.font)
+		s.trade = newTradeWindow(tables, s.inv.strip, a.font, a.largeFont)
 	}
 	// Only upload tiles the map references; slot 304 is a large non-tile image.
 	useTile := func(slot int) {
@@ -482,6 +484,11 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		s.byEntity[p.Index] = n
 	}
 	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
+	// 0x0043CB8B: the map's settlement restocks (healer jars, merchant);
+	// the loader does this on every load, a restored save included.
+	if prev == nil || prev.mapNumber != mapNumber {
+		game.Restock(mapNumber, game.Groups[0].First, tables, s.rng.IntN)
+	}
 	if restore != nil {
 		s.restoreSaved(*restore)
 	}
@@ -544,6 +551,14 @@ func (s *startScene) updateControls(mx, my int) {
 	hero := &s.party[0]
 	left := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
 	right := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight)
+	if s.trade.open() {
+		// Window 7: its strips and buttons (and the portraits) are the
+		// only hotspots (0x004392F4).
+		if left {
+			s.tradeClick(mx, my)
+		}
+		return
+	}
 	if s.talk.d != nil {
 		// Window 1: the hit test offers only the replies (0x0043968F); the
 		// click handler ignores everything else (0x00422EF5).
@@ -748,6 +763,14 @@ func (s *startScene) statusText() []byte {
 	if s.frame < s.msgEnd {
 		return s.msg
 	}
+	if s.trade.open() {
+		// 0x004241A1: the item under the mouse in window 7.
+		mx, my := ebiten.CursorPosition()
+		if i := s.trade.itemAt(mx, my); i != 0 {
+			return s.game.ItemDescription(s.tables, i)
+		}
+		return nil
+	}
 	if s.talk.open() {
 		return nil // 0x00424054 shows the hover line only with no window open
 	}
@@ -829,7 +852,7 @@ func (s *startScene) showMessage(m []byte) { s.msg, s.msgEnd = m, s.frame+messag
 // (characterCursor, piles, occupied cells).
 func (s *startScene) cursorSprite() int {
 	mx, my := ebiten.CursorPosition()
-	if !inView(mx, my) || s.inv.open || s.talk.open() || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
+	if !inView(mx, my) || s.inv.open || s.talk.open() || s.trade.open() || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
 		return s.hand.Cursor
 	}
 	if s.hovered >= 0 && len(s.party) > 0 {
@@ -904,6 +927,9 @@ func (s *startScene) escape() bool {
 		s.hand.Return(&s.party[0])
 	}
 	switch {
+	case s.trade.open():
+		s.trade.tr = nil // closes without applying: nothing changed yet
+		return false
 	case s.talk.d != nil:
 		return false // 0x00437451: Escape does nothing in window 1
 	case s.talk.log:
@@ -1016,7 +1042,7 @@ func (s *startScene) visible(x, y, w, h int) bool {
 func (s *startScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 	s.updateLight()
-	window := s.inv.open || s.talk.open()
+	window := s.inv.open || s.talk.open() || s.trade.open()
 	if s.tiling && window {
 		// 0x0042AE68: with background tiling («T», 0x00A3E744) an open
 		// window hides the world; the window tiles INTR slot 5 behind it.
@@ -1040,6 +1066,9 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		s.inv.drawQuick(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
 	}
 	s.talk.draw(screen, s.hud, s.game, s.tiling, s.inv.strip.y)
+	if s.trade.open() {
+		s.trade.draw(screen, s.hud, s.game, s.tables, s.tiling)
+	}
 	if text := s.statusText(); text != nil {
 		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.
 		s.font.drawWrapped(screen, text, viewLeft+10, viewBottom+5, viewRight-viewLeft-15)

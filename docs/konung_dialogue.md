@@ -1,6 +1,6 @@
 # Dialogues and quests (`QUESTR.RES`)
 
-Status: the file layout, the dialogue engine (open, branch, lines, replies, conditions, actions, quest flags), the dialogue window, the quest log and every script function used by the data are traced against `konung.exe` and checked against the file. Ported: `resfmt.ParseQuests` (decoder), `gamestate.Talk` (engine and script functions, `dialogue.go`, `scriptfuncs.go`, `scriptvillage.go`), `game.talkWindow` (windows 1 and 2, `internal/game/dialogue.go`). Not ported: the trade window (script 275), building completion, `SPEECHS.RES` voices.
+Status: the file layout, the dialogue engine (open, branch, lines, replies, conditions, actions, quest flags), the dialogue window, the quest log and every script function used by the data are traced against `konung.exe` and checked against the file. Ported: `resfmt.ParseQuests` (decoder), `gamestate.Talk` (engine and script functions, `dialogue.go`, `scriptfuncs.go`, `scriptvillage.go`), `game.talkWindow` (windows 1 and 2, `internal/game/dialogue.go`). Not ported: building completion, `SPEECHS.RES` voices. Script 275 opens the [trade window](konung_trade.md).
 
 Validation: `resfmt.TestParseQuests`, `TestDialogueLayout`; `gamestate.TestDialogueElder` (the elder of «Родники» through the Amulet chain), `TestDialogueRoles`, `TestQuestLog`, `TestScriptMoney`, `TestRecruitAndDismiss`; `game.TestRightClickTalks` (right click opens the dialogue and the hero does not move), `TestHireRebuildsScene`.
 
@@ -98,7 +98,7 @@ Q or HUD button 5 «Информация к размышлению (Q)» (hotspo
 | 166–219 | `0x004359D4(type = id − 166)`: new quest item to the front of H's bag (`0x00424918`), else on the ground (`0x004138C8`) |
 | 220–273 | `0x00434C90(type = id − 220)`: H's bag holds it (returns slot + 1) |
 | 274 | N's group alarm `+0x1D` = 1; if it is S's village group, S `+0x4B2 \|= 0x15` (the port also sets the group's enemy to the party) |
-| 275 | open the trade window **(not ported)**. Village posts 1–3 sell S's stock (`+0x412` 24, `+0x444` 32, `+0x484` 23 item ids; weapons hidden with bit `0x04`), others barter with their own gold and bag; buying power = gold + 10 per «Неразменный пятак» (misc type `0x20`); then `0x00431D70(0)` |
+| 275 | open the [trade window](konung_trade.md) (`0x00432FD0`): village posts 1–3 sell S's stock, others barter with their own gold and bag |
 | 276 | H `+0xD3` = 70 (blessing: Хар +10, needs Вын ≥ 30) |
 | 277 | `rand() % 100 < 50` |
 | 278–281 | party has a warrior / healer / smith / merchant: `0x004323B0(4/1/3/2)`, members after the hero, alive, with role bits `+4 & 0x38` = k·8 or healing `+0x48` > 100 (k 1), trade `+0x42` > 30 (2), smithing `+0x4C` > 4 (3), Сил `+0x5E` > 10 and fencing `+0x40` > 10 (4) |
@@ -151,8 +151,7 @@ Unused by the data: 285, 292 (a jewel into the bag), 293, 295, 306, 323, 327, 35
 
 ## Open questions
 
-* The trade window `0x00431D70` (script 275) and its globals (`0x00A3E76C`, `0x00A3E7C8`, `0x00A3E7CC`, `0x0083DC4C`, `0x0083DCCC`, `0x0083DD4C`).
-* The building countdown and completion in the settlement tick (`0x0041D9E6`–`0x0041DAFA`); tribute accrual (`+0x10`, `+0x14`).
+* The building countdown and completion in the settlement tick (`0x0041D939`, [trade: production](konung_trade.md#shop-stock-production)); tribute accrual is ported there.
 * `SPEECHS.RES` (not installed) and the deferred reply action while a voice plays.
 * The object substitution at map load from game state (`0x00458A62` area, [map format](konung_map_format.md)) that quest progress may drive.
 * Entity `+0xF8` (portrait variant written by 291) is not used by the port's HUD.

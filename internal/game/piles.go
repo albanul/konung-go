@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/resfmt"
 )
@@ -105,6 +106,9 @@ func (s *startScene) arrive() {
 	msg, removed := s.game.PickUp(&s.party[0], s.tables, i, s.gameTime())
 	if removed {
 		delete(s.pileAt, s.hero.cell) // 0x0041096C clears the cell's pile flag
+	}
+	if msg == gamestate.MsgBagFull || msg == gamestate.MsgTooHeavy {
+		s.openPileWindow(i) // 0x0041122A: the rest can be swapped in the pile window
 	}
 	if msg != 0 {
 		s.showMessage(s.tables.CString(msg))

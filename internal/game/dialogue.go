@@ -224,6 +224,10 @@ func (s *startScene) afterTalk(tk *gamestate.Talk, d *gamestate.Dialogue) {
 			s.party[k] = s.game.Entities[s.party[k].Index]
 		}
 	}
+	if tk.Events.Trade != nil {
+		d = nil // the trade replies end the dialogue; window 7 replaces it
+		s.trade.tr = tk.Events.Trade
+	}
 	s.talk.show(d)
 }
 

@@ -60,9 +60,10 @@ type Talk struct {
 // TalkEvents report what the scripts changed beyond the records, so the
 // scene can follow: party membership, fights, closing the window.
 type TalkEvents struct {
-	PartyChanged bool // a character joined or left the party
-	Hostile      bool // a group was alarmed (fight, 274/275)
-	Greeting     int  // greeting sound to play on open, 0 = none
+	PartyChanged bool   // a character joined or left the party
+	Hostile      bool   // a group was alarmed (fight, 274/275)
+	Greeting     int    // greeting sound to play on open, 0 = none
+	Trade        *Trade // script 275 opened the trade window (window 7)
 	Unported     []int
 }
 

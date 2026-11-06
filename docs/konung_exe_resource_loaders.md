@@ -98,6 +98,12 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0042DC50`, `0x0042DEDB`, `0x0042459C`, `0x0043969C` | routines | Dialogue window (window 1); quest log (window 2); quest log toggle (Q, HUD button 5); reply hit test | [dialogues](konung_dialogue.md) |
 | `0x00462EE4`, `0x0045B0AC`, `0x00458A30` | tables | Dialogue window layout per video mode; quest log scroll areas; building types (64 bytes: name, skill `+0x32`, OBJECTS id `+0x34`, build time `+0x36`) | [dialogues](konung_dialogue.md) |
 | `0x00A3E714`, `0x00A3E754` | globals | Ctrl held, Shift held (key handler `0x00437374`) | [dialogues](konung_dialogue.md#opening-0x004364f0) |
+| `0x00431D70`, `0x0042CCD4`, `0x00420634`, `0x004170A0`, `0x00432FD0` | routines | Window 7 draw; one trade strip; apply (accept/close); pile window; trade setup (script 275) | [trade](konung_trade.md) |
+| `0x0041768C`, `0x00417268`, `0x00417A58`, `0x00418F0C`, `0x00418014`, `0x0041D88A` | routines | Healer production; healer mix; smith production; map-load restock (jars, merchant); voevoda training; tribute accrual | [trade: production](konung_trade.md#shop-stock-production) |
+| `0x00417220`, `0x00417170` | routines | Gear style (fixed, random) by tribe | [trade: production](konung_trade.md#shop-stock-production) |
+| `0x0041B348`, `0x0041AEA0`, `0x0041B65C` | routines | Item price; sell price; buy price | [trade](konung_trade.md#prices) |
+| `0x0083DC4C`, `0x0083DD4C`, `0x00A3E76C`, `0x00A3E7C8`, `0x00A3E7CC`, `0x00A3E82C`, `0x00A3E830`, `0x00A3E850`, `0x00A3E854` | buffers, globals | Trade lists (4 × 32 words); scrolls; mode (pile index / ±post / 6); hero money; other money; hero coins; other coins; offer sum; take sum | [trade](konung_trade.md) |
+| `0x00465AB4`, `0x00465A54`, `0x00465B54` | tables | Trade strips, buttons, numbers (32 bytes each: 640 then 800) | [trade](konung_trade.md#window-0x00431d70) |
 | `0x004323B0`, `0x00432654`, `0x00432820`, `0x00432520` | routines | Party member fit for post k; install it at post k; hire the NPC; best building skill of a group | [dialogues](konung_dialogue.md#script-functions-verified) |
 | `0x0043756C` | table | Escape switch on screen state `0x00A3E6D8` (0 game, 1 menu, 2 new game, 4/5 load/save, 6 settings) | [menu](konung_menu.md#input-behavior-currently-implemented) |
 | `0x00437E50` | table | Main-menu click switch (6 cases: return, save, load, new, settings, exit) | [menu](konung_menu.md) |

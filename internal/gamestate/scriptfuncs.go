@@ -50,6 +50,7 @@ func init() {
 	}
 	scriptFuncs = map[int]func(*Talk) int{
 		274: (*Talk).attack,
+		275: func(t *Talk) int { t.Events.Trade = t.G.OpenTrade(t.Hero, t.Hero, t.NPC, t.Map); return 1 },
 		276: func(t *Talk) int { t.hero().Enchants[1] = enchantBlessing; return 1 },
 		277: func(t *Talk) int { return b2i(t.rand(100) < 50) },
 		278: partyRole(4), 279: partyRole(1), 280: partyRole(3), 281: partyRole(2),
