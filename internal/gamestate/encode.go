@@ -91,6 +91,9 @@ func (p Pile) encode(b []byte) {
 
 // encode writes the settlement's fields over a 0x4B5-byte record.
 func (s Settlement) encode(b []byte) {
+	if s.Raw != ([settlementStride]byte{}) {
+		copy(b, s.Raw[:])
+	}
 	b[1], b[2], b[3] = byte(s.Fence), byte(s.Group), byte(s.Map)
 	b[0x4B2] = s.Flags
 	for k, p := range s.Posts {

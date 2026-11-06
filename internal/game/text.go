@@ -45,3 +45,13 @@ func (g *gameFont) drawWrapped(dst *ebiten.Image, text []byte, x, y, width int) 
 		y += resfmt.LineHeight
 	}
 }
+
+// drawWrappedY draws like drawWrapped and returns y below the last line
+// (0x0042CBBC advances its y argument by 15 per line drawn).
+func (g *gameFont) drawWrappedY(dst *ebiten.Image, text []byte, x, y, width int) int {
+	for _, line := range g.font.Wrap(text, width) {
+		g.drawLine(dst, line, x, y)
+		y += resfmt.LineHeight
+	}
+	return y
+}

@@ -20,7 +20,7 @@ The name is `"KONUNG.SA0"` with the slot added to the last character (`0x00424EE
 | `0x0C` | 4 | — | hero entity index, `(0x00A3E694 − 0x007AB378) / 256` |
 | `0x10` | 4 | `0x00A3E7D8` | projectiles in flight |
 | `0x14` | 4 | `0x00A3E7E0` | active piles on the current map |
-| `0x18` | `0x4B0` | `0x00625068` | quest flags: 300 dwords, bit `0x80` set and tested by the dialogue code (`0x00435E38`). Initially the last `0x4B0` bytes of `QUESTR.RES`. `Game.Quests` |
+| `0x18` | `0x4B0` | `0x00625068` | quest flags: 300 dwords, bit `0x80` set and tested by the dialogue code (`0x00435E38`), `uint16 +2` = the quest-log text. Initially the last `0x4B0` bytes of `QUESTR.RES` ([dialogues](konung_dialogue.md#questrres-layout-verified)). `Game.Quests` |
 | `0x4C8` | `0xC80` | `0x0082C1F8` | projectiles, 100 × 32 bytes ([combat](konung_combat.md#bows-verified)). `gamestate.Arrow` |
 | `0x1148` | `0x20000` | `0x0067AC34` | items (`GAME.N` section 1) |
 | `0x21148` | `0x3200` | `0x007A6CDC` | active pile list, 200 × `0x40` (below) |
@@ -66,7 +66,7 @@ The slot under the mouse (hit test `0x004398C4` on the same table) is selected. 
 * Saving first writes the scene back into the game, as a map change does (`startScene.storeWorld`), plus the hero's live cell and facing.
 * The port's runtime piles on maps other than the current one (it keeps them across map changes; the game does not) are not in the active list, so a save drops them.
 * NPC runtime state that the port keeps outside the entity records is rebuilt from the records on load: walk paths, combat targets and intents.
-* `Game.Quests` and `Game.MiscUsed` are only carried through; nothing in the port reads them yet.
+* `Game.Quests` is read and written by the [dialogues](konung_dialogue.md) and listed by the quest log. `Game.MiscUsed` is only carried through.
 
 ## Open questions
 

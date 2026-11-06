@@ -66,5 +66,5 @@ Port: `startAudio` (from `game.New`) and `soundSystem.update` (each `Menu.Update
 
 ## Not ported
 
-* Dialogue sounds: the greeting when a dialogue opens (ids 12–15 at random without repeating, 16–19 for women and children, `0x004365EF`), and the voices of `SPEECHS.RES` (missing file). The port has no dialogues.
-* Window 5 and its HUD button / key (`0x00422C2C`, `0x00436EDA`), window 4 opened by misc type 20 (`0x004153CC`), the `0x0042459C` key and travel by item (`0x00415C6C`): those features are not ported.
+* The voices of `SPEECHS.RES` (missing file). The dialogue greeting (ids 12–15 at random without repeating, 16–19 for women and children, `0x004365EF`) is ported ([dialogues](konung_dialogue.md#opening-0x004364f0)); it is skipped, as in the game, when a shown line has speech.
+* Window 5 and its HUD button / key (`0x00422C2C`, `0x00436EDA`), window 4 opened by misc type 20 (`0x004153CC`) and travel by item (`0x00415C6C`): those features are not ported. The quest-log key `0x0042459C` (Q) plays the click.

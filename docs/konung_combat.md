@@ -197,10 +197,10 @@ Settlement byte `+0x4B2` (`Settlement.Flags`):
 | `0x80` | surrendered |
 
 * **Load** (`0x0043BD5C`): `0x10`, plus `0x04` for a fenced village (`+1` ≠ 0) of another tribe.
-* **Anger** `|= 0x15` (hostile + strangers + independent): a villager's hit reaction ending or death (step count − 2), whoever caused it (`0x0041658E`, `0x0041651C`); the party's melee swing at step 2; an arrow hitting a villager or a building; the dialogue's "attack" op.
+* **Anger** `|= 0x15` (hostile + strangers + independent): a villager's hit reaction ending or death (step count − 2), whoever caused it (`0x0041658E`, `0x0041651C`); the party's melee swing at step 2; an arrow hitting a villager or a building; the dialogue's "attack" op (script 274, which sets the flags only for the village group, [dialogues](konung_dialogue.md#script-functions-verified)).
 * **Who counts.** Only members of the village group itself (`+0x1E` bit `0x80`; the swing tests it at `0x00421F39`). Characters with a group of their own on the village map do not count; for example Путята (entity 536 on `KONUNG.1`, a one-member kind-`0x53` group with a dialogue). Hitting them alarms only their own group.
 * **Alarm** `0x004248A0` (hits, the swing's step 2): `+0x1D` = 1. Every member without the melee intent (and not of kind `0x49`) gets `+0x14` = `0xFF`, which ends its walk after the current step, so everyone decides at once (`startScene.alarmGroup`).
-* **Peace** `&= 0xEA`: surrender, a village without men, the dialogue's peace op.
+* **Peace** `&= 0xEA`: surrender, a village without men, the dialogue's vassal op (script 365, without `0x80`).
 * **Alarm check** `0x00416700`, every 16 ticks offset by 7 (`(time + 7) & 0xF` = 0, `0x0041D39F`) for the village on the current map. Without bits `0x05` → calm. Otherwise a living party member inside the village group's rectangle alarms it (`+0x1A` = party, `+0x1D` = 1) when bit `0x01` is set, or when bit `0x04` is set and the member is an armed stranger. Otherwise calm. Hostility outlives the alarm: the village re-attacks on re-entry.
 * **Alarmed villagers** (`0x00416934` → `0x00416DA6`):
   * Children and women (`+4` = `0x51`/`0x52`) never fight; they take random steps every tick (their flee routine `0x00413DC4` is a stub).

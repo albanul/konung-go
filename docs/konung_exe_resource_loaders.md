@@ -90,7 +90,15 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00424E34`, `0x004249AC`, `0x004314E0`, `0x0042D3DC` | routines | Save writer, save reader, load/save screen draw, `SAVE<width>R.RES` loader | [saves](konung_save_format.md) |
 | `0x0046203C`, `0x00674640`, `0x0083DF5C`, `0x00A3E7AC` | data, buffers, global | Save slot rectangles; slot names (`KONUNG.SAV`); the new save's name; selected slot | [saves](konung_save_format.md#save-and-load-screen) |
 | `0x0045B3F4` | data | Location names, 0x28 bytes, index map − 1 | [map format](konung_map_format.md#location-names-verified) |
-| `0x0043BDD5`, `0x00625068`, `0x00A3E0A8` | routine, buffers | `QUESTR.RES` loader; quest flags (its last `0x4B0` bytes); misc-item draw flags (56 bytes) | [saves](konung_save_format.md) |
+| `0x0043BDD5`, `0x00625068`, `0x00A3E0A8` | routine, buffers | `QUESTR.RES` loader (7 blocks); quest flags (its last `0x4B0` bytes); misc-item draw flags (56 bytes) | [dialogues](konung_dialogue.md), [saves](konung_save_format.md) |
+| `0x005D2D90`, `0x005F2190`, `0x005F23E8`, `0x00601DE8`, `0x00604CC8`, `0x00607BA8` | buffers | `QUESTR.RES` nodes, dialogue starts, string pool, condition lists, action lists, texts | [dialogues](konung_dialogue.md#questrres-layout-verified) |
+| `0x00435E78`, `0x00436248`, `0x00435DBC`, `0x004363E8`, `0x0041F18C` | routines | Dialogue advance; condition list; action list; text assembly; reply chosen | [dialogues](konung_dialogue.md) |
+| `0x0043259C`, `0x004657F4` | routine, table | Dialogue script function dispatcher (five 56-id families, then the pointer table) | [dialogues](konung_dialogue.md#script-functions-verified) |
+| `0x00A3E7A4`, `0x00A5398C`, `0x00A3E69C`, `0x007AA0DC`, `0x007A9EDC` | globals, buffers | Dialogue node, previous node, NPC; NPC line list, reply list (16 × 32 bytes) | [dialogues](konung_dialogue.md) |
+| `0x0042DC50`, `0x0042DEDB`, `0x0042459C`, `0x0043969C` | routines | Dialogue window (window 1); quest log (window 2); quest log toggle (Q, HUD button 5); reply hit test | [dialogues](konung_dialogue.md) |
+| `0x00462EE4`, `0x0045B0AC`, `0x00458A30` | tables | Dialogue window layout per video mode; quest log scroll areas; building types (64 bytes: name, skill `+0x32`, OBJECTS id `+0x34`, build time `+0x36`) | [dialogues](konung_dialogue.md) |
+| `0x00A3E714`, `0x00A3E754` | globals | Ctrl held, Shift held (key handler `0x00437374`) | [dialogues](konung_dialogue.md#opening-0x004364f0) |
+| `0x004323B0`, `0x00432654`, `0x00432820`, `0x00432520` | routines | Party member fit for post k; install it at post k; hire the NPC; best building skill of a group | [dialogues](konung_dialogue.md#script-functions-verified) |
 | `0x0043756C` | table | Escape switch on screen state `0x00A3E6D8` (0 game, 1 menu, 2 new game, 4/5 load/save, 6 settings) | [menu](konung_menu.md#input-behavior-currently-implemented) |
 | `0x00437E50` | table | Main-menu click switch (6 cases: return, save, load, new, settings, exit) | [menu](konung_menu.md) |
 | `0x0045B314` | data | Main-menu button rectangles, 32 bytes per button (640 then 800 x1,y1,x2,y2) | [menu](konung_menu.md) |
@@ -186,11 +194,11 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x004142D4` | routine | Set an entity's move target `(e, row, col, state)` | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
 | `0x004116CC` | routine | AI budget: < 3 path searches this tick (`0x00A3E720`), round-robin after `0x00A3E690` | [GAME.N](konung_game_format.md#npc-ai-village-ai-traced) |
 | `0x00835B18`, `0x00A3E6A8` | buffer, global | Settlements (`GAME.N` section 6, 20 × `0x4B5`); current map's settlement | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
-| `0x00433AF8` | routine | Dismiss party member into the settlement's village group | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
+| `0x00433AF8` | routine | Dismiss party member into the settlement's village group (script 332) | [dialogues](konung_dialogue.md#script-functions-verified) |
 | `0x0041F5D8` | routine | Party/return-to-home-area target `(group, entity)` | [GAME.N](konung_game_format.md#partyreturn-routine-0x0041f5d8group-entity-partly-traced) |
 | `0x0041F11C` | routine | Party AI step; calls `0x0041F5D8` only when entity `+2` bit `0x20` is set (call site `0x00422415`) | [GAME.N](konung_game_format.md#partyreturn-routine-0x0041f5d8group-entity-partly-traced) |
 | `0x00414AB4` | routine | Entity goes idle: sets `+2` bit `0x40`; also `0x20` when the entity's group (`+5`) is the hero's | [GAME.N](konung_game_format.md#partyreturn-routine-0x0041f5d8group-entity-partly-traced) |
-| `0x004364F0` | routine | Opens the clicked entity's dialogue (entity `+0xD0`, `0xFF` = none; callers `0x00423A41`, `0x00423B6E`, `0x00423D93`) | [GAME.N](konung_game_format.md) |
+| `0x004364F0` | routine | Opens the clicked entity's dialogue (entity `+0xD0`, `0xFF` = none; callers `0x00423A41`, `0x00423B6E`, `0x00423D93`) | [dialogues](konung_dialogue.md#opening-0x004364f0) |
 | `0x00722D2C`, `0x007145B4` | buffers | Animated `OBJECTS.RES` metadata (`0x3228` per slot); Type 0 model metadata (`0x4D28` per block) | [GAME.N](konung_game_format.md) |
 | `0x00671440`, `0x00664C40` | buffers | `LIGHTS.N` data: `0x3200` bytes then `0xC800` bytes; both zero-filled if the file is missing | map loader `0x0043C23C`–`0x0043C2BC` |
 | `0x00A3E6F8`, `0x00A3E6FC` | globals | Screen origin X/Y used by the terrain pass | terrain draw pass |

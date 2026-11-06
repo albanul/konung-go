@@ -36,8 +36,9 @@ func (s *startScene) helpLines() []string {
 	return []string{
 		"Left click: walk     Right click: walk + take",
 		"Space: stance     A: attack nearest enemy",
-		"Right click on a character in the stance: attack it",
-		"1/2/3: weapon     I: character     ~: bag",
+		"Right click on a character in the stance: attack it, otherwise: talk",
+		"Ctrl + right click on a party member: talk",
+		"1/2/3: weapon     I: character     ~: bag     Q: quest log",
 		fmt.Sprintf("+/-: speed x%d     C: camera follow %s     Arrows: scroll", s.speed+1, follow),
 		"F: all to me (party gathers)",
 		"Esc: menu     F1: hide this help",

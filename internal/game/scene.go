@@ -98,6 +98,7 @@ type startScene struct {
 	tables *resfmt.ExeTables
 	font   *gameFont // small status-line font (resfmt.FontSmallVA)
 	inv    *charWindow
+	talk   *talkWindow    // dialogue (window 1) and quest log (window 2), dialogue.go
 	hand   gamestate.Hand // item being moved in the character window
 	msg    []byte         // status-line message (0x0042F9B8) and when it ends
 	msgEnd int
@@ -131,9 +132,10 @@ type sceneAssets struct {
 	largeFont      *gameFont
 	rawTiles       []*image.RGBA
 	tiles          []*ebiten.Image
-	glow           *ebiten.Image // LIGHTS.RES glow map (resfmt.GlowMask); nil if the file is missing
-	lightMasks     [][]byte      // LIGHTS.RES light masks for the lit terrain path; nil if missing
-	flames         *flameImages  // FLAMES.RES; nil if missing
+	glow           *ebiten.Image  // LIGHTS.RES glow map (resfmt.GlowMask); nil if the file is missing
+	lightMasks     [][]byte       // LIGHTS.RES light masks for the lit terrain path; nil if missing
+	flames         *flameImages   // FLAMES.RES; nil if missing
+	quests         *resfmt.Quests // QUESTR.RES dialogues; nil if missing (no one talks)
 }
 
 // loadSceneAssets loads the resources a game needs (they stay loaded across
@@ -185,6 +187,12 @@ func loadSceneAssets(graphPath, objectsPath, mapDir, exePath, intrPath string) (
 		a.glow = ebiten.NewImageFromImage(resfmt.GlowMask(glow))
 		a.lightMasks, _ = resfmt.LightMasks(data)
 	}
+	// QUESTR.RES next to GAME.N (0x0043BDD5): dialogues and quest texts.
+	if data, err := readGameFile(mapDir, "QUESTR.RES"); err != nil {
+		log.Printf("QUESTR.RES: %v", err)
+	} else if a.quests, err = resfmt.ParseQuests(data); err != nil {
+		log.Printf("QUESTR.RES: %v", err)
+	}
 	// FLAMES.RES sits next to GRAPH.RES (0x0043BA50); without it nothing burns.
 	if a.flames, err = loadFlames(filepath.Join(filepath.Dir(graphPath), "FLAMES.RES")); err != nil {
 		log.Print(err)
@@ -208,8 +216,8 @@ func (a *sceneAssets) newGame(hero gamestate.Entity) (*startScene, error) {
 	}
 	game.StartHero(hero)
 	game.InitSettlementFlags(hero.Model) // 0x0043BD5C
-	// 0x0043BDD5: QUESTR.RES next to GAME.N; the port keeps only the quest
-	// flags, for saves.
+	// 0x0043BDD5: QUESTR.RES next to GAME.N; the game state takes the
+	// initial quest flags (the dialogues stay in sceneAssets.quests).
 	if questr, err := readGameFile(a.mapDir, "QUESTR.RES"); err != nil {
 		log.Printf("QUESTR.RES: %v", err)
 	} else if err := game.SetQuestFlags(questr); err != nil {
@@ -316,10 +324,12 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		s.moon, s.dayNight, s.shadows, s.lighting = prev.moon, prev.dayNight, prev.shadows, prev.lighting
 		s.transparency = prev.transparency
 		s.inv, s.hand, s.follow, s.speed = prev.inv, prev.hand, prev.follow, prev.speed
+		s.talk = prev.talk
 		s.tick, s.frame, s.msg, s.msgEnd = prev.tick, prev.frame, prev.msg, prev.msgEnd
 		s.shadowLayer = prev.shadowLayer
 	} else {
 		s.inv = newCharWindow(a.hud, tables, a.largeFont, a.font)
+		s.talk = newTalkWindow(tables, a.quests, a.font)
 	}
 	// Only upload tiles the map references; slot 304 is a large non-tile image.
 	useTile := func(slot int) {
@@ -517,8 +527,12 @@ func (s *startScene) updateNPCs() {
 //     +3 &= 0xBF), or drops a held item on the ground at the hero's cell
 //     (0x004229BC → 0x004138C8).
 //   - Right click (0x004238EE): returns a held item; on a bag cell uses the
-//     item (gamestate.UseBagItem); on the map walks there and picks up on
+//     item (gamestate.UseBagItem); on a character with a dialogue (out of
+//     the stance; a party member with Ctrl) opens it without walking
+//     (0x00423B6E, 0x00423A41); on the map walks there and picks up on
 //     arrival (0x004239E3).
+//   - Q / HUD button 5: quest log (0x0042459C). While a dialogue is open
+//     only its replies take clicks.
 //
 // The stance, weapon and window routines first return a held item
 // (0x00429194(1) at 0x004217BA, 0x00421948, 0x00424635); any click ends the
@@ -530,6 +544,16 @@ func (s *startScene) updateControls(mx, my int) {
 	hero := &s.party[0]
 	left := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
 	right := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight)
+	if s.talk.d != nil {
+		// Window 1: the hit test offers only the replies (0x0043968F); the
+		// click handler ignores everything else (0x00422EF5).
+		if left {
+			if k := s.talk.replyAt(mx, my); k >= 0 {
+				s.chooseReply(k)
+			}
+		}
+		return
+	}
 	button, spot := -1, 0
 	if left || right {
 		spot = s.tables.HUDHotspot800(mx, my)
@@ -567,7 +591,11 @@ func (s *startScene) updateControls(mx, my int) {
 	if inpututil.IsKeyJustPressed(ebiten.KeyA) || button == hudAttackButton {
 		s.attackOrder(hero)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton {
+	if (inpututil.IsKeyJustPressed(ebiten.KeyQ) || button == hudLogButton) && !s.inv.open {
+		s.talk.toggleLog() // 0x0042459C
+		s.hud.press(hudLogButton, hudLogImage)
+	}
+	if (inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton) && !s.talk.log {
 		s.hand.Return(hero)
 		s.inv.toggle()
 		if s.inv.open {
@@ -575,13 +603,19 @@ func (s *startScene) updateControls(mx, my int) {
 		}
 		s.hud.press(hudBagButton, hudBagImage)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBackquote) && !s.inv.open {
+	if inpututil.IsKeyJustPressed(ebiten.KeyBackquote) && !s.inv.open && !s.talk.open() {
 		s.inv.toggleQuick()
 		if s.inv.quick {
 			s.hand.Box = 0 // 0x00437253: showing the strip empties the in-hand box
 		}
 	}
-	if left || right {
+	switch {
+	case s.talk.log:
+		// Window 2: clicks only scroll (hotspots 0xCA/0x1CA, 0x00422A83).
+		if left {
+			s.talk.scrollLog(mx, my)
+		}
+	case left || right:
 		s.click(hero, mx, my, spot, right)
 	}
 	s.hero.look = lookOf(*hero)
@@ -641,6 +675,8 @@ func (s *startScene) click(hero *gamestate.Entity, mx, my, spot int, right bool)
 			break
 		}
 		s.startFight(s.hovered) // 0x00423C8B: attack the character under the cursor
+	case right && s.canTalk(*hero):
+		s.talkTo(s.hovered) // 0x00423B6E: at once, wherever the hero stands
 	default:
 		s.endFight()
 		s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY))
@@ -711,6 +747,9 @@ func (s *startScene) drawSelection(dst *ebiten.Image) {
 func (s *startScene) statusText() []byte {
 	if s.frame < s.msgEnd {
 		return s.msg
+	}
+	if s.talk.open() {
+		return nil // 0x00424054 shows the hover line only with no window open
 	}
 	if !s.inv.open {
 		if _, ok := s.pileUnderCursor(); ok {
@@ -790,7 +829,7 @@ func (s *startScene) showMessage(m []byte) { s.msg, s.msgEnd = m, s.frame+messag
 // (characterCursor, piles, occupied cells).
 func (s *startScene) cursorSprite() int {
 	mx, my := ebiten.CursorPosition()
-	if !inView(mx, my) || s.inv.open || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
+	if !inView(mx, my) || s.inv.open || s.talk.open() || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
 		return s.hand.Cursor
 	}
 	if s.hovered >= 0 && len(s.party) > 0 {
@@ -816,6 +855,8 @@ func (s *startScene) cursorSprite() int {
 func (s *startScene) characterCursor(e gamestate.Entity) int {
 	hero := s.party[0]
 	switch {
+	case e.Group == 0 && ebiten.IsKeyPressed(ebiten.KeyControl) && e.Dialogue != gamestate.NoDialogue:
+		return gamestate.CursorTalk // 0x00A3E714: Ctrl held over a party member with a dialogue
 	case e.Group == 0:
 		return s.hand.Cursor
 	case e.Dead():
@@ -856,13 +897,19 @@ func (s *startScene) blocked(c mapdata.Cell) bool {
 // escape handles Escape in the game (0x00437447): return a held item
 // (0x00429194(1)), then close an open window (0x00A3E740 = 0, redraw
 // 0x004292E4). Only with no window open does it report true, and the caller
-// opens the main menu (state 7 → menu, 0x00A3E728 = 1). The game ignores
-// Escape in window 1; the port has no such window.
+// opens the main menu (state 7 → menu, 0x00A3E728 = 1). Escape is ignored
+// in window 1 (the dialogue) and closes the quest log (window 2).
 func (s *startScene) escape() bool {
 	if len(s.party) > 0 {
 		s.hand.Return(&s.party[0])
 	}
-	if s.inv.open {
+	switch {
+	case s.talk.d != nil:
+		return false // 0x00437451: Escape does nothing in window 1
+	case s.talk.log:
+		s.talk.toggleLog()
+		return false
+	case s.inv.open:
 		s.inv.toggle()
 		return false
 	}
@@ -969,14 +1016,15 @@ func (s *startScene) visible(x, y, w, h int) bool {
 func (s *startScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 	s.updateLight()
-	if s.tiling && s.inv.open {
+	window := s.inv.open || s.talk.open()
+	if s.tiling && window {
 		// 0x0042AE68: with background tiling («T», 0x00A3E744) an open
 		// window hides the world; the window tiles INTR slot 5 behind it.
 		s.hovered = -1
 	} else {
 		chars, owners := s.drawWorld(screen)
 		s.hovered = s.hitTest(chars, owners)
-		if s.inv.open {
+		if window {
 			s.hovered = -1 // the window covers the characters
 		}
 	}
@@ -991,6 +1039,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	if len(s.party) > 0 {
 		s.inv.drawQuick(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
 	}
+	s.talk.draw(screen, s.hud, s.game, s.tiling, s.inv.strip.y)
 	if text := s.statusText(); text != nil {
 		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.
 		s.font.drawWrapped(screen, text, viewLeft+10, viewBottom+5, viewRight-viewLeft-15)

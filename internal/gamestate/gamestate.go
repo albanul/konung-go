@@ -98,9 +98,10 @@ type Game struct {
 	// «Чистая слеза» (UseHerb) and the torch (UseMisc); the map loader
 	// clears it (0x0043C11B).
 	Lit bool
-	// Not ported, but saved with the game (0x00424E34): the quest flags
-	// 0x00625068 (QUESTR.RES tail, SetQuestFlags) and the misc-item
-	// draw flags 0x00A3E0A8 (0x00414E64).
+	// Saved with the game (0x00424E34): the quest flags 0x00625068
+	// (QUESTR.RES tail, SetQuestFlags; QuestFlag, SetQuestFlag, QuestLog in
+	// dialogue.go) and the misc-item draw flags 0x00A3E0A8 (0x00414E64, not
+	// ported).
 	Quests   [QuestFlagsSize]byte
 	MiscUsed [miscUsedSize]byte
 	// Options are the settings 0x00A3E71C (day/night) and 0x00A3E734

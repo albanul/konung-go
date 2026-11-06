@@ -76,7 +76,7 @@ The rules are `0x00410B08` (`Game.RaiseCost`) and `0x0041079C` (`Game.GainExperi
 | 4 Вын | 6 | (716, 203) | 44 | `0x00423219`: base `+0x64` |
 | 5 toggle | — | (644, 379) | 45 (shaped like the icon) | `0x00423272` |
 
-* **«Свободный опыт»** (`+0x38`): small font, x = row 0 x + (width of INTR slot 171 − text width)/2 (the width is the image's first word, `0x0043FE18`), y = the 25th number's y (63). The 25-number table's x for it (700) is unused.
+* **«Свободный опыт»** (`+0x38`): small font, x = row 0 x + (width of INTR slot 171 − text width)/2 (the width is the image's first word, read with the memcpy `0x0043FE18`), y = the 25th number's y (63). The 25-number table's x for it (700) is unused.
 * **Rows 0–4** (jump table `0x0042F328`): if `0x00410B08(e, id)` = 0 nothing is drawn. Otherwise a stat row prints the cost (small font) at the point and draws INTR slot 171 (a 10×10 marker, `resfmt.RaiseButtonSlot`) at (x + 24, y + 2); the level row draws only the marker, at (x, y + 2). The labels («Поднять уровень:», «поднять») are part of the art.
 * **Toggle**: INTR slot `0xAA` («АВТО» lit) when `+3` bit `0x02` is set, else `0xA9`, top-left at row 5.
 

@@ -43,6 +43,10 @@ type Settlement struct {
 	Posts [postCount]Post
 	Fence int  // +1: fence pieces (non-zero = fortified)
 	Flags byte // +0x4B2: SettlementHostile, SettlementStrangers, SettlementIndependent, … (anger.go)
+	// Raw is the record as loaded; encode writes the fields above over it.
+	// The dialogue scripts read and write a few more fields through it
+	// (tribute +0x10, building records +0x18, training times +0x3F8).
+	Raw [settlementStride]byte
 }
 
 func parseSettlements(data []byte) []Settlement {
@@ -50,6 +54,7 @@ func parseSettlements(data []byte) []Settlement {
 	for i := 0; i < settlementCount; i++ {
 		r := data[settlementOffset+i*settlementStride:][:settlementStride]
 		s := Settlement{Index: i, Group: int(r[2]), Map: int(r[3]), Fence: int(r[1]), Flags: r[0x4B2]}
+		copy(s.Raw[:], r)
 		for k := range s.Posts {
 			p := r[postOffset+k*8:]
 			s.Posts[k] = Post{
