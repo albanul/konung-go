@@ -11,7 +11,7 @@ func TestHealerProduces(t *testing.T) {
 	tk := talkSetup(t)
 	g := tk.G
 	s := g.SettlementOnMap(1)
-	g.SettlementPass(tk.T, tk.Hero)
+	g.SettlementPass(tk.T, tk.Hero, 1, false)
 	if s.i32(healerTimerOff) != healerCycle {
 		t.Errorf("timer %d", s.i32(healerTimerOff))
 	}
@@ -35,13 +35,13 @@ func TestSmithProduces(t *testing.T) {
 	tk := talkSetup(t)
 	g := tk.G
 	s := g.SettlementOnMap(1)
-	g.SettlementPass(tk.T, tk.Hero)
+	g.SettlementPass(tk.T, tk.Hero, 1, false)
 	if int8(s.Raw[smithJobOff]) != 0 || s.smith(0) != 0 {
 		t.Fatalf("job %d", int8(s.Raw[smithJobOff]))
 	}
 	passes := 1
 	for ; s.smith(0) == 0 && passes < 100; passes++ {
-		g.SettlementPass(tk.T, tk.Hero)
+		g.SettlementPass(tk.T, tk.Hero, 1, false)
 	}
 	it, _ := g.Item(s.smith(0))
 	if it.Category != CatArrows || it.Type != 30 || it.Count != arrowStack {

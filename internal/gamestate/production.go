@@ -82,21 +82,43 @@ func (g *Game) newStock(cat, typ int) int {
 
 func (g *Game) setEnchant(i, e int) { g.items[i*itemStride+1] = byte(e) }
 
-// SettlementPass runs the production part of the settlement pass
-// (0x0041D39F) for every settlement: tribute accrual (0x0041D88A), the
-// healer (0x0041768C) and the smith (0x00417A58). The game skips healer
-// and smith while window 7 (trade) is open; the caller does the same.
-// Buildings and the voevoda's training are not ported.
-func (g *Game) SettlementPass(t *resfmt.ExeTables, hero int) {
+// SettlementPass is the settlement pass 0x0041D39F for every settlement
+// (the surrender and alarm checks of the current map's village run in the
+// scene, Surrenders and VillageAlarm). Per settlement: a village without
+// humans calms down and loses its tribute counter, tribute accrual
+// (0x0041D88A), buildings (0x0041D939), the healer (0x0041768C), the
+// smith (0x00417A58), and when no building stage started, the voevoda's
+// training (0x00418014). The game skips healer and smith while window 7
+// (trade) is open: tradeOpen. m is the current map; changed reports a
+// building there that changed state (BuildingObjects has the new IDs).
+func (g *Game) SettlementPass(t *resfmt.ExeTables, hero, m int, tradeOpen bool) (changed bool) {
 	for i := range g.Settlements {
 		s := &g.Settlements[i]
 		if s.Map == 0 {
 			continue
 		}
+		humans, busy, posted := g.villageCount(s)
+		if humans == 0 {
+			g.Groups[s.Group].Alarm = AlarmCalm
+			s.Flags &= settlementPeace
+			s.setI32(tributeTickOff, 0)
+		}
 		g.tribute(s, hero)
-		g.healerPass(s, t)
-		g.smithPass(s, t)
+		builders := 0
+		if g.Groups[s.Group].Alarm != AlarmAttack {
+			builders = humans - (busy + posted)
+		}
+		started, ch := g.buildingPass(s, t, builders, m)
+		changed = changed || ch
+		if !tradeOpen {
+			g.healerPass(s, t)
+			g.smithPass(s, t)
+		}
+		if !started {
+			g.voevodaPass(s, t)
+		}
 	}
+	return changed
 }
 
 // tribute is 0x0041D88A: a vassal village (not independent) adds to its

@@ -74,7 +74,7 @@ x = col * 0x3A - (row odd ? 0x1D : 0)    // 58 px, odd rows shifted LEFT 29 px
 y = row * 0x10                           // 16 px
 ```
 
-At load time, the loader at `0x0043CB21` can substitute record IDs from a game-state table (`0x00458A62`), e.g. for quest-dependent objects. This is not ported; the files' IDs are drawn as-is.
+At load time, the loader at `0x0043CB21` sets the placements of village buildings to the building type's object + state (table `0x00458A30` `+0x34`; [buildings](konung_buildings.md)). Ported in the scene and in `map-render -game`; without `-game` the files' IDs are drawn as-is.
 
 ### Static object header (0x100 bytes, `OBJECTS.RES` slot ≥ 30)
 

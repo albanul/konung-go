@@ -209,7 +209,7 @@ Settlement byte `+0x4B2` (`Settlement.Flags`):
   * P = Σ `0x0041B70C` over the party, V = Σ over the living men (model < 3).
   * P / V ≥ 2.0 → alarm 0; living members idle, targets cleared; flags `|= 0x80`, `&= 0xEA`; message `0x0045D37C` «Довольно крови, князь. Деревня сдается на твою милость!»; film `DEFEAT<map>.FLM`; the party's targets are cleared.
   * A village without men: alarm 0, flags `&= 0xEA`.
-* Tribute, buildings (records from settlement `+0x18`, 8 bytes; `+0x40`/`+0x41` = building 5's type/state, the map-exit gate) and the economy are not part of combat; see the open questions.
+* Tribute, buildings (records from settlement `+0x18`, 8 bytes; `+0x40`/`+0x41` = building 5's type/state, the map-exit gate) and the economy are not part of combat; see [buildings](konung_buildings.md) and [trade: production](konung_trade.md#shop-stock-production).
 
 ## Upkeep, poison and respawn (verified)
 
@@ -278,6 +278,6 @@ Not ported:
 ## Open questions
 
 * Grid bits `0xC000` (obstacle kinds); the incendiary glow buffer `0x005B0010`; `0x004104D4` (equip best), `0x00418364` (usable).
-* Settlement buildings: type table `0x00458A60`, burning and rebuilding, building 5 (types 14/15) as the map-exit gate; tribute (`+0x10`, `+0x14`, every 10080 settlement ticks, `0x0043FECE` = sqrt).
+* Settlement buildings: what sets a standing building on fire (the burn stages and rebuilding are ported, [buildings](konung_buildings.md)), building 5 (types 14/15) as the map-exit gate.
 * The god-mode toggle `0x00436E93`; kind `0x49` retreat `0x004101E4`; HUD feedback `0x0042D574`; field `+0x11` (walk throttle), `+0x14`.
 * Films `GAMEOVER.FLM`, `DEFEAT<n>.FLM` (`0x0042B690`), not in the installed files.

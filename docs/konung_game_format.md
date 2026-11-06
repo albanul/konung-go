@@ -201,8 +201,8 @@ Code: `resfmt.ExeTables` (`ItemOverlay`, `DrawOrder`, `CombatDrawOrder`, `Overla
 | `+0x02` | byte | village group index |
 | `+0x01` | byte | fence pieces (non-zero = fortified; `Settlement.Fence`) |
 | `+0x03` | byte | map number (`KONUNG.N`); records 15–19 are empty |
-| `+0x10`, `+0x14` | int32 | tribute pool and counter (not ported) |
-| `+0x18 + k*8` | 8 bytes | building records: int8 type (−1 empty), int8 state (0–2 building, 3 built or burning with a timer, 4–5 burning, 6 ruin), `uint16` map object, `uint16` ?, int16 timer. `+0x40`/`+0x41` = record 5, the map-exit gate. Not ported. |
+| `+0x10`, `+0x14` | int32 | tribute pool and counter ([trade: production](konung_trade.md#shop-stock-production)) |
+| `+0x18 + k*8` | 8 bytes | building records: int8 type (−1 empty), int8 state (0–2 building, 3 built or burning with a timer, 4–5 burning, 6 ruin), `uint16` placement index (the map object shows type object + state), `uint16` ?, int16 timer. `+0x40`/`+0x41` = record 5, the map-exit gate. See [buildings](konung_buildings.md). |
 | `+0x4B2` | byte | flags: hostile, strangers, independent, loan, surrendered (`Settlement.Flags`; [village anger](konung_combat.md#village-anger-verified)) |
 | `+0x3D0 + k*8`, k = 0..4 | 8 bytes | **post**: byte facing, byte dialogue ID (copy of entity `+0xD0`), `uint16` entity index (0 = empty), `uint16` row, `uint16` col |
 

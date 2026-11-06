@@ -207,10 +207,13 @@ func (s *startScene) combatTick() {
 		s.upkeep()
 	}
 	if (s.gameTime()+gamestate.SettlementTickOffset)%gamestate.UpkeepTicks == 0 {
-		if !s.trade.open() && len(s.party) > 0 && s.tables != nil {
-			// 0x0041768C, 0x00417A58: frozen while window 7 is open.
+		if len(s.party) > 0 && s.tables != nil {
+			// Healer and smith (0x0041768C, 0x00417A58) are frozen while
+			// window 7 is open; tribute, buildings and training are not.
 			s.storeWorld()
-			s.game.SettlementPass(s.tables, s.party[0].Index)
+			if s.game.SettlementPass(s.tables, s.party[0].Index, s.mapNumber, s.trade.open()) {
+				s.updateBuildings()
+			}
 			s.syncParty()
 		}
 		s.settlementTick()

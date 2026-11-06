@@ -129,6 +129,16 @@ func (r *renderer) renderOne(mapPath, outPath string) (mapInfo, error) {
 		if err != nil {
 			return mapInfo{}, err
 		}
+		if r.game != nil {
+			// Village buildings show their state (map loader 0x0043CB4A).
+			if n, err := strconv.Atoi(strings.TrimPrefix(filepath.Ext(mapPath), ".")); err == nil {
+				for i, id := range r.game.BuildingObjects(n, r.tables) {
+					if i < len(placements) {
+						placements[i].ID = id
+					}
+				}
+			}
+		}
 		objs, errs := mapdata.LoadPlacedObjects(placements, r.objects, r.graph)
 		for _, e := range errs {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", mapPath, e)

@@ -125,8 +125,8 @@ func (t *Talk) canStart(s *Settlement, k, typ int, typed bool) bool {
 }
 
 // startTimer is 355–361: the record's timer +6 = the build time of its
-// type (0x00458A66 + type·64). No cost; the settlement tick that counts it
-// down (0x0041D9E6) is not ported.
+// type (0x00458A66 + type·64). No cost; the settlement pass counts it
+// down (buildingPass, 0x0041D939).
 func (t *Talk) startTimer(s *Settlement, k int) {
 	r := s.building(k)
 	binary.LittleEndian.PutUint16(r[6:], uint16(t.T.BuildTime(int(int8(r[0])))))

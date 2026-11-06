@@ -33,6 +33,7 @@ type Decoration struct {
 
 // Placement is a KONUNG.N section-3 record: a static OBJECTS.RES image.
 type Placement struct {
+	Index         int    // record number in section 3 (village building records refer to it)
 	ID            int    // OBJECTS.RES slot = ID + 30 (resfmt.MapObjectSlot)
 	PaletteOffset uint32 // 0 = use the object header's palette
 	Col, Row      int    // fine-grid position
@@ -83,6 +84,7 @@ func ParsePlacements(data []byte) ([]Placement, error) {
 			break
 		}
 		out = append(out, Placement{
+			Index:         i,
 			ID:            int(id),
 			PaletteOffset: binary.LittleEndian.Uint32(r[4:]),
 			Col:           int(binary.LittleEndian.Uint16(r[0x1E:])),

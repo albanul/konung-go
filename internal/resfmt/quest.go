@@ -153,9 +153,10 @@ func (q *Quests) Text(id uint32) []byte {
 func (q *Quests) Flags() []byte { return q.data[questFlagsOff:] }
 
 // Building type table 0x00458A30: 64-byte records, a CP866 name at +0,
-// uint16 required building skill at +0x32, OBJECTS id at +0x34 and build
-// time at +0x36 (the dialogue scripts address them as 0x00458A62 /
-// 0x00458A66 + type·64).
+// uint16 required building skill at +0x32, the map object ID of state 0 at
+// +0x34, the build time at +0x36 and the burn-stage time at +0x38 (the
+// code addresses them as 0x00458A62 / 0x00458A64 / 0x00458A66 /
+// 0x00458A68 + type·64).
 const buildingTypesVA = 0x00458A30
 
 // BuildingSkill is the building skill a village needs to start type typ.
@@ -166,6 +167,18 @@ func (t *ExeTables) BuildingSkill(typ int) int {
 // BuildTime is the timer a new building of type typ starts with.
 func (t *ExeTables) BuildTime(typ int) int {
 	return int(binary.LittleEndian.Uint16(t.at(buildingTypesVA + typ*64 + 0x36)))
+}
+
+// BuildingObject is the map object ID (KONUNG.N placement +0) of type typ
+// in state 0; state k shows ID + k (0x0043CB4A, 0x0041733C).
+func (t *ExeTables) BuildingObject(typ int) int {
+	return int(int16(binary.LittleEndian.Uint16(t.at(buildingTypesVA + typ*64 + 0x34))))
+}
+
+// BurnTime is the timer of one burn stage (states 3→4→5→6, 0x0041DAFA)
+// of type typ.
+func (t *ExeTables) BurnTime(typ int) int {
+	return int(int16(binary.LittleEndian.Uint16(t.at(buildingTypesVA + typ*64 + 0x38))))
 }
 
 // BuildingName is the type's CP866 name.

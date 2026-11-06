@@ -37,10 +37,11 @@ type sceneFrame struct {
 // sceneObject is a static map object (one frame) or an entity (its idle
 // animation steps), ready to draw.
 type sceneObject struct {
-	frames []sceneFrame
-	phase  int // step offset so neighbours don't animate in lockstep
-	depth  int // bottom-edge sort key (from the first step)
-	flames []flame
+	placement int // KONUNG.N section-3 record (mapdata.Placement.Index)
+	frames    []sceneFrame
+	phase     int // step offset so neighbours don't animate in lockstep
+	depth     int // bottom-edge sort key (from the first step)
+	flames    []flame
 }
 
 func (o *sceneObject) frame(tick int) *sceneFrame {
@@ -58,7 +59,8 @@ type startScene struct {
 	tileMarginY    int
 	worldW, worldH int
 	decorations    []mapdata.Decoration
-	objects        []sceneObject // objects and entities, in depth order
+	objects        []sceneObject       // objects and entities, in depth order
+	placements     []mapdata.Placement // KONUNG.N section 3, building objects updated
 	shadowLayer    *ebiten.Image
 	shadows        bool // setting 0x00A3E750: draw the shadow pass (0x004266C4)
 	dayNight       bool // setting 0x00A3E71C: tint the world by the time of day
@@ -362,36 +364,17 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	}
 	s.worldW, s.worldH = m.WorldSize()
 
-	objs, errs := mapdata.LoadPlacedObjects(placements, objectsData, graphData)
-	for _, e := range errs {
-		log.Printf("%s: %v", mapPath, e)
-	}
-	images := map[*image.RGBA]*ebiten.Image{}
-	shadows := map[*image.Alpha]*ebiten.Image{}
-	upload := func(img *image.RGBA, sh *image.Alpha) (*ebiten.Image, *ebiten.Image) {
-		ei, ok := images[img]
-		if !ok {
-			ei = toEbiten(img)
-			images[img] = ei
+	// Village buildings show their state (0x0043CB4A).
+	if tables != nil {
+		for i, id := range game.BuildingObjects(mapNumber, tables) {
+			if i < len(placements) {
+				placements[i].ID = id
+			}
 		}
-		if sh == nil {
-			return ei, nil
-		}
-		es, ok := shadows[sh]
-		if !ok {
-			es = ebiten.NewImageFromImage(sh) // white, alpha = coverage
-			shadows[sh] = es
-		}
-		return ei, es
 	}
-	for _, sp := range mapdata.ObjectSprites(mapdata.DrawOrder(placements, objs)) {
-		img, sh := upload(sp.Image, sp.Shadow)
-		s.objects = append(s.objects, sceneObject{
-			frames: []sceneFrame{{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY, raw: sp.Raw}},
-			depth:  sp.Depth,
-			flames: s.newFlames(sp.Flames),
-		})
-	}
+	s.placements = placements
+	upload := newUploader()
+	s.objects = append(s.objects, s.placeObjects(placements, mapPath, upload)...)
 	// Characters and creatures are walkers with lazily loaded idle/walk
 	// loops. The player (group 0's first entity) is controllable; villagers
 	// run the ported village AI, creatures stand still while calm (see npc).

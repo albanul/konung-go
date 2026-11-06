@@ -72,10 +72,10 @@ The shop lists are empty in `GAME.0`–`GAME.2`; the game fills them at runtime.
 **When.**
 * The settlement pass `0x0041D39F` (every 16 ticks, `(time + 7) & 0xF` = 0) loops over **all 20 settlements**. In order it runs:
   * tribute accrual;
-  * buildings (not ported);
+  * buildings ([buildings](konung_buildings.md));
   * the healer `0x0041768C`;
   * the smith `0x00417A58`;
-  * when no building advanced, the voevoda's training `0x00418014` (not ported).
+  * when no building stage started, the voevoda's training `0x00418014` ([buildings](konung_buildings.md#voevodas-training-0x00418014)).
 * Healer and smith return at once when their post is empty or window 7 is open (`[0x00A3E740]` = 7), so trading freezes production everywhere.
 * The map loader runs `0x00418F0C` (call `0x0043CB8B`) for the entered map's settlement, also when a save is restored: the healer's jars and the merchant's stock.
 
@@ -130,5 +130,4 @@ The shop lists are empty in `GAME.0`–`GAME.2`; the game fills them at runtime.
 
 ## Open questions
 
-* Building construction and the burn stages in the settlement pass (`0x0041D939`), and the voevoda's training (`0x00418014`).
-* The map object update `0x0041733C` for building states.
+* Building construction, burning and the voevoda's training, which share the settlement pass, are in [buildings](konung_buildings.md#not-ported--open).

@@ -1,6 +1,6 @@
 # Dialogues and quests (`QUESTR.RES`)
 
-Status: the file layout, the dialogue engine (open, branch, lines, replies, conditions, actions, quest flags), the dialogue window, the quest log and every script function used by the data are traced against `konung.exe` and checked against the file. Ported: `resfmt.ParseQuests` (decoder), `gamestate.Talk` (engine and script functions, `dialogue.go`, `scriptfuncs.go`, `scriptvillage.go`), `game.talkWindow` (windows 1 and 2, `internal/game/dialogue.go`). Not ported: building completion, `SPEECHS.RES` voices. Script 275 opens the [trade window](konung_trade.md).
+Status: the file layout, the dialogue engine (open, branch, lines, replies, conditions, actions, quest flags), the dialogue window, the quest log and every script function used by the data are traced against `konung.exe` and checked against the file. Ported: `resfmt.ParseQuests` (decoder), `gamestate.Talk` (engine and script functions, `dialogue.go`, `scriptfuncs.go`, `scriptvillage.go`), `game.talkWindow` (windows 1 and 2, `internal/game/dialogue.go`). Not ported: `SPEECHS.RES` voices. The settlement pass builds what 355–361 start ([buildings](konung_buildings.md)). Script 275 opens the [trade window](konung_trade.md).
 
 Validation: `resfmt.TestParseQuests`, `TestDialogueLayout`; `gamestate.TestDialogueElder` (the elder of «Родники» through the Amulet chain), `TestDialogueRoles`, `TestQuestLog`, `TestScriptMoney`, `TestRecruitAndDismiss`; `game.TestRightClickTalks` (right click opens the dialogue and the hero does not move), `TestHireRebuildsScene`.
 
@@ -151,7 +151,5 @@ Unused by the data: 285, 292 (a jewel into the bag), 293, 295, 306, 323, 327, 35
 
 ## Open questions
 
-* The building countdown and completion in the settlement tick (`0x0041D939`, [trade: production](konung_trade.md#shop-stock-production)); tribute accrual is ported there.
 * `SPEECHS.RES` (not installed) and the deferred reply action while a voice plays.
-* The object substitution at map load from game state (`0x00458A62` area, [map format](konung_map_format.md)) that quest progress may drive.
 * Entity `+0xF8` (portrait variant written by 291) is not used by the port's HUD.
