@@ -27,8 +27,8 @@ Path: game directory + `"KONUNG.CFG"` (strings `0x0045028D`, `0x00450811`; direc
 
 * **T** (VK `0x54`, key switch `0x004372C7` → `0x00436F58`) flips `0x00A3E744`. It redraws the open window (`0x0042DBBC`, plus the bag strip `0x0042F50C` for window 3) and writes `KONUNG.CFG` at once (`0x0043D2CC`). The written video mode is `0x00A539A0`, which is still 0 (640×480) if the settings screen hasn't been opened since start.
 * While it is on and a window is open (`0x00A3E740` ≠ 0), the frame redraw `0x0042AE5F` skips the world draw `0x0042894C`, so nothing moves behind the window.
-* The windows tile their background first: `0x0043141C(x1, y1, x2, y2)` blits INTR slot 5 at (x1 + 100j, y1 + 100i) for (x2 − x1 + 100)/100 columns and (y2 − y1 + 100)/100 rows, clipped to the rectangle. Rectangles:
-  * the character window and other windows: the whole view (140, 0)–(799, 555) (`0x0042DCA4`, `0x0042DEFD`, `0x0042E094`, `0x0042F4BA`);
+* The windows tile their background first: `0x0043141C(x1, y1, x2, y2)` returns at once with tiling off (`0x00431428`); otherwise it blits INTR slot 5 at (x1 + 100j, y1 + 100i) for (x2 − x1 + 100)/100 columns and (y2 − y1 + 100)/100 rows, clipped to the rectangle. Rectangles:
+  * the character window and other windows: the whole view (140, 0)–(799, 555) (`0x0042DCA4`, `0x0042DEFD`, `0x0042E094`, `0x0042F4BA` for the [map window](konung_world_map.md));
   * the bag strip: from the strip top 486 to the bottom of the view (`0x0042F5E3`), also when the strip is shown alone.
 * Port: `Menu` handles T and writes the file (`Menu.writeConfig`). `startScene.tiling` skips `drawWorld` while the character window is open. `tileBackground` tiles behind the window and the strip.
 

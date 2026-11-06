@@ -22,7 +22,7 @@ const (
 	QuestFlagsSize   = 0x4B0 // 0x00625068: 300 dwords, bit 0x80 tested by the dialogue code
 	QuestFlagsOffset = 337800 - QuestFlagsSize
 	QuestFileSize    = 337800 // QUESTR.RES: seven blocks read by 0x0043BDD5, the flags last
-	miscUsedSize     = 0x38   // 0x00A3E0A8
+	knownMapsSize    = 0x38   // 0x00A3E0A8
 
 	maxArrows      = 100 // 0x0082C1F8: 100 × 32 bytes, count 0x00A3E7D8
 	arrowStride    = 0x20
@@ -33,7 +33,7 @@ const (
 	saveHeaderSize = 0x10
 	// SaveSize is the size of a KONUNG.SA<n> file.
 	SaveSize = saveHeaderSize + 8 + QuestFlagsSize + maxArrows*arrowStride + 0x20000 +
-		maxActivePiles*pileStride + 0x1900 + 0x7D00 + 0x7D000 + 0x5E24 + miscUsedSize
+		maxActivePiles*pileStride + 0x1900 + 0x7D00 + 0x7D000 + 0x5E24 + knownMapsSize
 	// saveEntityOffset is where the entity array starts in a slot file; the
 	// loader seeks there to read the hero record first (0x00424B1E).
 	saveEntityOffset = saveHeaderSize + 0x2D938
@@ -102,7 +102,7 @@ func (g *Game) MarshalSave(st SaveState) ([]byte, error) {
 	b.Write(img[pileOffset : pileOffset+0x7D00])
 	b.Write(img[entityOffset : entityOffset+0x7D000])
 	b.Write(img[settlementOffset : settlementOffset+0x5E24])
-	b.Write(g.MiscUsed[:])
+	b.Write(g.KnownMaps[:])
 	if b.Len() != SaveSize {
 		return nil, fmt.Errorf("gamestate: save is %d bytes, want %d", b.Len(), SaveSize)
 	}
@@ -153,7 +153,7 @@ func ParseSave(save, gameN []byte) (*Game, SaveState, error) {
 	copy(img[pileOffset:], next(0x7D00))
 	copy(img[entityOffset:], next(0x7D000))
 	copy(img[settlementOffset:], next(0x5E24))
-	misc := next(miscUsedSize)
+	misc := next(knownMapsSize)
 	g, err := Parse(img)
 	if err != nil {
 		return nil, st, err
@@ -163,7 +163,7 @@ func ParseSave(save, gameN []byte) (*Game, SaveState, error) {
 	}
 	g.Options = options
 	copy(g.Quests[:], quests)
-	copy(g.MiscUsed[:], misc)
+	copy(g.KnownMaps[:], misc)
 	for i := range nArrows {
 		st.Arrows = append(st.Arrows, decodeArrow(arrows[i*arrowStride:][:arrowStride]))
 	}

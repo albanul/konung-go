@@ -54,7 +54,7 @@ func TestSaveRoundTrip(t *testing.T) {
 	hero := &g.Entities[g.Groups[0].First]
 	hero.HP, hero.Gold, hero.Row, hero.Col = 900, 1234, 70, 30
 	g.Piles[3].Gold = 0
-	g.MiscUsed[5] = 1
+	g.KnownMaps[5] = 1
 	st := SaveState{
 		Time:   4321,
 		Arrows: []Arrow{{X: 100, Y: 200, VX: 4, VY: -1.5, Shooter: 7, Bow: 3, Poison: 2, Facing: 5, Life: 30, Special: -1, Type: 2}},
@@ -81,7 +81,7 @@ func TestSaveRoundTrip(t *testing.T) {
 	if h2.HP != 900 || h2.Gold != 1234 || h2.Row != 70 || h2.Col != 30 {
 		t.Errorf("hero %+v", h2)
 	}
-	if g2.Quests != g.Quests || g2.MiscUsed != g.MiscUsed || g2.Options != g.Options {
+	if g2.Quests != g.Quests || g2.KnownMaps != g.KnownMaps || g2.Options != g.Options {
 		t.Error("quests, misc flags or options differ")
 	}
 	if st2.Time != st.Time || len(st2.Arrows) != 1 || st2.Arrows[0] != st.Arrows[0] {

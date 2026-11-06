@@ -6,15 +6,9 @@ Reasons used below: **not traced** (the exe code has not been read), **missing f
 
 ## Features
 
-### Map window and travel by item
+### Map window: misc item type 0
 
-Status: entry points traced, the window itself **not traced**.
-
-* **Opening.** HUD button 2 «Карта (M)» (hotspot 3, handler `0x00422C01`) and the M key (`0x00436EB9`) work when no window or window 5 is open (`0x00A3E740` = 0 or 5). They return a held item (`0x00429194(1)`), play the click (sound 4, `0x0042A664`) and press button 2 with image 14 (`0x004290AC(2, 14)`). With window 5 open they close it (`0x00A3E740` = 0, `0x004292E4`); otherwise they call the window draw dispatcher `0x0042DBBC(4)`.
-* **Draw.** Dispatcher case 5 (`0x0042F491`; jump table `0x0042F4C8`, index = argument + 1): `0x00A3E740` = 5, `0x00A3E74C |= 2`, then `0x0043141C` with the view rectangle (`0x00A3E874`, `0x00A3E890`, `0x00A3E880`, `0x00A3E89C`). `0x0043141C` (the map picture) is not traced.
-* **Misc item type 20** «Шар магического прыжка» (case 20 of `0x00414E64`, at `0x004153B0`): `0x00A3E730` = 0, opens the same window (`0x0042DBBC(4)`), sound 10.
-* **Travel by item** (`0x00422AD8`): in window 5 a click with hotspot id ≥ `0x100` (`id >> 8` selects the target) uses up the item (`0x00421D24`, sound 10 at `0x00415C6C`) and takes the first [map exit](konung_game_format.md#map-exits-verified) whose target is the chosen map.
-* **To port:** trace `0x0043141C` (image source, hotspot ids, the location list) and the rest of `0x00422AD8`; the exit taking itself is already `Game.TakeExit`.
+The map window, travel by the jump orb and the orb's use are ported ([world map](konung_world_map.md)). Not ported: misc item type 0 (case `0x00414E95`), which marks a random unknown location known ([world map: known maps](konung_world_map.md#known-maps-0x00a3e0a8)).
 
 ### Other misc items
 
@@ -24,9 +18,10 @@ Status: dispatcher traced, most cases **not traced**. Misc items (category ≥ 1
 |---|---|---|
 | 24 Лопата | `0x00415504` | ported: [dig mode](konung_ground_items.md#hover-and-pick-up) |
 | 31 Факел | `0x004156E6` | ported: [loot highlight](konung_potions.md#loot-highlight-0x00a3e758) |
-| 20 Шар магического прыжка | `0x004153B0` | opens the map window ([above](#map-window-and-travel-by-item)) |
+| 20 Шар магического прыжка | `0x004153B0` | ported: opens the [map window](konung_world_map.md#opening-and-closing) |
+| 0 | `0x00414E95` | marks a random location known ([above](#map-window-misc-item-type-0)) |
 | 14–19, 21 Магический шар … (волхв Бережков … Подземного города) | `0x00415329` … `0x004153D9` | not traced. Type 21 calls `0x004106E0(0x2B, 0x12, 0x18, 2)` with constants; hypothesis: a jump to a fixed place |
-| 0–10, 12, 13, 22, 23, 25–28, 30, 33, 35–39 | own cases | not traced (books, quest items, amulet parts 25–27 share `0x0041552D`, 35/37 share `0x004157D2`) |
+| 1–10, 12, 13, 22, 23, 25–28, 30, 33, 35–39 | own cases | not traced (books, quest items, amulet parts 25–27 share `0x0041552D`, 35/37 share `0x004157D2`) |
 | 11, 29, 32, 34 | `0x00415ACD` (default) | no use (32 «Неразменный пятак» counts as money, [trade](konung_trade.md)) |
 
 Names from `resfmt.ExeTables.ItemName(resfmt.ItemTableMisc, t)`. Porting means tracing each case; the dialogue scripts already handle quest items given or taken by NPCs.

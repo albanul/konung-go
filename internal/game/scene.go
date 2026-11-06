@@ -105,10 +105,11 @@ type startScene struct {
 	tables *resfmt.ExeTables
 	font   *gameFont // small status-line font (resfmt.FontSmallVA)
 	inv    *charWindow
-	talk   *talkWindow    // dialogue (window 1) and quest log (window 2), dialogue.go
-	trade  *tradeWindow   // trade and pile window (window 7), trade.go
-	hand   gamestate.Hand // item being moved in the character window
-	msg    []byte         // status-line message (0x0042F9B8) and when it ends
+	talk   *talkWindow     // dialogue (window 1) and quest log (window 2), dialogue.go
+	trade  *tradeWindow    // trade and pile window (window 7), trade.go
+	wmap   *worldMapWindow // world map (window 5), worldmap.go
+	hand   gamestate.Hand  // item being moved in the character window
+	msg    []byte          // status-line message (0x0042F9B8) and when it ends
 	msgEnd int
 
 	mapNumber  int
@@ -312,7 +313,8 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	}
 	graphData, objectsData, tables, gamePath := a.graph, a.objects, a.tables, a.gamePath
 	rawTiles := a.rawTiles
-	game.Lit = false // 0x0043C11B: the map loader puts the torch out
+	game.Lit = false        // 0x0043C11B: the map loader puts the torch out
+	game.KnowMap(mapNumber) // 0x0043C12A: the map window shows it from now on
 	s := &startScene{
 		assets:      a,
 		m:           m,
@@ -343,13 +345,14 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		s.moon, s.dayNight, s.shadows, s.lighting = prev.moon, prev.dayNight, prev.shadows, prev.lighting
 		s.transparency = prev.transparency
 		s.inv, s.hand, s.follow, s.speed = prev.inv, prev.hand, prev.follow, prev.speed
-		s.talk, s.trade = prev.talk, prev.trade
+		s.talk, s.trade, s.wmap = prev.talk, prev.trade, prev.wmap
 		s.tick, s.frame, s.msg, s.msgEnd = prev.tick, prev.frame, prev.msg, prev.msgEnd
 		s.shadowLayer = prev.shadowLayer
 	} else {
 		s.inv = newCharWindow(a.hud, tables, a.largeFont, a.font)
 		s.talk = newTalkWindow(tables, a.quests, a.font)
 		s.trade = newTradeWindow(tables, s.inv.strip, a.font, a.largeFont)
+		s.wmap = newWorldMapWindow(tables)
 	}
 	// Only upload tiles the map references; slot 304 is a large non-tile image.
 	useTile := func(slot int) {
@@ -605,11 +608,14 @@ func (s *startScene) updateControls(mx, my int) {
 	if inpututil.IsKeyJustPressed(ebiten.KeyA) || button == hudAttackButton {
 		s.attackOrder(hero)
 	}
-	if (inpututil.IsKeyJustPressed(ebiten.KeyQ) || button == hudLogButton) && !s.inv.open {
+	if inpututil.IsKeyJustPressed(ebiten.KeyM) || button == hudMapButton {
+		s.toggleMap(hero) // 0x00436EB9, 0x00422C01
+	}
+	if (inpututil.IsKeyJustPressed(ebiten.KeyQ) || button == hudLogButton) && !s.inv.open && !s.wmap.open {
 		s.talk.toggleLog() // 0x0042459C
 		s.hud.press(hudLogButton, hudLogImage)
 	}
-	if (inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton) && !s.talk.log {
+	if (inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton) && !s.talk.log && !s.wmap.open {
 		s.hand.Return(hero)
 		s.inv.toggle()
 		if s.inv.open {
@@ -628,6 +634,17 @@ func (s *startScene) updateControls(mx, my int) {
 		// Window 2: clicks only scroll (hotspots 0xCA/0x1CA, 0x00422A83).
 		if left {
 			s.talk.scrollLog(mx, my)
+		}
+	case s.wmap.open:
+		// Window 5: the map area's hotspots (0x0043946E); other clicks in
+		// the view are ignored (0x00422EDF), and a right click only
+		// returns a held item (0x0042393D needs window 0).
+		if _, inArea := s.wmap.regionAt(s.game, mx, my); left && inArea {
+			s.mapClick(hero, mx, my)
+		} else if right {
+			s.hand.Return(hero)
+		} else if left && !inView(mx, my) {
+			s.click(hero, mx, my, spot, false)
 		}
 	case left || right:
 		s.click(hero, mx, my, spot, right)
@@ -782,7 +799,17 @@ func (s *startScene) statusText() []byte {
 	if s.talk.open() {
 		return nil // 0x00424054 shows the hover line only with no window open
 	}
-	if !s.inv.open {
+	if s.wmap.open {
+		// 0x004240D0: over a known location its name (0x0045B3F4); over
+		// the rest of the area nothing.
+		mx, my := ebiten.CursorPosition()
+		if m, inArea := s.wmap.regionAt(s.game, mx, my); m != 0 {
+			return s.tables.CString(gamestate.LocationName(m))
+		} else if inArea {
+			return nil
+		}
+	}
+	if !s.inv.open && !s.wmap.open {
 		if _, ok := s.pileUnderCursor(); ok {
 			return s.tables.CString(gamestate.MsgSomethingOnGround)
 		}
@@ -946,6 +973,9 @@ func (s *startScene) escape() bool {
 	case s.talk.log:
 		s.talk.toggleLog()
 		return false
+	case s.wmap.open:
+		s.wmap.open = false
+		return false
 	case s.inv.open:
 		s.inv.toggle()
 		return false
@@ -970,6 +1000,13 @@ func (s *startScene) Update() {
 		}
 		s.updateSpeed()
 		s.updateControls(mx, my)
+	}
+	if s.game.OpenMap {
+		// 0x004153B0: the jump orb hides the bag strip (0x00A3E730 = 0)
+		// and opens window 5 in place of any other.
+		s.game.OpenMap = false
+		s.inv.open, s.inv.quick = false, false
+		s.wmap.open = true
 	}
 	// One drawn frame runs 1 + speed game ticks (0x00437849–0x004378CC);
 	// the extra ticks stop when the hero is dead.
@@ -1054,11 +1091,11 @@ func (s *startScene) visible(x, y, w, h int) bool {
 func (s *startScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 	s.updateLight()
-	window := s.inv.open || s.talk.open() || s.trade.open()
+	window := s.inv.open || s.talk.open() || s.trade.open() || s.wmap.open
 	if s.tiling && window {
 		// 0x0042AE68: with background tiling («T», 0x00A3E744) an open
 		// window hides the world; the window tiles INTR slot 5 behind it.
-		s.hovered = -1
+		s.hovered, s.hoveredBuilding = -1, 0
 	} else {
 		chars, owners := s.drawWorld(screen)
 		s.hovered = s.hitTest(chars, owners)
@@ -1082,6 +1119,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	if s.trade.open() {
 		s.trade.draw(screen, s.hud, s.game, s.tables, s.tiling)
 	}
+	s.wmap.draw(screen, s.hud, s.game, s.mapNumber, s.tiling)
 	if text := s.statusText(); text != nil {
 		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.
 		s.font.drawWrapped(screen, text, viewLeft+10, viewBottom+5, viewRight-viewLeft-15)

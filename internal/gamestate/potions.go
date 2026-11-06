@@ -224,15 +224,25 @@ func (g *Game) drink(e *Entity, t *resfmt.ExeTables, target, item int) bool {
 const torchType = 31
 
 // UseMisc is the part of 0x00414E64(e, target, item) the port has: case 31,
-// the torch, sets Game.Lit (0x004156E6) and stays; with a target it then goes
-// to the front of e's bag (the common tail 0x00415BD3). Other misc items
-// return false (the shovel's case is handled by UseBagItem).
+// the torch, sets Game.Lit (0x004156E6); case 20, «Шар магического прыжка»,
+// hides the bag strip, opens the map window (0x004153B0, Game.OpenMap) and
+// plays sound 10. Both stay; with a target the item then goes to the front
+// of e's bag (the common tail 0x00415BD3). Other misc items return false
+// (the shovel's case is handled by UseBagItem).
 func (g *Game) UseMisc(e *Entity, target, item int) bool {
 	it, ok := g.Item(item)
-	if !ok || it.Category != 11 || it.Type != torchType {
+	if !ok || it.Category != 11 {
 		return false
 	}
-	g.Lit = true
+	switch it.Type {
+	case torchType:
+		g.Lit = true
+	case jumpOrbType:
+		g.OpenMap = true
+		g.sound(SoundUse) // 0x004153CC
+	default:
+		return false
+	}
 	if target != 0 {
 		BagInsert(e, item)
 	}

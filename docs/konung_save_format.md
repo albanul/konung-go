@@ -28,7 +28,7 @@ The name is `"KONUNG.SA0"` with the slot added to the last character (`0x00424EE
 | `0x25C48` | `0x7D00` | `0x0079EFDC` | pile records (section 3) |
 | `0x2D948` | `0x7D000` | `0x007AB378` | entities (section 5) |
 | `0xAA948` | `0x5E24` | `0x00835B18` | settlements (section 6) |
-| `0xB076C` | `0x38` | `0x00A3E0A8` | 56 "already drawn" flags of a misc item that picks a random entry (`0x00414E64`: `rand() % 56`, first free entry whose `0x0045AE90` byte is set). `Game.MiscUsed`; the port has no such item yet |
+| `0xB076C` | `0x38` | `0x00A3E0A8` | 56 known-map flags (index map − 1) of the [map window](konung_world_map.md#known-maps-0x00a3e0a8): set by the map loader and by misc item type 0. `Game.KnownMaps` |
 
 A save does **not** hold the map exits (section 4); the loader takes them from `GAME.<hero model>` (below).
 
@@ -66,7 +66,7 @@ The slot under the mouse (hit test `0x004398C4` on the same table) is selected. 
 * Saving first writes the scene back into the game, as a map change does (`startScene.storeWorld`), plus the hero's live cell and facing.
 * The port's runtime piles on maps other than the current one (it keeps them across map changes; the game does not) are not in the active list, so a save drops them.
 * NPC runtime state that the port keeps outside the entity records is rebuilt from the records on load: walk paths, combat targets and intents.
-* `Game.Quests` is read and written by the [dialogues](konung_dialogue.md) and listed by the quest log. `Game.MiscUsed` is only carried through.
+* `Game.Quests` is read and written by the [dialogues](konung_dialogue.md) and listed by the quest log. `Game.KnownMaps` is set on every map load and drawn by the [map window](konung_world_map.md).
 
 ## Open questions
 
