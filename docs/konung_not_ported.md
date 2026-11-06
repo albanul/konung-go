@@ -2,7 +2,7 @@
 
 What the Go port still leaves out, what it only approximates, and what is unknown about the formats. Each entry says what the original does (as far as it is traced), where it is in `konung.exe`, why it is missing, and what porting it would take. The topic docs remain the source of truth; this page collects their "not ported" and "open questions" lists in one place. Update both when an item is ported.
 
-Reasons used below: **not traced** (the exe code has not been read), **missing file** (the installed game lacks the resource), **single hero** (the port's party is the hero alone, so the feature has nothing to act on), **presentation** (a deliberate port choice).
+Reasons used below: **not traced** (the exe code has not been read), **missing file** (the installed game lacks the resource), **presentation** (a deliberate port choice).
 
 ## Features
 
@@ -17,25 +17,17 @@ Status: dispatcher traced, most cases **not traced**. Misc items (category ≥ 1
 | 20 Шар магического прыжка | `0x004153B0` | ported: opens the [map window](konung_world_map.md#opening-and-closing) |
 | 0 Потерянная карта | `0x00414E95` | ported: marks a random location known ([world map](konung_world_map.md#known-maps-0x00a3e0a8)) |
 | 14–19, 21 Магический шар … (волхв Бережков … Подземного города) | `0x00415329` … `0x004153D9` | not traced. Type 21 calls `0x004106E0(0x2B, 0x12, 0x18, 2)` with constants; hypothesis: a jump to a fixed place |
-| 1–10, 12, 13, 22, 23, 25–28, 30, 33, 35–39 | own cases | not traced (books, quest items, amulet parts 25–27 share `0x0041552D`, 35/37 share `0x004157D2`) |
+| 6 Слова Воскрешения | `0x00414FFB` | ported: revives every dead character on the map ([party](konung_party.md#revival-0x00414b3c-verified)) |
+| 1–5, 7–10, 12, 13, 22, 23, 25–28, 30, 33, 35–39 | own cases | not traced (books, quest items, amulet parts 25–27 share `0x0041552D`, 35/37 share `0x004157D2`) |
 | 11, 29, 32, 34 | `0x00415ACD` (default) | no use (32 «Неразменный пятак» counts as money, [trade](konung_trade.md)) |
 
 Names from `resfmt.ExeTables.ItemName(resfmt.ItemTableMisc, t)`. Porting means tracing each case; the dialogue scripts already handle quest items given or taken by NPCs.
 
-### Revival by Живая Вода
+### Party leftovers
 
-`0x00414B3C` revives a dead member when Живая Вода (herb 13, concentration ≥ 10) is used on it ([potions](konung_potions.md)). **Single hero**: the hero's death ends the game, so there is no dead member to target. Port together with a multi-member party.
+Party play is ported ([party](konung_party.md)): every member walks, follows, fights, is selected and revived. Not ported:
 
-### Party play
-
-**Single hero.** The port's selection and party are the hero. Not ported:
-
-* multi-selection (list `0x0083B93C`, up to 10) and Shift (`0x00A3E754`, apparently "whole selection", not traced);
-* the party AI (`0x0041F11C`, follow the leader with `+2` = `0x60`, formation `0x0041FA5D` with offsets `0x0045FF79`), so «Все ко мне» (F) only presses the button;
-* party placement around the hero on a map change (`0x004118DC`, the other members);
-* giving an item to another member by dropping it on its portrait (`0x004246F8`).
-
-Hiring (dialogue script 291) adds members to group 0 in `gamestate`, but the scene does not draw or move them. Porting needs the party AI traced and the selection list in the scene.
+* the portrait clicks in window 7 (switch the trading character).
 
 ### Movement
 
@@ -47,7 +39,6 @@ See [combat: port](konung_combat.md#port).
 
 * God mode `0x00A3E768`, toggled by `0x00436E93` (key not identified): damage to the hero −2.
 * Kind `0x49` steps back after its blow (`0x004101E4`, not traced).
-* The portrait feedback when a party member is hit (`0x0042D574`).
 * Equipping the best bag gear on re-equip (`0x004104D4`, not traced; `ReEquip` takes the quiver only).
 
 ### Films and voices (missing files)
@@ -61,8 +52,7 @@ The pile record with index 0 runs `0x0042B690(0x00450004)` = `WIN.FLM` when pick
 
 ### HUD
 
-* The alternate portrait table (`0x0062F3E0` set → `0x0062F3D8`, images `0x0083E090`, index `+0xF6`) and the portrait variant `+0xF8` written by hire (script 291).
-* The modified palette for entity types 2 and 8 (`0x0043FD18`, `0x0043F763`). See [interface](konung_interface_res.md#open-questions).
+* The alternate portrait table (`0x0062F3E0` set → `0x0062F3D8`, images `0x0083E090`, index `+0xF6`) and the portrait variant `+0xF8` written by hire (script 291). See [interface](konung_interface_res.md#open-questions).
 
 ### Village AI
 
@@ -92,7 +82,7 @@ Ported, but not bit-exact.
 | Search budget | separate 3-search budgets for the combat AI and the calm village AI | one budget `0x00A3E720` |
 | HUD press | held for one animation step | one main-loop pass |
 | New game time | 0 (day) | not traced |
-| A walking target | does not flinch | — |
+| A walk cut by a hit reaction | snaps back to the cell being left | the cell semantics of a step are not traced |
 
 ## Format unknowns
 

@@ -1,7 +1,9 @@
 package gamestate
 
 // LeaveMap is the leave cleanup 0x00436AD0(map), run before another map
-// loads. For each group on map m other than the party:
+// loads, while the party (group 0) is still on map m: the loop starts at
+// group 0, so dead party members are removed as well. For each group on
+// map m:
 //
 //   - every dead member (+4 bit 0x80) is removed: its items are freed
 //     (0x00422778: quiver, equipment, bag and the five extra slots get
@@ -13,14 +15,11 @@ package gamestate
 //     living member with a human body (model < 3), +4 bits 0x38 clear and
 //     no post (0x0041182C) takes it: post 0 = its index, its dialogue +0xD0 =
 //     the post's dialogue (+0x3D1), +2 = 0.
-//
-// The game also loops over the party group; the port skips it (the party's
-// death ends the game).
 func (g *Game) LeaveMap(m int) {
 	st := g.settlementOn(m)
-	for gi := 1; gi < len(g.Groups); gi++ {
+	for gi := 0; gi < len(g.Groups); gi++ {
 		gr := &g.Groups[gi]
-		if gr.Map != m || gr.Kind == 0 {
+		if gr.Map != m || (gi != 0 && gr.Kind == 0) {
 			continue
 		}
 		village := st != nil && st.Group == gi

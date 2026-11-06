@@ -27,8 +27,8 @@ Entity `+0x00` is the action type, relative to the animation set: 0–5 in the c
   2. Turn toward the target if needed (one octant per tick).
   3. At step 2: if the target's group is a village (`+0x1E` bit `0x80`), settlement `+0x4B2 |= 0x15`; then `0x004248A0` alarms the target's group (`+0x1D` = 1, members' `+0x14` = `0xFF`).
   4. Advance the step; after the last step the blow lands: `0x0041B100` then `0x0041C480`.
-  5. Kill (1): attacker `+6` = 0; victim HP = 0, `+2` = 0, death animation; experience (below); `0x00418510` (loot); attacker idle. Damage ≥ `0x30` (0): the victim flinches (type 2, or 8 outside the stance). Otherwise (−1 light hit, −2 dodge) nothing. A hit on a party member updates its portrait (`0x0042D574`). The swing restarts.
-* **Retaliation** `0x0041EC0C`: an idle party member without an intent (`+2 & 9` = 0) scans its 8 neighbours. A neighbour of another group with `+2` bit `0x01` and target = it becomes its target; the member sets `+2 |= 2` and the stance, and swings back. Port: `startScene.retaliate` (hero only). Stationary creatures swing with `+2` = `0x02`, so they are not struck back automatically.
+  5. Kill (1): attacker `+6` = 0; victim HP = 0, `+2` = 0, death animation; experience (below); `0x00418510` (loot); attacker idle. Damage ≥ `0x30` (0): the victim flinches (type 2, or 8 outside the stance). Otherwise (−1 light hit, −2 dodge) nothing. A heavy hit starts the hit reaction whatever the victim does, a walk included ([party](konung_party.md#hit-reaction-and-the-portrait-verified)). A hit on a party member redraws its portrait, red while the reaction plays (`0x0042D574`). The swing restarts.
+* **Retaliation** `0x0041EC0C`: an idle party member without an intent (`+2 & 9` = 0) scans its 8 neighbours. A neighbour of another group with `+2` bit `0x01` and target = it becomes its target; the member sets `+2 |= 2` and the stance, and swings back. Port: `startScene.retaliate`, for every member. Stationary creatures swing with `+2` = `0x02`, so they are not struck back automatically.
 * **Hero death** (`0x004376A8`): the main loop sees the hero's `+4` bit `0x80`, sets `0xA3E7F0` = 7, plays `GAMEOVER.FLM` (`0x0042B690(0x00450650)`) and leaves the game loop. The film is not among the installed files. The port returns to the main menu 2 s after the death (`startScene.gameOver`), and "New Game" starts again.
 
 ## Attack order (verified)
@@ -41,7 +41,7 @@ Entity `+0x00` is the action type, relative to the animation set: 0–5 in the c
 * Eligible groups: on the current map, not the party, `+0x1E` bit `0x80` clear (no village) unless alarmed, and `+0x1E` ≠ `0x53`. The group whose living member inside the area is closest to the leader wins. Then `0x004203A0` / `0x004202A8` pick that member.
 * When the target dies, the same search finds the next one. This also happens after a right-click attack, because the intent stays. With no enemy left, the intent ends (`+2 &= ~1`, `0x0041E456`).
 
-Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent). With the bow active the hero shoots instead (`+2` = `0x44`, `heroShoot`, [bows](#bows-verified)). Shift+A (select the whole party) has nothing to select: the party is the hero alone.
+Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent). With the bow active the hero shoots instead (`+2` = `0x44`, `heroShoot`, [bows](#bows-verified)). A orders every living member ([party](konung_party.md#orders-verified)).
 
 ## Creature AI (verified)
 
@@ -73,7 +73,7 @@ Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent).
 * **Revival:** a dying kind-`0x4C` creature with `+0x12` > 0 gets HP 1600, `+0x12` − 1 and action 4 (dormant) instead of dying (`gamestate.Revives`).
 * **Walk extras** (not ported): `+0x11` slows walking (ticks where `time & m == m`); kinds `0x4D`/`0x4F` pause a random number of ticks between steps.
 
-Port: `startScene.combatTick` → `alarmCheck`, `creatureTick` (`creatureChase`, `creatureDecide`, `goFor`, `stationarySwing`, `returnTarget`), `actTick`. The port's party is the hero, so every selector resolves to the hero. Corrected kind routing: `0x4E` and `0x54` belong to "others".
+Port: `startScene.combatTick` → `alarmCheck`, `creatureTick` (`creatureChase`, `creatureDecide`, `goFor`, `stationarySwing`, `returnTarget`), `actTick`. The selectors work on the whole party (`creatureTarget`, `nearestMember`). Corrected kind routing: `0x4E` and `0x54` belong to "others".
 
 ## Formulas (verified)
 
@@ -259,21 +259,19 @@ Orders:
 
 Approximations:
 * The rolls use Go's RNG, not the game's `rand()`.
-* A walking target does not flinch.
+* A walk cut by a hit reaction snaps back to the cell being left.
 * The combat AI (creatures and alarmed villagers) has its own 3-search budget per tick, separate from the calm village AI. It is served round-robin like `0x004116CC`. A chase toward a target whose 8 neighbour cells are all taken skips the search but still spends the budget, since the game's search would fail anyway.
 * Characters entering the stance move to the stance animation set (type − 6, `gamestate.EnterStance`); calmed villagers leave it (`LeaveStance`).
 * A chasing creature re-plans its whole path when the target moves (the game patches one step).
 * Arrow points use the nearest cell centre instead of `0x00439BDC`.
 * `ReEquip` does not equip the best bag gear (`0x004104D4`).
 * A respawned member's untouched fields start empty instead of stale.
-* The party is the hero alone, so every target selector resolves to the hero.
 
 Not ported:
 * the films `GAMEOVER.FLM` (hero death) and `DEFEAT<map>.FLM` (village surrender), played by `0x0042B690`: the files are not installed. The port returns to the menu after 2 s and shows nothing on a surrender;
 * god mode (`0x00A3E768`, toggled by `0x00436E93`): damage to the hero is not reduced by 2;
 * kind `0x49` stepping back after its blow (`0x004101E4`, not traced);
 * the walk extras (`+0x11` throttle, the `0x4D`/`0x4F` pauses), see [creature AI](#creature-ai-verified);
-* the portrait feedback when a party member is hit (`0x0042D574`);
 * picking the best bag gear on re-equip (`0x004104D4`, not traced).
 
 HP is regained through [potions](konung_potions.md) and the healer's dialogue scripts 334/335 ([dialogues](konung_dialogue.md)); the raise buttons are in the [character window](konung_character_window.md#raise-column-verified). See [not ported](konung_not_ported.md) for the whole list.
@@ -281,5 +279,5 @@ HP is regained through [potions](konung_potions.md) and the healer's dialogue sc
 ## Open questions
 
 * Grid bits `0xC000` (obstacle kinds); `0x004104D4` (equip best). (`0x00418364`, usable, is `Game.CanUse`, [character window](konung_character_window.md).)
-* The god-mode toggle `0x00436E93`; kind `0x49` retreat `0x004101E4`; HUD feedback `0x0042D574`; field `+0x11` (walk throttle), `+0x14`.
+* The god-mode toggle `0x00436E93`; kind `0x49` retreat `0x004101E4`; field `+0x11` (walk throttle), `+0x14`.
 * Films `GAMEOVER.FLM`, `DEFEAT<n>.FLM` (`0x0042B690`), not in the installed files.

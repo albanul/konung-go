@@ -142,13 +142,17 @@ func inView(x, y int) bool {
 }
 
 // Draw draws the frame, the buttons and one portrait per party member, like
-// the HUD redraw at 0x0042DBD3: frame, buttons (0x0042DA30), then the
-// portrait routine 0x0042D574 for each member. party[0] is the hero;
-// selected marks members in the selection list (0x0083B93C).
-func (h *hud) Draw(dst *ebiten.Image, party []gamestate.Entity, selected func(k int) bool) {
+// the HUD redraw at 0x0042DBD3: frame, buttons (0x0042DA30) showing
+// buttons' state (0x004290D8: the window's character, the first selected
+// or the hero), then the portrait routine 0x0042D574 for each member.
+// party[0] is the hero; selected marks members in the selection list
+// (0x0083B93C); hit marks members in their hit reaction (type 2/8), whose
+// portrait is drawn with the palette tinted red (0x0043FD18(24, 0, 0),
+// 0x0043F763).
+func (h *hud) Draw(dst *ebiten.Image, party []gamestate.Entity, buttons gamestate.Entity, selected, hit func(k int) bool) {
 	h.draw(dst, gamestate.HUDFrameSlot, 0, 0)
 	if len(party) > 0 {
-		for k, n := range gamestate.HUDButtonSlots(party[0]) {
+		for k, n := range gamestate.HUDButtonSlots(buttons) {
 			if p := h.pressed[k]; h.now < p.until {
 				h.draw(dst, p.img, buttonPos[k][0], buttonPos[k][1]-2)
 				continue
@@ -162,9 +166,15 @@ func (h *hud) Draw(dst *ebiten.Image, party []gamestate.Entity, selected func(k 
 		}
 		px, py := portraitCells[k][0], portraitCells[k][1]
 		if n := gamestate.PortraitSlot(e, k == 0); n >= 0 {
-			h.draw(dst, n, px, py)
+			if hit != nil && hit(k) {
+				if img := h.slotTinted(n, gamestate.HitTint); img != nil {
+					drawAt(dst, img, px, py)
+				}
+			} else {
+				h.draw(dst, n, px, py)
+			}
 		}
-		if selected(k) {
+		if selected != nil && selected(k) {
 			h.draw(dst, gamestate.HUDSelectedSlot, px, py)
 		}
 		// The bar is drawn whole and clipped to its bottom rows.

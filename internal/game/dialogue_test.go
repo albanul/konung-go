@@ -33,7 +33,7 @@ func TestRightClickTalks(t *testing.T) {
 	if s.talk.d == nil || len(s.talk.d.Replies) != 1 {
 		t.Fatalf("no dialogue: %+v", s.talk.d)
 	}
-	if s.hero.walking || len(s.hero.path) > 0 || s.pickIntent || s.hero.cell != from {
+	if s.hero.walking || len(s.hero.path) > 0 || s.lead().pickIntent || s.hero.cell != from {
 		t.Fatal("the hero walks to the NPC")
 	}
 	r := s.talk.replies[0]
@@ -70,8 +70,11 @@ func TestHireRebuildsScene(t *testing.T) {
 	if ok != 1 || len(s.party) != 2 || s.party[1].Group != 0 {
 		t.Fatalf("party %d after hire", len(s.party))
 	}
-	if _, ok := s.byEntity[s.party[1].Index]; !ok {
-		t.Error("the hired smith has no walker")
+	if m, _ := s.partyMember(s.party[1].Index); m == nil || m.intent&gamestate.IntentFollow == 0 {
+		t.Error("the hired smith has no member walker, or does not follow")
+	}
+	if _, ok := s.byEntity[s.party[1].Index]; ok {
+		t.Error("the hired smith is still an NPC")
 	}
 	if s.hero == nil || s.party[0].Index != s.hero.entity {
 		t.Error("hero lost in rebuild")

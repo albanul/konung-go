@@ -124,10 +124,6 @@ func (w *startScene) saveName(now time.Time) []byte {
 // and the map's active piles with their image positions.
 func (w *startScene) saveState() gamestate.SaveState {
 	w.storeWorld()
-	if w.hero != nil && len(w.party) > 0 {
-		e := &w.game.Entities[w.party[0].Index]
-		e.Row, e.Col, e.Variant = w.hero.cell.Row, w.hero.cell.Col, int(w.hero.dir)
-	}
 	st := gamestate.SaveState{Time: w.gameTime(), Arrows: w.arrows}
 	if len(st.Arrows) > 100 {
 		st.Arrows = st.Arrows[:100]

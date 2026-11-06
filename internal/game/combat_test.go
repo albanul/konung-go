@@ -38,23 +38,22 @@ func TestHeroKillsAnt(t *testing.T) {
 	ant := &npc{walker: walker{entity: 921, cell: antCell}}
 	s := &startScene{
 		game: g, tables: tb, party: []gamestate.Entity{volk},
-		hero:     &walker{entity: volk.Index, cell: heroCell, blocked: func(mapdata.Cell) bool { return false }},
 		npcs:     []*npc{ant},
 		byEntity: map[int]*npc{921: ant},
 		occ:      map[mapdata.Cell]bool{antCell: true, heroCell: true},
 		rng:      rand.New(rand.NewPCG(1, 2)),
-		target:   -1,
 		pileAt:   map[mapdata.Cell]int{},
 	}
-	s.startFight(921)
+	h := setHero(s, walker{entity: volk.Index, cell: heroCell, blocked: func(mapdata.Cell) bool { return false }})
+	s.startFight(h, 921)
 	for i := 0; i < 1000 && !g.Entities[921].Dead(); i++ {
 		s.combatTick()
 	}
 	if !g.Entities[921].Dead() || g.Entities[921].HP != 0 {
 		t.Fatalf("ant not dead: HP %d", g.Entities[921].HP)
 	}
-	if s.occ[antCell] || ant.act != gamestate.ActDeath || s.target != -1 {
-		t.Errorf("after the kill: cell held %v, ant action %d, hero target %d", s.occ[antCell], ant.act, s.target)
+	if s.occ[antCell] || ant.act != gamestate.ActDeath || h.target != -1 {
+		t.Errorf("after the kill: cell held %v, ant action %d, hero target %d", s.occ[antCell], ant.act, h.target)
 	}
 	if s.party[0].FreeExp != volk.FreeExp+1 || s.party[0].Fencing != volk.Fencing+4 {
 		t.Errorf("Volk free exp %d → %d, Фехтование %d → %d", volk.FreeExp, s.party[0].FreeExp, volk.Fencing, s.party[0].Fencing)
@@ -78,18 +77,19 @@ func TestHeroChasesTarget(t *testing.T) {
 	antCell := mapdata.Cell{Row: 100, Col: 40}
 	ant := &npc{walker: walker{entity: 921, cell: antCell}}
 	occ := map[mapdata.Cell]bool{antCell: true}
-	hero := &walker{entity: 0, cell: mapdata.Cell{Row: 92, Col: 36}, searchCap: pathSearchLimit}
+	s := &startScene{game: g, party: []gamestate.Entity{g.Entities[0]}, npcs: []*npc{ant},
+		byEntity: map[int]*npc{921: ant}, occ: occ, pileAt: map[mapdata.Cell]int{}}
+	m := setHero(s, walker{entity: 0, cell: mapdata.Cell{Row: 92, Col: 36}, searchCap: pathSearchLimit})
+	hero := &m.walker
 	hero.blocked = func(c mapdata.Cell) bool { return occ[c] }
-	s := &startScene{game: g, party: []gamestate.Entity{g.Entities[0]}, hero: hero, npcs: []*npc{ant},
-		byEntity: map[int]*npc{921: ant}, occ: occ, target: -1, pileAt: map[mapdata.Cell]int{}}
-	s.startFight(921)
+	s.startFight(m, 921)
 	for i := 0; i < 5000 && hero.act != gamestate.ActAttack; i++ {
 		hero.update()
 		if hero.cell == antCell {
 			t.Fatal("hero walked into the target's cell")
 		}
 		if i%walkTicksPerStep == 0 {
-			s.heroTick()
+			s.memberTick(m)
 		}
 	}
 	if hero.act != gamestate.ActAttack || !adjacent(hero.cell, antCell) {
@@ -130,21 +130,20 @@ func TestCreatureFightsBack(t *testing.T) {
 		mode: npcCreature, group: grp, target: -1}
 	s := &startScene{
 		game: g, tables: tb, party: []gamestate.Entity{volk},
-		hero:     &walker{entity: volk.Index, cell: heroCell, blocked: free, searchCap: pathSearchLimit},
 		npcs:     []*npc{ant},
 		byEntity: map[int]*npc{921: ant},
 		occ:      occ,
 		rng:      rand.New(rand.NewPCG(3, 4)),
-		target:   -1,
 		pileAt:   map[mapdata.Cell]int{},
 	}
+	h := setHero(s, walker{entity: volk.Index, cell: heroCell, blocked: free, searchCap: pathSearchLimit})
 	s.setStopAt(ant)
 	attacked, struck := false, false
 	for i := 0; i < 2000 && !g.Entities[921].Dead() && !s.party[0].Dead(); i++ {
 		s.tick = i * walkTicksPerStep
 		s.combatTick()
 		attacked = attacked || (ant.act == gamestate.ActAttack && ant.target == volk.Index)
-		struck = struck || s.target == 921
+		struck = struck || h.target == 921
 	}
 	if g.Groups[grp].Alarm != gamestate.AlarmAttack {
 		t.Errorf("group %d alarm %#x, want attack", grp, g.Groups[grp].Alarm)
@@ -191,7 +190,7 @@ func TestCreatureReturnsHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &startScene{game: g, tables: tb, npcs: []*npc{ant}, byEntity: map[int]*npc{921: ant}, occ: occ, target: -1,
+	s := &startScene{game: g, tables: tb, npcs: []*npc{ant}, byEntity: map[int]*npc{921: ant}, occ: occ,
 		pileAt: map[mapdata.Cell]int{}}
 	s.walk = &mapdata.WalkGrid{}
 	s.worldW, s.worldH = 1<<20, 1<<20
@@ -235,7 +234,7 @@ func TestAttackOrderFindsNextEnemy(t *testing.T) {
 	near := mapdata.Neighbors(heroCell)
 	cells := map[int]mapdata.Cell{921: near[0].Cell, 922: near[4].Cell, 923: {Row: 100, Col: 40 + attackRangeCols*2}}
 	occ := map[mapdata.Cell]bool{heroCell: true}
-	s := &startScene{game: g, tables: tb, byEntity: map[int]*npc{}, occ: occ, target: -1,
+	s := &startScene{game: g, tables: tb, byEntity: map[int]*npc{}, occ: occ,
 		rng: rand.New(rand.NewPCG(7, 8)), pileAt: map[mapdata.Cell]int{}}
 	for i, c := range cells {
 		n := &npc{walker: walker{entity: i, cell: c}, target: -1} // calm: they don't move
@@ -246,16 +245,16 @@ func TestAttackOrderFindsNextEnemy(t *testing.T) {
 	volk := g.Entities[g.Groups[0].First]
 	volk.Flags3 |= 0x04
 	s.party = []gamestate.Entity{volk}
-	s.hero = &walker{entity: volk.Index, cell: heroCell, blocked: func(c mapdata.Cell) bool { return occ[c] }}
-	s.melee = true
-	for i := 0; i < 5000 && s.melee; i++ {
-		s.heroTick()
+	h := setHero(s, walker{entity: volk.Index, cell: heroCell, blocked: func(c mapdata.Cell) bool { return occ[c] }})
+	h.intent |= gamestate.IntentMelee
+	for i := 0; i < 5000 && h.melee(); i++ {
+		s.memberTick(h)
 		for _, n := range s.npcs {
 			s.actTick(&n.walker, &g.Entities[n.entity], n)
 		}
 	}
-	if s.melee || !g.Entities[921].Dead() || !g.Entities[922].Dead() || g.Entities[923].Dead() {
-		t.Fatalf("intent %v; dead: 921 %v, 922 %v, 923 (out of range) %v", s.melee,
+	if h.melee() || !g.Entities[921].Dead() || !g.Entities[922].Dead() || g.Entities[923].Dead() {
+		t.Fatalf("intent %v; dead: 921 %v, 922 %v, 923 (out of range) %v", h.melee(),
 			g.Entities[921].Dead(), g.Entities[922].Dead(), g.Entities[923].Dead())
 	}
 }
@@ -298,15 +297,16 @@ func TestHeroShootsAnt(t *testing.T) {
 	volk.Flags3 |= 0x04
 	volk.Equipment[gamestate.WeaponBow], volk.Quiver, volk.WeaponMode = bow, arrows, gamestate.WeaponBow
 	s := &startScene{game: g, tables: tb, party: []gamestate.Entity{volk}, npcs: []*npc{ant},
-		byEntity: map[int]*npc{921: ant}, occ: occ, target: 921, shoot: true, walk: &mapdata.WalkGrid{},
-		hero: &walker{entity: volk.Index, cell: heroCell, load: frames,
-			blocked: func(c mapdata.Cell) bool { return occ[c] }},
+		byEntity: map[int]*npc{921: ant}, occ: occ, walk: &mapdata.WalkGrid{},
 		rng: rand.New(rand.NewPCG(9, 9)), pileAt: map[mapdata.Cell]int{}}
+	h := setHero(s, walker{entity: volk.Index, cell: heroCell, load: frames,
+		blocked: func(c mapdata.Cell) bool { return occ[c] }})
+	h.target, h.intent = 921, gamestate.IntentShoot
 	shots := 0
-	for i := 0; i < 3000 && !g.Entities[921].Dead() && s.shoot; i++ {
+	for i := 0; i < 3000 && !g.Entities[921].Dead() && h.shoot(); i++ {
 		before := len(s.arrows)
 		s.flyArrows()
-		s.heroTick()
+		s.memberTick(h)
 		if len(s.arrows) > before {
 			shots++
 		}
@@ -316,7 +316,7 @@ func TestHeroShootsAnt(t *testing.T) {
 		t.Fatal("no arrow was shot")
 	}
 	if !g.Entities[921].Dead() && s.party[0].Quiver != 0 {
-		t.Fatalf("after %d shots the ant has HP %d (shoot intent %v)", shots, g.Entities[921].HP, s.shoot)
+		t.Fatalf("after %d shots the ant has HP %d (shoot intent %v)", shots, g.Entities[921].HP, h.shoot())
 	}
 	if s.party[0].Marksmanship <= volk.Marksmanship && g.Entities[921].Dead() {
 		t.Error("the kill gave no Меткость")
@@ -352,7 +352,8 @@ func TestAngryVillagerAttacks(t *testing.T) {
 	n := &npc{walker: walker{entity: man, cell: cell}, mode: npcVillager, group: st.Group, target: -1}
 	volk := g.Entities[g.Groups[0].First]
 	s := &startScene{game: g, party: []gamestate.Entity{volk}, npcs: []*npc{n}, byEntity: map[int]*npc{man: n},
-		hero: &walker{entity: volk.Index, cell: heroCell}, target: -1, pileAt: map[mapdata.Cell]int{}, aiBudget: 3}
+		pileAt: map[mapdata.Cell]int{}, aiBudget: 3}
+	setHero(s, walker{entity: volk.Index, cell: heroCell})
 	s.villagerTick(n)
 	if e := g.Entities[man]; !e.InStance() || e.Type >= 6 || lookOf(e).typ != 0 {
 		// The stance moves the action type to the set 0–5; with type 6 the
@@ -464,8 +465,9 @@ func TestHunterShootsAgain(t *testing.T) {
 	volk.HP = 60000
 	far := mapdata.Cell{Row: 100, Col: 45} // 5 cells east, inside bow range
 	s := &startScene{game: g, tables: tb, party: []gamestate.Entity{volk}, npcs: []*npc{n}, byEntity: map[int]*npc{hunter: n},
-		hero: &walker{entity: volk.Index, cell: far, load: frames}, target: -1, pileAt: map[mapdata.Cell]int{},
-		walk: &mapdata.WalkGrid{}, rng: rand.New(rand.NewPCG(4, 4)), occ: map[mapdata.Cell]bool{}}
+		pileAt: map[mapdata.Cell]int{},
+		walk:   &mapdata.WalkGrid{}, rng: rand.New(rand.NewPCG(4, 4)), occ: map[mapdata.Cell]bool{}}
+	setHero(s, walker{entity: volk.Index, cell: far, load: frames})
 	s.provoke(st.Group)
 	shoot := func() bool {
 		for range 40 {
@@ -494,4 +496,14 @@ func TestHunterShootsAgain(t *testing.T) {
 	if !shoot() {
 		t.Fatalf("after melee the hunter never shot again (mode %d)", g.Entities[hunter].WeaponMode)
 	}
+}
+
+// setHero makes w the walker of s.party[0]: the hero as the party's only
+// member, selected.
+func setHero(s *startScene, w walker) *member {
+	m := &member{walker: w, target: -1}
+	s.members = []*member{m}
+	s.hero = &m.walker
+	s.sel = []int{s.party[0].Index}
+	return m
 }

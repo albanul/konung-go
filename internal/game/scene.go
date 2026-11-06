@@ -90,8 +90,8 @@ type startScene struct {
 	frame          int // drawn frames (Update calls)
 	speed          int // 0x00A3E764
 
-	hero   *walker // nil when the player does not start on this map
-	npcs   []*npc  // every other character (see npcMode)
+	hero   *walker // the hero's walker (members[0]); nil when the party is not on this map
+	npcs   []*npc  // every character outside the party (see npcMode)
 	aiNext int     // round-robin start of the village AI's path budget
 	walk   *mapdata.WalkGrid
 	occ    map[mapdata.Cell]bool // cells held or being entered by a character
@@ -100,6 +100,12 @@ type startScene struct {
 
 	hud   *hud
 	party []gamestate.Entity // group 0's entities (copies; [0] = hero) shown in the portrait grid
+	// members are the party's walkers, one per party entry (party.go);
+	// sel is the selection list 0x0083B93C (entity indices, at most 10)
+	// and cur the character window's character 0x00A3E688 (party index).
+	members []*member
+	sel     []int
+	cur     int
 
 	game   *gamestate.Game
 	tables *resfmt.ExeTables
@@ -112,22 +118,14 @@ type startScene struct {
 	msg    []byte          // status-line message (0x0042F9B8) and when it ends
 	msgEnd int
 
-	mapNumber  int
-	pileAt     map[mapdata.Cell]int // active piles by cell (index into game.Piles)
-	pickIntent bool                 // entity +3 bit 0x40: pick up where the walk ends
-	hovered    int                  // entity under the cursor in the last frame, -1 = none
+	mapNumber int
+	pileAt    map[mapdata.Cell]int // active piles by cell (index into game.Piles)
+	hovered   int                  // entity under the cursor in the last frame, -1 = none
 
-	byEntity   map[int]*npc // non-party characters on this map by entity index
-	target     int          // hero's attack target (entity +6), -1 = none; see combat.go
-	targetCell mapdata.Cell // the target's cell when last checked (+0x0C/+0x0E)
-	deadAt     int          // frame the hero was first seen dead (gameOver)
-	aiBudget   int          // combat AI path searches left this game tick
-	fightNext  int          // round-robin start of the combat AI's path budget
-	melee      bool         // hero's melee intent (+2 bit 0x01): keeps finding targets after a kill
-	shoot      bool         // hero's shoot intent (+2 bit 0x04), ranged.go
-	// burnTarget is placement + 1 of the building the hero shoots at (the
-	// game's +6 = −(placement + 1), incendiary arrows), 0 = none.
-	burnTarget int
+	byEntity  map[int]*npc // non-party characters on this map by entity index
+	deadAt    int          // frame the hero was first seen dead (gameOver)
+	aiBudget  int          // combat AI path searches left this game tick
+	fightNext int          // round-robin start of the combat AI's path budget
 	// hoveredBuilding is placement + 1 of the front-most settlement
 	// building under the cursor (0x00A3E6A4, set by the object draw
 	// pass), 0 = none.
@@ -248,31 +246,67 @@ func (a *sceneAssets) newGame(hero gamestate.Entity) (*startScene, error) {
 
 // changeMap takes map exit x (0x00421CCD, then the main loop's map change at
 // 0x004377C6): the scene's characters go back into the game (storeWorld),
-// the party moves to the exit's target and the scene is rebuilt for that
-// map. If the target fails to load, the game state is restored.
+// the leave cleanup runs while the party is still on the map it leaves (so
+// dead party members are removed too), the party moves to the exit's target
+// and the scene is rebuilt for that map. If the target fails to load, the
+// groups, entities and settlements are restored (items freed by the cleanup
+// stay freed).
 func (s *startScene) changeMap(x gamestate.MapExit) {
-	group := s.game.Groups[0]
-	entities := append([]gamestate.Entity(nil), s.game.Entities...)
 	s.storeWorld()
+	groups := append([]gamestate.Group(nil), s.game.Groups...)
+	entities := append([]gamestate.Entity(nil), s.game.Entities...)
+	settlements := append([]gamestate.Settlement(nil), s.game.Settlements...)
+	g0 := s.game.Groups[0]
+	curEntity := s.current().Index
+	var kept []int // the party's entities that survive the cleanup, in order
+	for k := 0; k < g0.Count; k++ {
+		if !s.game.Entities[g0.First+k].Dead() {
+			kept = append(kept, g0.First+k)
+		}
+	}
+	s.game.LeaveMap(s.mapNumber) // 0x00436AD0: the dead of the map left are removed
+	// The survivors moved down to fill the gaps: renumber the selection and
+	// the character window's character.
+	moved := map[int]int{}
+	for k, i := range kept {
+		moved[i] = g0.First + k
+	}
+	var sel []int
+	for _, i := range s.sel {
+		if j, ok := moved[i]; ok {
+			sel = append(sel, j)
+		}
+	}
+	s.sel, s.cur = sel, 0
+	if j, ok := moved[curEntity]; ok {
+		s.cur = j - g0.First
+	}
 	s.game.TakeExit(x)
 	ns, err := s.assets.buildScene(s.game, x.To, s, nil)
 	if err != nil {
 		log.Printf("map exit %d to KONUNG.%d: %v", x.Index, x.To, err)
-		s.game.Groups[0] = group
-		s.game.Entities = entities
+		s.game.Groups, s.game.Entities, s.game.Settlements = groups, entities, settlements
 		return
 	}
-	s.game.LeaveMap(s.mapNumber) // 0x00436AD0: the dead of the map left are removed
 	*s = *ns
 }
 
 // storeWorld writes the scene's runtime state back into s.game: the party
-// (stance, weapon, inventory) and every other character's cell and facing.
+// (cell, facing, +2 intents, stance, weapon, inventory) and every other
+// character's cell and facing.
 // The game keeps all characters in one global array (0x007AB378) and runs
 // the AI only for the current map, so a map looks as it was left on the
 // next visit; the map loader (0x0043C612) puts them back on their stored
 // cells, idle.
 func (s *startScene) storeWorld() {
+	for _, m := range s.members {
+		if m == nil {
+			continue
+		}
+		e := &s.party[m.k]
+		e.Row, e.Col, e.Variant = m.cell.Row, m.cell.Col, int(m.dir)
+		e.Flags2 = m.intent
+	}
 	for _, e := range s.party {
 		s.game.Entities[e.Index] = e
 	}
@@ -326,7 +360,6 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		tables:      tables,
 		font:        a.font,
 		hovered:     -1,
-		target:      -1,
 		byEntity:    map[int]*npc{},
 		occ:         map[mapdata.Cell]bool{},
 		hand:        gamestate.NewHand(),
@@ -348,6 +381,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		s.talk, s.trade, s.wmap = prev.talk, prev.trade, prev.wmap
 		s.tick, s.frame, s.msg, s.msgEnd = prev.tick, prev.frame, prev.msg, prev.msgEnd
 		s.shadowLayer = prev.shadowLayer
+		s.sel = prev.sel
 	} else {
 		s.inv = newCharWindow(a.hud, tables, a.largeFont, a.font)
 		s.talk = newTalkWindow(tables, a.quests, a.font)
@@ -398,11 +432,6 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	// loops. The player (group 0's first entity) is controllable; villagers
 	// run the ported village AI, creatures stand still while calm (see npc).
 	camX, camY := s.worldW/2, s.worldH/2
-	if g0 := game.Groups[0]; g0.Map == mapNumber {
-		for k := 0; k < g0.Count; k++ {
-			s.party = append(s.party, game.Entities[g0.First+k])
-		}
-	}
 	uploadSprite := func(sp *resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image) { return upload(sp.Image, sp.Shadow) }
 	logErr := func(err error) { log.Printf("%s: %v", gamePath, err) }
 	reserve := func(c mapdata.Cell) bool {
@@ -427,20 +456,40 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		}
 	}
 	if restore == nil {
+		freeCell := func(r, c int) bool { return !walk.Blocked(r, c) && !taken[[2]int{r, c}] }
 		game.EnterMap(mapNumber, tables, s.rng.IntN,
-			func(r, c int) bool { return walk.Blocked(r, c) || taken[[2]int{r, c}] },
+			func(r, c int) bool { return !freeCell(r, c) },
 			func(r, c int) { taken[[2]int{r, c}] = true })
+		// 0x004118DC after a map exit or a jump (TakeExit cleared the
+		// party's cells): the hero on the group cell, the others around it.
+		if g0 := game.Groups[0]; g0.Map == mapNumber && g0.Count > 0 && tables != nil {
+			if h := game.Entities[g0.First]; h.Row == 0 && h.Col == 0 {
+				game.PlaceParty(tables, s.rng.IntN, freeCell, func(r, c int) { taken[[2]int{r, c}] = true })
+			}
+		}
 	}
+	if g0 := game.Groups[0]; g0.Map == mapNumber {
+		for k := 0; k < g0.Count; k++ {
+			s.party = append(s.party, game.Entities[g0.First+k])
+		}
+		s.members = make([]*member, len(s.party))
+	}
+	game.Reviver = s.revive
 	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
 		if p.Group != 0 && p.Dead() {
 			continue // the leave cleanup (0x00436AD0) removes the dead
 		}
 		cell := mapdata.Cell{Row: p.Row, Col: p.Col}
-		s.occ[cell] = true
+		if !p.Dead() {
+			s.occ[cell] = true
+		}
 		cur := liveEntity(game, p.Index) // type (stance), weapon and gear change in fights
-		hero := p.Group == 0 && p.Index == game.Groups[0].First && len(s.party) > 0 && s.party[0].Index == p.Index
-		if hero {
-			cur = func() gamestate.Entity { return s.party[0] } // stance and weapon change at runtime
+		k := -1
+		if p.Group == 0 {
+			k = s.partyIndex(p.Index)
+		}
+		if k >= 0 {
+			cur = func() gamestate.Entity { return s.party[k] } // stance and weapon change at runtime
 		}
 		w := walker{
 			entity: p.Index, cell: cell, dir: mapdata.Direction(p.Variant & 7), phase: p.Index * 5,
@@ -449,10 +498,22 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 			reserve: reserve, release: release,
 			sound: s.actionSound,
 		}
-		if hero {
+		if k >= 0 {
 			w.blocked, w.searchCap = s.blocked, pathSearchLimit
-			s.hero = &w
-			camX, camY = gamestate.WorldPos(p.Row, p.Col)
+			m := &member{walker: w, k: k, target: -1}
+			// +2 survives a map change or a save; the fight orders don't.
+			m.intent = byte(p.Flags2) & (gamestate.IntentStrike | gamestate.IntentFollow | gamestate.IntentIdle)
+			if k == 0 {
+				m.intent &^= gamestate.IntentFollow
+			}
+			if p.Dead() {
+				m.act, m.actStep = gamestate.ActDeath, 1<<10 // a corpse: the last death step
+			}
+			s.members[k] = m
+			if k == 0 {
+				s.hero = &m.walker
+				camX, camY = gamestate.WorldPos(p.Row, p.Col)
+			}
 			continue
 		}
 		n := &npc{walker: w, rng: s.rng.IntN}
@@ -482,10 +543,12 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		default:
 			n.blocked = s.blocked
 		}
+		n.liveMode = n.mode
 		s.npcs = append(s.npcs, n)
 		s.byEntity[p.Index] = n
 	}
 	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
+	s.initSelection(prev)
 	// 0x0043CB8B: the map's settlement restocks (healer jars, merchant);
 	// the loader does this on every load, a restored save included.
 	if prev == nil || prev.mapNumber != mapNumber {
@@ -523,23 +586,27 @@ func (s *startScene) updateNPCs() {
 	}
 }
 
-// updateControls handles the hero's keys and clicks. The selection is the
-// hero alone (the game's selection list 0x0083B93C holds up to 10 party
-// members).
+// updateControls handles the player's keys and clicks. Orders go to the
+// selection list (0x0083B93C, party.go); item moves work on the character
+// window's character (0x00A3E688, startScene.current).
 //
-//   - Space / HUD stance button: gamestate.ToggleStance (0x0042179C); 1/2/3 and
-//     the HUD weapon button: gamestate.SelectWeapon (0x0042192C).
+//   - Space / HUD stance button: the selection's stance (0x0042179C); 1/2/3
+//     and the HUD weapon button: the first selected member's weapon, the
+//     whole selection's with Shift (0x0042192C).
 //   - I / HUD bag button: character window (0x00424610); ~: the bag strip
 //     alone (0x004371D2). The bag arrows are hotspots 120/121.
-//   - Left click (0x00422933): HUD hotspots, window boxes and bag cells move
-//     items; on the map it walks there without picking up (0x004229F7,
-//     +3 &= 0xBF), or drops a held item on the ground at the hero's cell
-//     (0x004229BC → 0x004138C8).
+//   - Left click (0x00422933): HUD hotspots, portraits (select, the bag
+//     strip), window boxes and bag cells move items; on the map the
+//     selection walks there without picking up (0x004229F7), or a held item
+//     is dropped on the ground at its owner's cell (0x004229BC → 0x004138C8).
 //   - Right click (0x004238EE): returns a held item; on a bag cell uses the
-//     item (gamestate.UseBagItem); on a character with a dialogue (out of
-//     the stance; a party member with Ctrl) opens it without walking
-//     (0x00423B6E, 0x00423A41); on the map walks there and picks up on
-//     arrival (0x004239E3).
+//     item (gamestate.UseBagItem); on a portrait deselects (0x00423D02); on
+//     a party member selects it (0x00423A5C); on a character with a
+//     dialogue (out of the stance; a party member with Ctrl) opens it
+//     without walking (0x00423B6E, 0x00423A41); otherwise every selected
+//     member takes the order (rightOrder: shoot, attack, walk and pick up).
+//   - F / HUD button 4: «Все ко мне» (gatherOrder); A / HUD button 5:
+//     attack (attackOrder).
 //   - Q / HUD button 5: quest log (0x0042459C). While a dialogue is open
 //     only its replies take clicks.
 //
@@ -547,10 +614,10 @@ func (s *startScene) updateNPCs() {
 // (0x00429194(1) at 0x004217BA, 0x00421948, 0x00424635); any click ends the
 // shovel's dig mode first.
 func (s *startScene) updateControls(mx, my int) {
-	if len(s.party) == 0 || s.party[0].Index != s.hero.entity || s.party[0].Dead() || s.hero.act == gamestate.ActDeath {
+	if len(s.party) == 0 || s.lead() == nil || s.party[0].Dead() || s.hero.act == gamestate.ActDeath {
 		return
 	}
-	hero := &s.party[0]
+	cur := s.current()
 	left := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
 	right := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight)
 	if s.trade.open() {
@@ -579,17 +646,14 @@ func (s *startScene) updateControls(mx, my int) {
 		button = buttonAt(s.tables, mx, my)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
-		s.hand.Return(hero)
-		gamestate.ToggleStance([]*gamestate.Entity{hero})
-		if !hero.InStance() {
-			s.endFight() // the swing needs the stance's animation set
-		}
-		s.hud.press(hudStanceButton, gamestate.HUDButtonSlots(*hero)[hudStanceButton])
+		s.hand.Return(cur)
+		s.toggleSelectionStance()
+		s.hud.press(hudStanceButton, gamestate.HUDButtonSlots(*s.buttonEntity())[hudStanceButton])
 	}
 	weapon := func(mode int) {
-		s.hand.Return(hero)
-		before := gamestate.HUDButtonSlots(*hero)[hudWeaponButton]
-		gamestate.SelectWeapon(hero, mode)
+		s.hand.Return(cur)
+		before := gamestate.HUDButtonSlots(*s.buttonEntity())[hudWeaponButton]
+		s.selectWeapon(mode)
 		s.hud.press(hudWeaponButton, before) // 0x00421B9D presses the image shown so far
 	}
 	for key, mode := range map[ebiten.Key]int{
@@ -603,20 +667,20 @@ func (s *startScene) updateControls(mx, my int) {
 		weapon(gamestate.WeaponCycle)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) || button == hudGatherButton {
-		s.gatherOrder(hero)
+		s.gatherOrder()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyA) || button == hudAttackButton {
-		s.attackOrder(hero)
+		s.attackOrder()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) || button == hudMapButton {
-		s.toggleMap(hero) // 0x00436EB9, 0x00422C01
+		s.toggleMap(cur) // 0x00436EB9, 0x00422C01
 	}
 	if (inpututil.IsKeyJustPressed(ebiten.KeyQ) || button == hudLogButton) && !s.inv.open && !s.wmap.open {
 		s.talk.toggleLog() // 0x0042459C
 		s.hud.press(hudLogButton, hudLogImage)
 	}
 	if (inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton) && !s.talk.log && !s.wmap.open {
-		s.hand.Return(hero)
+		s.hand.Return(cur)
 		s.inv.toggle()
 		if s.inv.open {
 			s.hand.Box = 0 // 0x004246D1
@@ -640,20 +704,25 @@ func (s *startScene) updateControls(mx, my int) {
 		// the view are ignored (0x00422EDF), and a right click only
 		// returns a held item (0x0042393D needs window 0).
 		if _, inArea := s.wmap.regionAt(s.game, mx, my); left && inArea {
-			s.mapClick(hero, mx, my)
+			s.mapClick(cur, mx, my)
 		} else if right {
-			s.hand.Return(hero)
+			s.hand.Return(cur)
 		} else if left && !inView(mx, my) {
-			s.click(hero, mx, my, spot, false)
+			s.click(cur, mx, my, spot, false)
 		}
 	case left || right:
-		s.click(hero, mx, my, spot, right)
+		s.click(s.current(), mx, my, spot, right)
 	}
-	s.hero.look = lookOf(*hero)
+	for _, m := range s.members {
+		if m != nil {
+			m.look = lookOf(s.party[m.k])
+		}
+	}
 }
 
-// click routes one mouse click (button already handled above for the HUD).
-func (s *startScene) click(hero *gamestate.Entity, mx, my, spot int, right bool) {
+// click routes one mouse click (button already handled above for the HUD);
+// cur is the character window's character, who holds the hand's item.
+func (s *startScene) click(cur *gamestate.Entity, mx, my, spot int, right bool) {
 	if s.hand.Digging() {
 		s.hand.Cursor = gamestate.CursorPointer
 		if s.inv.strip.hit(mx, my) && s.inv.showStrip() && !right {
@@ -661,17 +730,26 @@ func (s *startScene) click(hero *gamestate.Entity, mx, my, spot int, right bool)
 		}
 	}
 	if right && s.hand.Holding() {
-		s.hand.Return(hero) // 0x00423919
+		s.hand.Return(cur) // 0x00423919
 		return
 	}
 	msg := 0
+	portrait := -1
+	if k := spot - hotspotPortrait; k >= 0 && k < len(portraitCells) && k < len(s.party) {
+		portrait = k
+	}
 	switch {
-	case !right && spot >= hotspotPortrait && spot < hotspotPortrait+len(portraitCells):
+	case portrait >= 0 && right:
+		s.portraitRightClick(portrait) // 0x00423D02
+	case portrait >= 0 && s.hand.Holding():
 		// 0x00422E21: a held item dropped on a portrait is used on (or given
-		// to) that member; with an empty hand the click would select.
-		if k := spot - hotspotPortrait; k < len(s.party) {
-			msg = s.game.ClickPortrait(&s.hand, hero, &s.party[k], s.tables)
+		// to) that member.
+		msg = s.game.ClickPortrait(&s.hand, cur, &s.party[portrait], s.tables)
+		if m, _ := s.partyMember(s.party[portrait].Index); m != nil {
+			m.look = lookOf(s.party[portrait])
 		}
+	case portrait >= 0:
+		s.portraitClick(portrait) // 0x00422EA8: select, the bag strip
 	case !inView(mx, my):
 		return // HUD: buttons were handled by updateControls
 	case s.inv.showStrip() && (spot == hotspotBagLeft || spot == hotspotBagRight):
@@ -680,67 +758,69 @@ func (s *startScene) click(hero *gamestate.Entity, mx, my, spot int, right bool)
 			if spot == hotspotBagRight {
 				dir = 1
 			}
-			s.inv.scrollBy(*hero, dir, s.frame)
+			s.inv.scrollBy(*cur, dir, s.frame)
 		}
 	case s.inv.showStrip() && s.inv.strip.hit(mx, my):
 		i := (mx-s.inv.strip.x0)/s.inv.strip.cellW + s.inv.scroll
 		if right {
-			msg = s.game.UseBagItem(&s.hand, hero, s.tables, i)
+			msg = s.game.UseBagItem(&s.hand, cur, s.tables, i)
 			if s.hand.Digging() && s.inv.open {
 				s.inv.open = false // 0x00415504 closes the window; the strip stays
 				s.inv.quick = true
 			}
 		} else {
-			msg = s.game.ClickBag(&s.hand, hero, s.tables, i)
+			msg = s.game.ClickBag(&s.hand, cur, s.tables, i)
 		}
 	case s.inv.open:
 		if !right {
-			msg = s.windowClick(hero, spot)
+			msg = s.windowClick(cur, spot)
 		}
 	case !right && s.hand.Holding():
-		s.dropHeld(hero)
-	case right && hero.InStance() && s.hovered >= 0 && s.hovered != hero.Index && !s.entity(s.hovered).Dead():
-		if gamestate.CanShoot(*hero) {
-			s.endFight()
-			s.target, s.shoot = s.hovered, true // 0x00423BEF: +2 = 0x44
-			break
+		s.dropHeld(cur)
+	case right && s.hovered >= 0 && s.entity(s.hovered).Group == 0:
+		// 0x004239EE: a party member — its dialogue with Ctrl, else the
+		// selection.
+		if s.canTalk(s.party[0]) {
+			s.talkTo(s.hovered)
+		} else {
+			s.selectInWorld(s.hovered)
 		}
-		s.startFight(s.hovered) // 0x00423C8B: attack the character under the cursor
-	case right && hero.InStance() && gamestate.CanShoot(*hero):
-		// 0x00423C2A: no character under the cursor; with incendiary
-		// arrows the hovered building becomes the target, else nothing
-		// happens (the bow stance does not walk).
-		if s.game.Incendiary(*hero) && s.hoveredBuilding != 0 && s.game.SettlementOnMap(s.mapNumber) != nil {
-			s.endFight()
-			s.burnTarget, s.shoot = s.hoveredBuilding, true
-			s.targetCell = mapdata.CellAt(mx+s.camX, my+s.camY)
-		}
-	case right && s.canTalk(*hero):
+	case right && s.canTalk(s.party[0]):
 		s.talkTo(s.hovered) // 0x00423B6E: at once, wherever the hero stands
 	default:
-		s.endFight()
-		s.hero.walkTo(mapdata.CellAt(mx+s.camX, my+s.camY))
-		s.pickIntent = right
+		c := mapdata.CellAt(mx+s.camX, my+s.camY)
+		for _, m := range s.selected() {
+			if right {
+				s.rightOrder(m, s.hovered, c)
+			} else {
+				s.walkOrder(m, c, false)
+			}
+		}
 	}
 	if msg != 0 {
 		s.showMessage(s.tables.CString(msg))
 	}
 }
 
-// dropHeld puts the held item on the ground at the hero's cell (0x004138C8).
-// The game ignores a failure (full pile, 200 active piles): the item is lost.
-func (s *startScene) dropHeld(hero *gamestate.Entity) {
+// dropHeld puts the held item on the ground at its owner's cell (e,
+// 0x004138C8 with 0x00A3E520's cell). The game ignores a failure (full
+// pile, 200 active piles): the item is lost.
+func (s *startScene) dropHeld(e *gamestate.Entity) {
 	item := s.hand.Item
 	s.hand.Cursor = gamestate.CursorPointer
-	at, on := s.pileAt[s.hero.cell]
+	cell := mapdata.Cell{Row: e.Row, Col: e.Col}
+	if m, _ := s.partyMember(e.Index); m != nil {
+		cell = m.cell
+	}
+	at, on := s.pileAt[cell]
 	if !on {
 		if len(s.pileAt) >= gamestate.MaxActivePiles {
 			return
 		}
 		at = -1
 	}
-	if i, ok := s.game.DropItem(at, s.mapNumber, s.hero.cell.Row, s.hero.cell.Col, item); ok {
-		s.pileAt[s.hero.cell] = i
+	if i, ok := s.game.DropItem(at, s.mapNumber, cell.Row, cell.Col, item); ok {
+		s.pileAt[cell] = i
 	}
 }
 
@@ -753,8 +833,10 @@ func (s *startScene) drawCorpses(dst *ebiten.Image) {
 			s.drawTinted(dst, f.img, f.x-s.camX, f.y-s.camY, s.lit.Lit(w.cell.Row, w.cell.Col))
 		}
 	}
-	if s.hero != nil && len(s.party) > 0 && s.party[0].Dead() {
-		draw(s.hero)
+	for _, m := range s.members {
+		if m != nil && s.party[m.k].Dead() {
+			draw(&m.walker)
+		}
 	}
 	for _, n := range s.npcs {
 		if s.game.Entities[n.entity].Dead() {
@@ -763,27 +845,31 @@ func (s *startScene) drawCorpses(dst *ebiten.Image) {
 	}
 }
 
-// drawSelection draws the selection ellipse under the hero (the port's
-// selection list), like 0x00426146: before the ground items, flat, coloured
-// by HP and following the walk animation.
+// drawSelection draws the selection ellipses (0x00426146): under every
+// selected member on the map, before the ground items, flat, coloured by
+// HP and following the walk animation.
 func (s *startScene) drawSelection(dst *ebiten.Image) {
-	if s.hero == nil || len(s.party) == 0 {
-		return
+	for _, i := range s.sel {
+		m, e := s.partyMember(i)
+		if m == nil || e.Dead() {
+			continue
+		}
+		img := s.hud.slot(gamestate.SelectionMarker(*e))
+		if img == nil {
+			continue
+		}
+		step := min(m.stepT/walkTicksPerStep, m.walkSteps()-1)
+		dx, dy := gamestate.SelectionOffset(int(m.dir), step, m.walking)
+		x, y := mapdata.CellCenter(m.cell)
+		drawAt(dst, img, x+dx-s.camX, y+dy-s.camY)
 	}
-	img := s.hud.slot(gamestate.SelectionMarker(s.party[0]))
-	if img == nil {
-		return
-	}
-	step := min(s.hero.stepT/walkTicksPerStep, s.hero.walkSteps()-1)
-	dx, dy := gamestate.SelectionOffset(int(s.hero.dir), step, s.hero.walking)
-	x, y := mapdata.CellCenter(s.hero.cell)
-	drawAt(dst, img, x+dx-s.camX, y+dy-s.camY)
 }
 
 // statusText is what the status line shows: a recent message, then (with no
 // window open) a pile or a character under the mouse, then the hotspot under
-// the mouse (0x004244B3): a panel button's tooltip, an item in the
-// character window or in the bag strip (0x004305E4).
+// the mouse (0x004244B3): a panel button's tooltip, a party member's status
+// line over its portrait, an item in the character window or in the bag
+// strip (0x004305E4).
 func (s *startScene) statusText() []byte {
 	if s.frame < s.msgEnd {
 		return s.msg
@@ -820,13 +906,15 @@ func (s *startScene) statusText() []byte {
 	if len(s.party) == 0 {
 		return nil
 	}
-	hero := s.party[0]
+	hero := *s.current()
 	mx, my := ebiten.CursorPosition()
 	item := 0
 	spot := s.tables.HUDHotspot800(mx, my)
-	switch {
+	switch k := spot - hotspotPortrait; {
 	case spot >= 1 && spot <= len(gamestate.ButtonTooltips):
 		return s.tables.CString(gamestate.ButtonTooltips[spot-1])
+	case k >= 0 && k < len(portraitCells) && k < len(s.party):
+		return s.portraitStatus(k)
 	case s.inv.showStrip() && s.inv.strip.hit(mx, my):
 		item = hero.Bag[((mx-s.inv.strip.x0)/s.inv.strip.cellW+s.inv.scroll)&31]
 	case s.inv.open && spot == hotspotInHand:
@@ -841,6 +929,17 @@ func (s *startScene) statusText() []byte {
 		return nil
 	}
 	return s.game.ItemDescription(s.tables, item)
+}
+
+// portraitStatus is the hover over portrait k (hotspot 0x1E with the cell
+// in the high byte, 0x00424131): the member's status line (0x0043195C),
+// nothing while it is dead or dying.
+func (s *startScene) portraitStatus(k int) []byte {
+	e := s.party[k]
+	if m, _ := s.partyMember(e.Index); e.Dead() || (m != nil && m.act == gamestate.ActDeath) {
+		return nil
+	}
+	return s.game.StatusLine(e, s.tables)
 }
 
 // hotspotPortrait is the first portrait cell's hotspot id (30–39 = cells 0–9).
@@ -908,13 +1007,16 @@ func (s *startScene) cursorSprite() int {
 
 // characterCursor is 0x00428BDE: the cursor over character e. Party members
 // keep the hand's cursor; anyone else shows the attack cursor while a living
-// selected member (the port's selection: the hero) is in the stance, the
+// selected member is in the stance, the
 // talk cursor when e has a dialogue, and the barred circle otherwise. The
-// port shows the corpse of a dead character like an occupied cell (the
+// selection is the port's list (s.sel). The port shows the corpse of a dead character like an occupied cell (the
 // game's hit test for the dead is not traced). The flame cursor 6 over a
 // settlement building comes first (cursorSprite, fireReady).
 func (s *startScene) characterCursor(e gamestate.Entity) int {
-	hero := s.party[0]
+	stance := false
+	for _, m := range s.selected() {
+		stance = stance || s.party[m.k].InStance()
+	}
 	switch {
 	case e.Group == 0 && ebiten.IsKeyPressed(ebiten.KeyControl) && e.Dialogue != gamestate.NoDialogue:
 		return gamestate.CursorTalk // 0x00A3E714: Ctrl held over a party member with a dialogue
@@ -922,7 +1024,7 @@ func (s *startScene) characterCursor(e gamestate.Entity) int {
 		return s.hand.Cursor
 	case e.Dead():
 		return gamestate.CursorBlocked
-	case !hero.Dead() && hero.InStance():
+	case stance:
 		return gamestate.CursorAttack
 	case e.Dialogue != gamestate.NoDialogue:
 		return gamestate.CursorTalk
@@ -962,7 +1064,7 @@ func (s *startScene) blocked(c mapdata.Cell) bool {
 // in window 1 (the dialogue) and closes the quest log (window 2).
 func (s *startScene) escape() bool {
 	if len(s.party) > 0 {
-		s.hand.Return(&s.party[0])
+		s.hand.Return(s.current())
 	}
 	switch {
 	case s.trade.open():
@@ -1000,6 +1102,10 @@ func (s *startScene) Update() {
 		}
 		s.updateSpeed()
 		s.updateControls(mx, my)
+	}
+	if s.game.ReviveAll {
+		s.game.ReviveAll = false
+		s.reviveAll()
 	}
 	if s.game.OpenMap {
 		// 0x004153B0: the jump orb hides the bag strip (0x00A3E730 = 0)
@@ -1039,24 +1145,27 @@ func (s *startScene) Update() {
 }
 
 // step advances the world by one game tick at the port's 60 Hz rate:
-// characters, the pick-up on arrival, map exits, pile respawn and the NPC AI.
+// characters, the pick-up on arrival, map exits, pile respawn and the AI.
 func (s *startScene) step() {
 	s.tick++
-	if s.hero != nil {
-		moving := s.hero.walking || len(s.hero.path) > 0
-		if s.hero.act == 0 {
-			s.hero.update()
+	for _, m := range s.members {
+		if m == nil {
+			continue
 		}
-		stopped := !s.hero.walking && len(s.hero.path) == 0
+		moving := m.walking || len(m.path) > 0
+		if m.act == 0 {
+			m.update()
+		}
+		stopped := !m.walking && len(m.path) == 0
 		switch {
-		case s.pickIntent && stopped:
-			s.pickIntent = false
-			s.arrive()
+		case m.pickIntent && stopped:
+			m.pickIntent = false
+			s.arrive(m)
 		case moving && stopped:
-			// 0x00422346: a walk that ends without the pick-up intent on an
-			// exit cell takes the exit (0x00421BB8).
-			// A village's exit needs its bridge (ExitOpen, 0x00421C82).
-			if x, ok := s.game.ExitAt(s.mapNumber, s.hero.cell.Row, s.hero.cell.Col); ok && s.game.ExitOpen(x) {
+			// 0x00422346: a member's walk that ends without the pick-up
+			// intent on an exit cell takes the exit (0x00421BB8). A
+			// village's exit needs its bridge (ExitOpen, 0x00421C82).
+			if x, ok := s.game.ExitAt(s.mapNumber, m.cell.Row, m.cell.Col); ok && s.game.ExitOpen(x) {
 				s.changeMap(x)
 				return
 			}
@@ -1107,13 +1216,19 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	if s.hero != nil {
 		s.drawHelp(screen)
 	}
-	s.hud.Draw(screen, s.party, func(k int) bool { return k == 0 })
+	if len(s.party) > 0 {
+		s.hud.Draw(screen, s.party, *s.buttonEntity(),
+			func(k int) bool { return gamestate.Selected(s.sel, s.party[k].Index) },
+			func(k int) bool { m := s.members[k]; return m != nil && m.act == gamestate.ActFlinch })
+	} else {
+		s.hud.Draw(screen, nil, gamestate.Entity{}, nil, nil)
+	}
 	s.inv.tiled = s.tiling
 	if s.inv.open && len(s.party) > 0 {
-		s.inv.draw(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
+		s.inv.draw(screen, s.hud, s.game, s.tables, *s.current(), s.hand.Box)
 	}
 	if len(s.party) > 0 {
-		s.inv.drawQuick(screen, s.hud, s.game, s.tables, s.party[0], s.hand.Box)
+		s.inv.drawQuick(screen, s.hud, s.game, s.tables, *s.current(), s.hand.Box)
 	}
 	s.talk.draw(screen, s.hud, s.game, s.tiling, s.inv.strip.y)
 	if s.trade.open() {
@@ -1182,8 +1297,10 @@ func (s *startScene) drawWorld(screen *ebiten.Image) ([]sceneFrame, []int) {
 			drawShadow(&chars[len(chars)-1])
 		}
 	}
-	if s.hero != nil && len(s.party) > 0 && !s.party[0].Dead() {
-		addChar(s.hero)
+	for _, m := range s.members {
+		if m != nil && !s.party[m.k].Dead() {
+			addChar(&m.walker)
+		}
 	}
 	for _, n := range s.npcs {
 		if !s.game.Entities[n.entity].Dead() { // corpses: drawCorpses

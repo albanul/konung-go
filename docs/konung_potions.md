@@ -23,7 +23,7 @@ The item's float `+4` is its **concentration** *f* (the description shows «, к
 | 10 | Зелье | refused while a timer runs. *n* = trunc(*f*): base Лов, Сил, Вын +*n*; timer 30*n*; HP += *f*·160 (≤ 1600) |
 | 11 | Чистая слеза | timer 30*n*, hit bonus `+0xCA` = trunc(√*n*·0.1) (0 for any *n* < 100); [loot highlight](#loot-highlight-0x00a3e758) until the next map load |
 | 12 | Элексир Мудрости | refused for *n* < 6. Free experience trunc(√(*n*−5)·100) (`0x0041079C`); timer 60*n*; base Сил −5*n* (≥ 1); HP −160*n* (≥ 160) |
-| 13 | Живая Вода | *f* ≥ 10: HP = 1600; a dead user (`+4` bit `0x80`) is revived by `0x00414B3C` |
+| 13 | Живая Вода | *f* ≥ 10: HP = 1600; a dead user (`+4` bit `0x80`) is revived by `0x00414B3C` ([party](konung_party.md#revival-0x00414b3c-verified)) |
 
 * **Timer.** `+0xCE` counts upkeep passes (16 ticks each). The timed potions first save the base stats into `+0xBC`…`+0xC2` if no timer runs. Брага and Зелье set the hit bonus `+0xCA` to 0. When the timer reaches 0, upkeep restores the base stats and clears `+0xCA` ([combat](konung_combat.md#upkeep-poison-and-respawn-verified)). While it runs, nothing can be raised (`0x00410B08`) and `+0xCA` is added to the hit chance.
 * **After a use** the potion's type becomes 3 (Пустая банка). With a boxed target the held item (if not used up) goes to the front of the user's bag through `0x00424918`, without a weight check. Then sound 9 plays and, for a party member, the portrait, window and strip are redrawn. The routine returns 1; ingredients (types 0–3) and refusals return 0 and change nothing.
@@ -90,5 +90,4 @@ Status: traced and ported (`Game.Lit`, `resfmt.LightsGlow`, `startScene.drawPile
 
 ## Open questions
 
-* `0x00414B3C` (revival by Живая Вода); the port's party has no dead members (the hero's death ends the game).
 * Misc items other than the torch and the shovel (`0x00414E64`, cursor 9); see [not ported](konung_not_ported.md#other-misc-items).

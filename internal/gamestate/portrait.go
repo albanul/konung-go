@@ -22,6 +22,12 @@ const (
 // Dead reports the dead flag (entity +4 bit 0x80) used by the HUD.
 func (e Entity) Dead() bool { return e.Flags4&0x80 != 0 }
 
+// HitTint is the palette tint (red, green, blue percentages for
+// resfmt.TintPalette) of a party member's portrait while it plays its hit
+// reaction (type 2 or 8): 0x0042D574 calls 0x0043FD18(0x18, 0, 0) and draws
+// with the palette 0x0043F763 builds.
+var HitTint = [3]int{24, 0, 0}
+
 // PortraitState is the damage state 0 (healthy) .. 4 (dead): HP > 1200 → 0,
 // > 800 → 1, > 400 → 2, otherwise 3. The thresholds are absolute.
 func PortraitState(e Entity) int {

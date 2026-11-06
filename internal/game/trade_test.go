@@ -22,7 +22,7 @@ func TestOverweightOpensPileWindow(t *testing.T) {
 	i, _ := s.game.DropItem(-1, s.mapNumber, s.hero.cell.Row, s.hero.cell.Col, ground)
 	s.pileAt[s.hero.cell] = i
 	hero.Stats[3] = -40 // max weight 10000 − 13333: nothing more fits
-	s.arrive()
+	s.arrive(s.lead())
 	if !s.trade.open() || s.trade.tr.Lists[gamestate.TradeGoods][0] != ground {
 		t.Fatalf("pile window not open (%v)", s.trade.tr)
 	}

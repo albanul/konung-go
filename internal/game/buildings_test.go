@@ -83,29 +83,30 @@ func TestArrowsSetBuildingOnFire(t *testing.T) {
 	s.hoveredBuilding = p + 1
 	from := s.hero.cell
 	s.click(hero, viewLeft+100, viewTop+100, 0, true)
-	if s.burnTarget != 0 || s.hero.walking || len(s.hero.path) > 0 || s.hero.cell != from {
+	h := s.lead()
+	if h.burnTarget != 0 || s.hero.walking || len(s.hero.path) > 0 || s.hero.cell != from {
 		t.Fatal("plain arrows: the click gave an order")
 	}
 
-	s.endFight()
-	s.burnTarget, s.shoot, s.targetCell = p+1, true, target
+	s.endFight(h)
+	h.burnTarget, h.intent, h.targetCell = p+1, gamestate.IntentShoot, target
 	shots := 0
-	for i := 0; i < 4000 && s.shoot && binary.LittleEndian.Uint16(b[6:]) == 0; i++ {
+	for i := 0; i < 4000 && h.shoot() && binary.LittleEndian.Uint16(b[6:]) == 0; i++ {
 		n := len(s.arrows)
 		s.flyArrows()
-		s.heroTick()
+		s.memberTick(h)
 		if len(s.arrows) > n {
 			shots++
 		}
 	}
 	if shots == 0 {
-		t.Fatalf("no arrow was shot (shoot %v, act %d, cell %v, target %v)", s.shoot, s.hero.act, s.hero.cell, target)
+		t.Fatalf("no arrow was shot (shoot %v, act %d, cell %v, target %v)", h.shoot(), s.hero.act, s.hero.cell, target)
 	}
 	if st.Flags&0x15 != 0x15 || g.Groups[st.Group].Alarm != gamestate.AlarmAttack {
 		t.Errorf("village not angered: flags %#x alarm %d", st.Flags, g.Groups[st.Group].Alarm)
 	}
 	if b[1] != gamestate.BuildingStanding || binary.LittleEndian.Uint16(b[6:]) != 1 {
-		t.Fatalf("after %d shots: record %v (shoot %v)", shots, b, s.shoot)
+		t.Fatalf("after %d shots: record %v (shoot %v)", shots, b, h.shoot())
 	}
 	t.Logf("caught fire after %d shots", shots)
 	img := o.frames[0].img

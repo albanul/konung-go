@@ -432,8 +432,8 @@ func (g *Game) useOn(h *Hand, holder, e *Entity, t *resfmt.ExeTables) int {
 // hand to CursorDig and the caller closes the window. A herb or potion (9)
 // is used on e at once (UseHerb, 0x0041DB64(e, 0, item)): it stays in the
 // bag as «Пустая банка»; a refusal is silent. The torch lights the piles
-// (UseMisc), the jump orb opens the map window and «Потерянная карта»
-// reveals a location (UseMisc). Other misc items (0x00414E64) are not ported; bracelets, rings
+// (UseMisc), the jump orb opens the map window, «Потерянная карта»
+// reveals a location and «Слова Воскрешения» revives the map's dead (UseMisc). Other misc items (0x00414E64) are not ported; bracelets, rings
 // and category 10 do nothing. It returns a message VA or 0.
 func (g *Game) UseBagItem(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 	item := e.Bag[i&31]
@@ -450,7 +450,7 @@ func (g *Game) UseBagItem(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 		return g.ClickJewellery(h, e, t, 0)
 	case c == CatHerb:
 		g.UseHerb(e, t, 0, item)
-	case c == 11 && (it.Type == torchType || it.Type == jumpOrbType || it.Type == lostMapType):
+	case c == 11 && (it.Type == torchType || it.Type == jumpOrbType || it.Type == lostMapType || it.Type == wordsType):
 		g.UseMisc(e, 0, item)
 	case c == 11 && it.Type == shovelType:
 		h.Cursor = CursorDig

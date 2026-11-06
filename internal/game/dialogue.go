@@ -176,10 +176,6 @@ func (s *startScene) canTalk(hero gamestate.Entity) bool {
 // the global records, like the game) and returns the script context.
 func (s *startScene) newTalk() *gamestate.Talk {
 	s.storeWorld()
-	if s.hero != nil && len(s.party) > 0 {
-		e := &s.game.Entities[s.party[0].Index]
-		e.Row, e.Col, e.Variant = s.hero.cell.Row, s.hero.cell.Col, int(s.hero.dir)
-	}
 	return &gamestate.Talk{
 		G: s.game, Q: s.assets.quests, T: s.tables,
 		Hero: s.party[0].Index, Map: s.mapNumber, Time: s.gameTime(),

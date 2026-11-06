@@ -10,7 +10,7 @@ import (
 // Bows (docs/konung_combat.md#bows-verified): the shoot intent (+2 bit
 // 0x04), the line-of-fire test, the shot (action 4) that spawns an arrow,
 // and the arrows' flight and hits, including a settlement building as the
-// hero's target (incendiary arrows, burnTarget).
+// target of a party member (incendiary arrows, member.burnTarget).
 
 const intentShoot = 0x04
 
@@ -30,8 +30,10 @@ func (s *startScene) lineOfFire(w *walker, e *gamestate.Entity, to mapdata.Cell)
 // occupant bits; the dead are cleared from it).
 func (s *startScene) occupants() map[mapdata.Cell]int {
 	m := map[mapdata.Cell]int{}
-	if s.hero != nil && len(s.party) > 0 && !s.party[0].Dead() {
-		m[s.hero.cell] = s.party[0].Index
+	for _, pm := range s.members {
+		if pm != nil && !s.party[pm.k].Dead() {
+			m[pm.cell] = s.party[pm.k].Index
+		}
 	}
 	for _, n := range s.npcs {
 		if !s.game.Entities[n.entity].Dead() {
@@ -41,47 +43,51 @@ func (s *startScene) occupants() map[mapdata.Cell]int {
 	return m
 }
 
-// heroShoot is the planner's bow branch (0x0041ED8C) for the hero, and its
-// shot action (0x0042255E). The hero never walks closer; it drops the order
-// when the target dies, is too close or out of sight.
-func (s *startScene) heroShoot() {
-	h, hero := s.hero, &s.party[0]
-	if h.act == gamestate.ActShoot {
-		if s.shotTick(h, hero, s.targetCell) {
-			h.act = 0
-			h.look = lookOf(*hero) // the bow may have broken
+// memberShoot is the planner's bow branch (0x0041ED8C) for member m, and
+// its shot action (0x0042255E). A shooter never walks closer. A dead target
+// or no enemy in sight ends the order; out of line (0) the target is
+// dropped, and the hero also drops the order (0x0041EFC8), others look
+// again next tick; too close (< 0) ends it.
+func (s *startScene) memberShoot(m *member) {
+	e := &s.party[m.k]
+	if m.act == gamestate.ActShoot {
+		if s.shotTick(&m.walker, e, m.targetCell) {
+			m.act = 0
+			m.look = lookOf(*e) // the bow may have broken
 		}
 		return
 	}
-	if h.walking || len(h.path) > 0 {
+	if m.walking || len(m.path) > 0 {
 		return
 	}
-	if !gamestate.CanShoot(*hero) {
-		s.endFight()
+	if !gamestate.CanShoot(*e) {
+		s.endFight(m)
 		return
 	}
-	if s.burnTarget != 0 {
-		s.shootBuilding(h, hero)
+	if m.burnTarget != 0 {
+		s.shootBuilding(m, e)
 		return
 	}
-	if s.target < 0 {
-		s.target = s.firstShootable(h, hero)
-		if s.target < 0 {
-			s.endFight()
+	if m.target < 0 {
+		m.target = s.firstShootable(&m.walker, e)
+		if m.target < 0 {
+			s.endFight(m)
 			return
 		}
 	}
-	tw, t := s.combatant(s.target)
+	tw, t := s.combatant(m.target)
 	if !alive(tw, t) {
-		s.endFight()
+		s.endFight(m)
 		return
 	}
-	s.targetCell = tw.cell
-	switch s.lineOfFire(h, hero, tw.cell) {
-	case 1:
-		h.startAct(gamestate.ActShoot)
-	default: // too close, blocked or out of range: the hero drops the order
-		s.endFight()
+	m.targetCell = tw.cell
+	switch r := s.lineOfFire(&m.walker, e, tw.cell); {
+	case r > 0:
+		m.startAct(gamestate.ActShoot)
+	case r == 0 && m.k != 0:
+		m.target = -1
+	default:
+		s.endFight(m)
 	}
 }
 
@@ -89,30 +95,31 @@ func (s *startScene) heroShoot() {
 // settlement on the map, or when the line of fire misses the building, the
 // order ends; a hit moves the aim to the building cell the ray met and
 // shoots.
-func (s *startScene) shootBuilding(h *walker, hero *gamestate.Entity) {
-	o := s.buildingObject(s.burnTarget - 1)
-	bow, ok := s.game.Item(hero.Equipment[gamestate.WeaponBow])
+func (s *startScene) shootBuilding(m *member, e *gamestate.Entity) {
+	o := s.buildingObject(m.burnTarget - 1)
+	bow, ok := s.game.Item(e.Equipment[gamestate.WeaponBow])
 	if s.game.SettlementOnMap(s.mapNumber) == nil || o == nil || !ok {
-		s.endFight()
+		s.endFight(m)
 		return
 	}
 	occupied := s.occupants()
-	r, aim := gamestate.LineOfFireBuilding(h.cell, int(h.dir), s.targetCell, s.tables.GearRange(bow.Type),
+	r, aim := gamestate.LineOfFireBuilding(m.cell, int(m.dir), m.targetCell, s.tables.GearRange(bow.Type),
 		func(c mapdata.Cell) bool { return s.walk.ArrowBlocked(c.Row, c.Col) },
 		func(c mapdata.Cell) bool { _, ok := occupied[c]; return ok },
 		o.buildingHit)
 	if r <= 0 {
-		s.endFight()
+		s.endFight(m)
 		return
 	}
-	s.targetCell = aim
-	h.startAct(gamestate.ActShoot)
+	m.targetCell = aim
+	m.startAct(gamestate.ActShoot)
 }
 
 // firstShootable is 0x00410E84: the enemy group (0x0041FD74, here the group
-// of the nearest enemy) and its first living member with a clear shot.
+// of the enemy nearest to the shooter) and its first living member with a
+// clear shot.
 func (s *startScene) firstShootable(w *walker, e *gamestate.Entity) int {
-	near := s.nearestEnemy()
+	near := s.nearestEnemy(w.cell)
 	if near < 0 {
 		return -1
 	}
@@ -126,24 +133,24 @@ func (s *startScene) firstShootable(w *walker, e *gamestate.Entity) int {
 	return -1
 }
 
-// npcShoot starts a shot of creature or villager n at the hero when the line
-// is clear (0x00410E84 with the party as the enemy group). The caller checks
-// gamestate.HasBow; the bow becomes the active weapon here. Out of range
-// (beyond the bow's reach, or closer than 3) the caller falls back to melee.
+// npcShoot starts a shot of creature or villager n at the party when a
+// line is clear (0x00410E84 with the party as the enemy group: its first
+// living member with a clear line). The caller checks gamestate.HasBow;
+// the bow becomes the active weapon here. Out of range (beyond the bow's
+// reach, or closer than 3) the caller falls back to melee.
 func (s *startScene) npcShoot(n *npc) bool {
 	e := &s.game.Entities[n.entity]
-	h := s.hero
-	if h == nil || len(s.party) == 0 || !alive(h, &s.party[0]) {
-		return false
-	}
 	e.WeaponMode = gamestate.WeaponBow // +0x12 = 1 before the shot test
-	if s.lineOfFire(&n.walker, e, h.cell) <= 0 {
-		return false
+	for _, m := range s.livingMembers() {
+		if s.lineOfFire(&n.walker, e, m.cell) <= 0 {
+			continue
+		}
+		n.look = lookOf(*e)
+		n.target, n.targetCell, n.intent = s.party[m.k].Index, m.cell, intentShoot
+		n.startAct(gamestate.ActShoot)
+		return true
 	}
-	n.look = lookOf(*e)
-	n.target, n.targetCell, n.intent = s.party[0].Index, h.cell, intentShoot
-	n.startAct(gamestate.ActShoot)
-	return true
+	return false
 }
 
 // shotTick is one tick of action 4 (0x0042255E): turn toward the target at
@@ -211,18 +218,19 @@ func (s *startScene) flyArrows() {
 // image, that building may catch fire and its village turns hostile and is
 // alarmed (gamestate.ArrowOnBuilding).
 func (s *startScene) arrowOnBuilding(a *gamestate.Arrow) {
-	if len(s.party) == 0 || a.Shooter != s.party[0].Index || s.burnTarget == 0 {
+	m, _ := s.partyMember(a.Shooter)
+	if m == nil || m.burnTarget == 0 {
 		return
 	}
 	st := s.game.SettlementOnMap(s.mapNumber)
-	o := s.buildingObject(s.burnTarget - 1)
+	o := s.buildingObject(m.burnTarget - 1)
 	if st == nil || o == nil {
 		return
 	}
 	if x, y := gamestate.ArrowPoint(a.X, a.Y); !o.buildingHit(x, y) {
 		return
 	}
-	if s.game.ArrowOnBuilding(st, s.burnTarget-1, s.rng.IntN) {
+	if s.game.ArrowOnBuilding(st, m.burnTarget-1, s.rng.IntN) {
 		s.provoke(st.Group)
 	}
 }

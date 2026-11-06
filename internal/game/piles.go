@@ -94,18 +94,20 @@ func (s *startScene) pileUnderCursor() (cell mapdata.Cell, ok bool) {
 	return cell, on && s.game.Piles[i].Visible()
 }
 
-// arrive runs when the hero's walk ends with the pick-up intent set.
-func (s *startScene) arrive() {
+// arrive runs when member m's walk ends with the pick-up intent set
+// (0x004110EC(e)): the pile on its cell goes into its bag.
+func (s *startScene) arrive(m *member) {
 	if len(s.party) == 0 || s.inv.open { // 0x004110F8: not while its window is open
 		return
 	}
-	i, on := s.pileAt[s.hero.cell]
-	if !on || !s.game.CanPickUp(s.game.Piles[i], s.party[0]) {
+	e := &s.party[m.k]
+	i, on := s.pileAt[m.cell]
+	if !on || !s.game.CanPickUp(s.game.Piles[i], *e) {
 		return
 	}
-	msg, removed := s.game.PickUp(&s.party[0], s.tables, i, s.gameTime())
+	msg, removed := s.game.PickUp(e, s.tables, i, s.gameTime())
 	if removed {
-		delete(s.pileAt, s.hero.cell) // 0x0041096C clears the cell's pile flag
+		delete(s.pileAt, m.cell) // 0x0041096C clears the cell's pile flag
 	}
 	if msg == gamestate.MsgBagFull || msg == gamestate.MsgTooHeavy {
 		s.openPileWindow(i) // 0x0041122A: the rest can be swapped in the pile window

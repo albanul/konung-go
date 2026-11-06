@@ -1,6 +1,6 @@
 module konung1.5
 
-go 1.25.0
+go 1.26.4
 
 require github.com/hajimehoshi/ebiten/v2 v2.10.5
 
@@ -9,6 +9,7 @@ require (
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
 	github.com/ebitengine/oto/v3 v3.5.0 // indirect
 	github.com/ebitengine/purego v0.11.0 // indirect
+	github.com/gen2brain/gav1d v0.2.6 // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/jfreymuth/oggvorbis v1.0.5 // indirect
 	github.com/jfreymuth/pulse v0.1.3 // indirect

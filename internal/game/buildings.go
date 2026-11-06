@@ -139,13 +139,17 @@ func (s *startScene) buildingUnderCursor() int {
 	return found
 }
 
-// fireReady is the cursor test of 0x00428AF3 for the selection (the
-// port's: the hero): in the map's settlement, alive and able to act, in
-// the stance with the bow active, a bow and incendiary arrows.
+// fireReady is the cursor test of 0x00428AF3 for the selection: in the
+// map's settlement, a selected member alive and able to act, in the stance
+// with the bow active, a bow and incendiary arrows.
 func (s *startScene) fireReady() bool {
 	if len(s.party) == 0 || s.game.SettlementOnMap(s.mapNumber) == nil {
 		return false
 	}
-	h := s.party[0]
-	return !h.Dead() && h.Type != 9 && h.Type != 3 && h.InStance() && gamestate.CanShoot(h) && s.game.Incendiary(h)
+	for _, m := range s.selected() {
+		if h := s.party[m.k]; h.InStance() && gamestate.CanShoot(h) && s.game.Incendiary(h) {
+			return true
+		}
+	}
+	return false
 }

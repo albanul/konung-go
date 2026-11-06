@@ -101,6 +101,13 @@ type Game struct {
 	// OpenMap asks the scene to open the map window (window 5, the jump
 	// orb, UseMisc); the scene clears it.
 	OpenMap bool
+	// Reviver brings a dead character back (0x00414B3C) when «Живая Вода»
+	// is used on it: the scene sets it to Revive with its occupancy and the
+	// hero's cell, and takes the cell. nil = no revival.
+	Reviver func(e *Entity) bool
+	// ReviveAll asks the scene to revive every dead character on the
+	// current map («Слова Воскрешения», 0x00414FFB); the scene clears it.
+	ReviveAll bool
 	// Rand is rand() % n for game rules without their own source (the lost
 	// map, RevealMap); nil = math/rand.
 	Rand func(n int) int

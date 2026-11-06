@@ -203,8 +203,10 @@ func (s *startScene) soundTick() {
 		}
 		w.busy = busy
 	}
-	if s.hero != nil && len(s.party) > 0 {
-		settle(s.hero, s.party[0].Dead())
+	for _, m := range s.members {
+		if m != nil {
+			settle(&m.walker, s.party[m.k].Dead())
+		}
 	}
 	for _, n := range s.npcs {
 		settle(&n.walker, s.game.Entities[n.entity].Dead())

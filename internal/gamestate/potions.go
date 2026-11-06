@@ -108,8 +108,8 @@ func (g *Game) Mix(e *Entity, t *resfmt.ExeTables, target, held int) {
 //   - «Элексир Мудрости»: refused below n = 6. Free experience
 //     trunc(√(n−5)·100); base Сил −5n (at least 1) and HP −160n (at least
 //     160) for 60n passes.
-//   - «Живая Вода»: refused below f = 10; HP = 1600 (and a dead e is revived
-//     by 0x00414B3C, not ported: the port's party has no dead members).
+//   - «Живая Вода»: refused below f = 10; HP = 1600, and a dead e is revived
+//     (0x00414B3C, Game.Reviver → Revive).
 //
 // Starting a timer first saves the base stats for Upkeep to restore (when
 // no timer runs). A used potion becomes «Пустая банка». With a target, the
@@ -216,10 +216,16 @@ func (g *Game) drink(e *Entity, t *resfmt.ExeTables, target, item int) bool {
 			return false
 		}
 		e.HP = HPFull
+		if e.Dead() && g.Reviver != nil {
+			g.Reviver(e) // 0x0041E101 → 0x00414B3C
+		}
 	}
 	g.items[item*itemStride+3] = HerbJar
 	return true
 }
+
+// wordsType is the misc item «Слова Воскрешения» (misc table 0x0046053C).
+const wordsType = 6
 
 // torchType is the misc item «Факел» (misc table 0x0046053C).
 const torchType = 31
@@ -229,7 +235,11 @@ const torchType = 31
 //   - case 20, «Шар магического прыжка», hides the bag strip and opens the
 //     map window (0x004153B0, Game.OpenMap);
 //   - case 0, «Потерянная карта», marks a random location known
-//     (0x00414E95, RevealMap) and is used up (item +0 = 0xFF).
+//     (0x00414E95, RevealMap) and is used up (item +0 = 0xFF);
+//   - case 6, «Слова Воскрешения» (0x00414FFB), revives every dead
+//     character of every group on the current map (0x00414B3C each, in group
+//     and member order; Game.ReviveAll asks the scene) and is used up.
+//     Nothing checks that anyone was dead.
 //
 // The common tail 0x00415BD3 then puts a kept item with a target at the
 // front of e's bag, removes a used-up one from e's bag (0x00421D24) and
@@ -246,8 +256,12 @@ func (g *Game) UseMisc(e *Entity, target, item int) bool {
 		g.Lit = true
 	case jumpOrbType:
 		g.OpenMap = true
-	case lostMapType:
-		g.RevealMap()
+	case lostMapType, wordsType:
+		if it.Type == lostMapType {
+			g.RevealMap()
+		} else {
+			g.ReviveAll = true // 0x00414FFB; the scene revives (it holds the party copies)
+		}
 		g.items[item*itemStride] = 0xFF
 		if k := slices.Index(e.Bag[:], item); k >= 0 {
 			copy(e.Bag[k:], e.Bag[k+1:])

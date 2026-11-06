@@ -47,6 +47,11 @@ type Menu struct {
 	cfgPath    string
 	settings   *settingsScreen
 	inSettings bool
+	// film is the film playing (0x0042B690, [0x00A3E724] set), afterFilm
+	// the state it leads to ([0x00A3E7F0]); gameDir holds Video\.
+	film      *filmPlayer
+	afterFilm func()
+	gameDir   string
 }
 
 // Main-menu items in the order of the exe layout table (0x0045B314) and the
@@ -163,6 +168,7 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		assets:     assets,
 		newHero:    newHero,
 		selected:   itemNewGame,
+		gameDir:    gameDir,
 	}
 	for i := range m.cursors {
 		img, err := loadGraphSprite(graphPath, i)
@@ -177,13 +183,50 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		b := menuButtons800[i]
 		m.buttonRects[i] = rect{x: b[0], y: b[1], w: b[2] - b[0], h: b[3] - b[1]}
 	}
+	// State 9 (0x0043914B), after loading: POSTER.FLM, then the menu
+	// (state 7) with no game running.
+	m.playFilm(resfmt.FilmPoster, true, func() {})
 	return m, nil
+}
+
+// playFilm is 0x0042B690: mute the music and play the film; next is the
+// state queued in 0x00A3E7F0, entered when the film is over (0x0042B774),
+// or at once when the film cannot play. blank starts on a black screen
+// (the start-up poster) instead of the current frame.
+func (m *Menu) playFilm(name string, blank bool, next func()) {
+	f := openFilm(m.gameDir, name)
+	if f == nil {
+		next()
+		return
+	}
+	if blank {
+		f.frozen = ebiten.NewImage(ScreenWidth, ScreenHeight)
+	}
+	sfx.setMusic(false)
+	m.film, m.afterFilm = f, next
+}
+
+// endFilm is 0x0042B774: close the film, restore the music volume
+// (0x0042A420([0x00A3E73C])) and enter the queued state.
+func (m *Menu) endFilm() {
+	m.film.close()
+	sfx.setMusic(m.config.Music != 0)
+	next := m.afterFilm
+	m.film, m.afterFilm = nil, nil
+	next()
 }
 
 func (m *Menu) Update() error {
 	if sfx != nil {
 		sfx.soundOn = m.config.Sound != 0 // checked at each play (0x0042A679)
 		sfx.update()
+	}
+	// While a film plays the game loop waits (0x0042BD26).
+	if m.film != nil {
+		if m.film.update() {
+			m.endFilm()
+		}
+		return nil
 	}
 	// Escape is switched on the screen state 0x00A3E6D8 (0x00437430, jump
 	// table 0x0043756C).
@@ -227,14 +270,16 @@ func (m *Menu) Update() error {
 		}
 		m.world.Update()
 		if m.world.gameOver() {
-			// 0x004376A8: the hero died; the game plays GAMEOVER.FLM (not in
-			// the installed files) and leaves the game loop for the menu.
-			m.inWorld = false
+			// 0x004376A8: the hero died; no game is running any more
+			// ([0x00A3E728] = 0), GAMEOVER.FLM plays, then the menu (state 7).
 			m.running = false
-			if m.selected < m.firstItem() {
-				m.selected = itemNewGame
-			}
-			m.world = nil
+			m.playFilm(resfmt.FilmGameOver, false, func() {
+				m.inWorld = false
+				if m.selected < m.firstItem() {
+					m.selected = itemNewGame
+				}
+				m.world = nil
+			})
 		}
 		return nil
 	}
@@ -408,6 +453,18 @@ func (m *Menu) writeConfig() {
 }
 
 func (m *Menu) Draw(screen *ebiten.Image) {
+	if f := m.film; f != nil {
+		if f.frozen == nil { // the frame the film starts on stays around it
+			f.frozen = ebiten.NewImage(ScreenWidth, ScreenHeight)
+			m.drawScreen(f.frozen)
+		}
+		f.draw(screen)
+		return
+	}
+	m.drawScreen(screen)
+}
+
+func (m *Menu) drawScreen(screen *ebiten.Image) {
 	if m.inWorld && m.world != nil {
 		m.world.shadows = m.config.Shadows != 0
 		m.world.dayNight = m.config.DayNight != 0

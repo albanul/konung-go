@@ -34,11 +34,11 @@ Decoder: `resfmt.ParseInterface`, `InterfaceRes.Slot`, `InterfaceRes.Image`. Tes
 
 **Damage state.** Dead (entity `+4` bit `0x80`) → 4. Otherwise from HP (`int16` at `+0x5C`): ≤ 400 → 3, ≤ 800 → 2, ≤ 1200 → 1, else 0. The thresholds are absolute; full health is 1600 (`0x640`).
 
-**Portrait slot.** Animated `OBJECTS.RES` models (`+4` bit `0x40`) get none. The slot depends on the Type 0 body model m (`+0xD6`). Hero: `0xD7 + m·25 + state`, i.e. face 4. Companion: `0xC3 + (+4 & 7)·5 + m·25 + state`, i.e. faces 1, 2, 3, 5, the values `GAME.0` villagers carry in `+4`. When `0x0062F3E0` is set, another table is used instead (`0x0062F3D8`, images at `0x0083E090`, index from `+0xF6`); this is not ported. Entity types 2 and 8 are drawn with a modified palette (`0x0043FD18`, `0x0043F763`); also not ported.
+**Portrait slot.** Animated `OBJECTS.RES` models (`+4` bit `0x40`) get none. The slot depends on the Type 0 body model m (`+0xD6`). Hero: `0xD7 + m·25 + state`, i.e. face 4. Companion: `0xC3 + (+4 & 7)·5 + m·25 + state`, i.e. faces 1, 2, 3, 5, the values `GAME.0` villagers carry in `+4`. When `0x0062F3E0` is set, another table is used instead (`0x0062F3D8`, images at `0x0083E090`, index from `+0xF6`); this is not ported. Entity types 2 and 8 (the hit reaction) are drawn with the palette tinted red: `0x0043FD18(0x18, 0, 0)`, then `0x0043F763` builds the palette (`gamestate.HitTint`, `resfmt.TintPalette`).
 
-**Selection.** Members in the selection list `0x0083B93C` (10 entries, `0x00411708`) get slot 173 drawn over the portrait.
+**Selection.** Members in the selection list `0x0083B93C` (10 entries, `0x00411708`) get slot 173 drawn over the portrait. Selecting is in [party](konung_party.md#selection-0x0083b93c-verified).
 
-**Selection ellipse on the map (`0x00426146`, verified).** In the terrain pass, before the ground items, each selected member gets a flat 56×32 ellipse drawn with its INTR palette (`0x0043E242`). The colour follows HP (`+0x5C`): ≤ 400 slot 172 (red), ≤ 800 slot 126 (yellow), otherwise slot 178 (green). The top-left is the entity's position (`+0xE8`, `+0xF0`, the cell centre) + (−29, −16). While the entity walks (type 7 or 1) it moves along the facing by the step s (`+0x10`), jump table `0x00426420`: W/E ∓5s; N/S ∓(2s + s/2); diagonals ±(2s + s/2) across and ±(s + s/2) up or down. Code: `gamestate.SelectionMarker`, `SelectionOffset`, `startScene.drawSelection` (the hero is the port's whole selection).
+**Selection ellipse on the map (`0x00426146`, verified).** In the terrain pass, before the ground items, each selected member gets a flat 56×32 ellipse drawn with its INTR palette (`0x0043E242`). The colour follows HP (`+0x5C`): ≤ 400 slot 172 (red), ≤ 800 slot 126 (yellow), otherwise slot 178 (green). The top-left is the entity's position (`+0xE8`, `+0xF0`, the cell centre) + (−29, −16). While the entity walks (type 7 or 1) it moves along the facing by the step s (`+0x10`), jump table `0x00426420`: W/E ∓5s; N/S ∓(2s + s/2); diagonals ±(2s + s/2) across and ±(s + s/2) up or down. Code: `gamestate.SelectionMarker`, `SelectionOffset`, `startScene.drawSelection`.
 
 **HP bar.** Only drawn when HP ≠ 0.
 * Height = HP · H / 1600, at least 1; H = 40 (800) / 32 (640), from `0x00462F34`.
@@ -53,7 +53,7 @@ Decoder: `resfmt.ParseInterface`, `InterfaceRes.Slot`, `InterfaceRes.Image`. Tes
 
 **Game view.** The frame leaves x 140–799, y 0–555 (800 mode) for the map (`0x00427C10`: `0x00A3E874`, `0x00A3E880`, `0x00A3E890`, `0x00A3E89C`).
 
-**Port.** The rules are in `gamestate` (`PortraitState`, `PortraitSlot`, `HPBar`, `HUDButtonSlots`, `Entity.HP`, `.Poison`, `.WeaponMode`, `.Dead`). Drawing is in `internal/game/hud.go`, 800×600 only. The camera centres on the view rectangle, clicks on the HUD don't move the hero, and the hero is always shown as selected. HP changes come from [combat](konung_combat.md). Of the button clicks, weapon (hotspot 1), stance (hotspot 2), gather (hotspot 4, the F key, `startScene.gatherOrder`), attack (hotspot 5, the A key, [combat](konung_combat.md#attack-order-verified)), quest log (hotspot 6, the Q key) and bag (hotspot 7) are implemented; only the map (hotspot 3, M) is not, with the pressed-button feedback. The tooltips (`gamestate.ButtonTooltips`) read: «Сменить оружие (1, 2, 3)», «Достать/Убрать оружие (Пробел)», «Карта (M)», «Все ко мне (F)», «Атаковать (A)», «Информация к размышлению (Q)», «Панель персонажа (I)». Hovering a button shows its tooltip ([hover texts](konung_character_window.md#hover-texts-verified)).
+**Port.** The rules are in `gamestate` (`PortraitState`, `PortraitSlot`, `HPBar`, `HUDButtonSlots`, `Entity.HP`, `.Poison`, `.WeaponMode`, `.Dead`). Drawing is in `internal/game/hud.go`, 800×600 only. The camera centres on the view rectangle and clicks on the HUD don't move the party. HP changes come from [combat](konung_combat.md). Of the button clicks, weapon (hotspot 1), stance (hotspot 2), gather (hotspot 4, the F key, `startScene.gatherOrder`), attack (hotspot 5, the A key, [combat](konung_combat.md#attack-order-verified)), quest log (hotspot 6, the Q key) and bag (hotspot 7) are implemented; only the map (hotspot 3, M) is not, with the pressed-button feedback. The tooltips (`gamestate.ButtonTooltips`) read: «Сменить оружие (1, 2, 3)», «Достать/Убрать оружие (Пробел)», «Карта (M)», «Все ко мне (F)», «Атаковать (A)», «Информация к размышлению (Q)», «Панель персонажа (I)». Hovering a button shows its tooltip ([hover texts](konung_character_window.md#hover-texts-verified)).
 
 ## HUD hotspots (verified)
 
@@ -72,6 +72,8 @@ Code: `resfmt.ExeTables.HUDHotspot800`, `game.buttonAt`. Validation: `resfmt.Tes
 **Name (`0x0042CA90`).**
 * Creatures (`+4 & 0x7F` in `0x41`–`0x50`): creature table `0x0045E3BC` [f − `0x41`], 32 bytes each: Гигантский Муравей, Аспид, … Паук (12), …, Ядовитый паук (14), …
 * Everyone else, women and children included: first-name table `0x0045E77C` [`+0xD4`], plus `" "` + nickname table `0x0045FCDC` [`+0xD5`] when that byte is non-zero.
+
+**Portrait hover (`0x00424131`).** Over portrait hotspot k (`(k << 8) | 0x1E`), the line of party member k, unless it is dead (`+4` bit `0x80`) or dying (type 3/9) (`startScene.portraitStatus`).
 
 **Line.**
 * Creatures: name + `0x0042C9F4` (`", Уров:" level(+0x33) ", Здор:" (HP+15)/16`).
@@ -98,4 +100,4 @@ Code: `resfmt.ExeTables.HUDHotspot800`, `game.buttonAt`. Validation: `resfmt.Tes
 
 ## Open questions
 
-* The alternate portrait table (`0x0062F3E0` / `0x0062F3D8`), and the palette effects for types 2/8.
+* The alternate portrait table (`0x0062F3E0` / `0x0062F3D8`).

@@ -341,11 +341,12 @@ const (
 // alarmed members chase and fight (combat.go).
 type npc struct {
 	walker
-	mode   npcMode
-	area   gamestate.Area
-	post   gamestate.Post
-	posted bool
-	moveAt int // village roll threshold (gamestate.VillageMoveThreshold)
+	mode     npcMode
+	liveMode npcMode // the mode to return to when revived (0x00414B3C)
+	area     gamestate.Area
+	post     gamestate.Post
+	posted   bool
+	moveAt   int // village roll threshold (gamestate.VillageMoveThreshold)
 
 	// Creature combat state (npcCreature): group index, the attack target
 	// (entity +6, -1 = none) and its cell (+0x0C/+0x0E), and the +2 intent

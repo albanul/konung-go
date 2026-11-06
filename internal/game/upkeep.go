@@ -9,21 +9,18 @@ import (
 // #village-anger-verified), loot on the ground and the villagers' fight.
 
 // upkeep is 0x0041D0FC's group pass: poison, potion timers and respawn
-// counters for every group (gamestate.Upkeep). Poison deaths on this map
-// start the death action and drop loot with the hero's level.
+// counters for every group (gamestate.Upkeep), the party included. Poison
+// deaths on this map start the death action and drop loot with the hero's
+// level.
 func (s *startScene) upkeep() {
-	heroIdx := -1
-	if len(s.party) > 0 {
-		heroIdx = s.party[0].Index
-		s.game.Entities[heroIdx] = s.party[0]
+	for _, e := range s.party {
+		s.game.Entities[e.Index] = e
 	}
 	var died []int
 	s.game.Upkeep(s.tables, s.mapNumber,
 		func(i int) bool { w, _ := s.combatant(i); return w != nil && w.act == gamestate.ActDeath },
 		func(i int) { died = append(died, i) })
-	if heroIdx >= 0 {
-		s.party[0] = s.game.Entities[heroIdx]
-	}
+	s.syncParty()
 	level := 0
 	if len(s.party) > 0 {
 		level = s.party[0].Level
@@ -68,12 +65,7 @@ func (s *startScene) settlementTick() {
 	if st == nil {
 		return
 	}
-	var party []gamestate.Entity
-	if s.hero != nil && len(s.party) > 0 && alive(s.hero, &s.party[0]) {
-		h := s.party[0]
-		h.Row, h.Col = s.hero.cell.Row, s.hero.cell.Col
-		party = append(party, h)
-	}
+	party := s.partyOnCells()
 	if s.game.Surrenders(st, party, s.tables) {
 		for _, n := range s.npcs {
 			if n.group == st.Group {
@@ -83,7 +75,7 @@ func (s *startScene) settlementTick() {
 				}
 			}
 		}
-		s.endFight()
+		s.endAllFights()
 		s.showMessage(s.tables.CString(gamestate.MsgVillageSurrenders))
 	}
 	s.game.VillageAlarm(st, party)
@@ -137,7 +129,7 @@ func (s *startScene) villagerTick(n *npc) {
 		}
 		return
 	}
-	heroOK := s.hero != nil && len(s.party) > 0 && alive(s.hero, &s.party[0])
+	partyOK := len(s.livingMembers()) > 0
 	if e.Flags4 == 0x51 || e.Flags4 == 0x52 {
 		if s.aiBudget <= 0 {
 			return
@@ -151,7 +143,7 @@ func (s *startScene) villagerTick(n *npc) {
 		}
 		return
 	}
-	if !heroOK {
+	if !partyOK {
 		return
 	}
 	if !e.InStance() {
@@ -170,5 +162,7 @@ func (s *startScene) villagerTick(n *npc) {
 		}
 		n.look = lookOf(*e)
 	}
-	s.goFor(n, s.party[0].Index)
+	if t := s.nearestMember(n.cell, nil, nil); t >= 0 {
+		s.goFor(n, t) // 0x004202A8: the nearest party member
+	}
 }

@@ -7,7 +7,7 @@ import (
 
 // Combat in the scene, one step per game tick; see docs/konung_combat.md.
 //
-// Melee, for the hero and creatures alike:
+// Melee, for party members and creatures alike:
 //
 //   - A walk toward the target ends before its cell (walker.stopAt; the game
 //     turns that step into the swing, 0x004149B0). Next to the target the
@@ -23,21 +23,20 @@ import (
 //     dying creature re-alarms its group (0x00412A21, 0x00412989); a dying
 //     kind-0x4C creature with revives left rises again (gamestate.Revives).
 //
-// The hero: a right click on a character in the stance sets the target
-// (0x00423C8B); while idle without a target it strikes back at a neighbour
-// attacking it (0x0041EC0C). Its death ends the game (gameOver).
+// Party members (party.go): a right click on a character in the stance
+// sets the target (0x00423C8B); while idle without a target a member strikes
+// back at a neighbour attacking it (0x0041EC0C). The hero's death ends the
+// game (gameOver).
 //
 // Creatures (AI 0x004123BC): every AlarmCheckTicks the group's alarm is
 // recomputed (0x00412C30). Idle members then decide by the alarm
-// (0x00412E00): calm → stay; attack → by gamestate.TacticOf go for the
-// party (the port's party is the hero, so every selector picks the hero);
-// return → keep fighting while the hero is inside the leash rectangle and a
-// selector allows it, else walk back into the territory (0x004132FE). A
-// chase ends when the target leaves the leash rectangle (0x00411FD0).
+// (0x00412E00): calm → stay; attack → by gamestate.TacticOf go for a party
+// member (creatureTarget); return → keep fighting while a member is inside
+// the leash rectangle and a selector allows it, else walk back into the
+// territory (0x004132FE). A chase ends when the target leaves the leash
+// rectangle (0x00411FD0).
 //
-// Not ported: bows (humanoid creatures with a bow shoot instead, action 4),
-// village anger (settlement +0x4B2 |= 0x15) and the village alarm AI, loot
-// (0x00418510), kind 0x49's retreat after a blow (0x004101E4), kinds
+// Not ported: kind 0x49's retreat after a blow (0x004101E4), kinds
 // 0x4D/0x4F's pauses between steps, walking speed (+0x11).
 
 // Creature intent bits (entity +2).
@@ -60,47 +59,13 @@ var (
 	attackRangeCols = (viewRight-viewLeft+1)/116 + 4
 )
 
-// attackOrder is the A key / HUD button 5 (0x00421698): return a held item,
-// press the button, and give every living party member the melee intent
-// without a target, entering the stance. The planner then picks the nearest
-// enemy (nearestEnemy). With the bow active the game sets the shoot intent
-// (+2 = 0x44) instead (heroShoot).
-func (s *startScene) attackOrder(hero *gamestate.Entity) {
-	s.hand.Return(hero)
-	s.hud.press(hudAttackButton, hudAttackImage)
-	if hero.Dead() || s.hero.act == gamestate.ActDeath {
-		return
-	}
-	if !hero.InStance() {
-		gamestate.ToggleStance([]*gamestate.Entity{hero})
-	}
-	s.endFight()
-	if hero.WeaponMode == gamestate.WeaponBow {
-		s.shoot = true // +2 = 0x44: the planner shoots or drops the order
-		return
-	}
-	s.hero.path = s.hero.path[:min(len(s.hero.path), 1)] // finish the step in progress
-	s.pickIntent = false
-	s.melee = true
-}
-
-// gatherOrder is the F key / HUD button 4 «Все ко мне» (0x004226C0): return a
-// held item, press the button, and set every living party member other than
-// the hero to +2 = 0x60 (idle, following the leader through 0x0041F5D8). The
-// port's party is the hero alone, so only the first two steps show; the
-// hero's own intents are left alone.
-func (s *startScene) gatherOrder(hero *gamestate.Entity) {
-	s.hand.Return(hero)
-	s.hud.press(hudGatherButton, hudGatherImage)
-}
-
 // nearestEnemy is 0x0041E384's search for a new target (0x0041FD74 for the
 // party, then 0x004203A0 / 0x004202A8): among groups other than the party on
 // this map that are not villages (unless alarmed) and not of kind 0x53, the
-// living member inside the attack range closest to the hero (gamestate.Dist).
+// living member inside the attack range closest to cell h (gamestate.Dist).
+// The game centres the range on the leader; the port on the member asking.
 // -1 when there is none.
-func (s *startScene) nearestEnemy() int {
-	h := s.hero.cell
+func (s *startScene) nearestEnemy(h mapdata.Cell) int {
 	best, bestD := -1, 1<<30
 	for _, n := range s.npcs {
 		e := &s.game.Entities[n.entity]
@@ -122,32 +87,6 @@ func (s *startScene) nearestEnemy() int {
 	return best
 }
 
-// startFight makes the hero attack entity target (right click in stance).
-func (s *startScene) startFight(target int) {
-	s.melee = true
-	s.target = target
-	s.pickIntent = false
-	if tw, _ := s.combatant(target); tw != nil {
-		s.targetCell = tw.cell
-	}
-	s.hero.stopAt = func(c mapdata.Cell) bool {
-		tw, _ := s.combatant(s.target)
-		return tw != nil && c == tw.cell
-	}
-}
-
-// endFight drops the hero's target and intent (a new walk order, the target
-// dead or gone).
-func (s *startScene) endFight() {
-	s.target, s.melee, s.shoot, s.burnTarget = -1, false, false, 0
-	if s.hero != nil {
-		s.hero.stopAt = nil
-		if s.hero.act == gamestate.ActAttack {
-			s.hero.act = 0
-		}
-	}
-}
-
 // setStopAt makes a creature's walks end before its target's cell.
 func (s *startScene) setStopAt(n *npc) {
 	n.stopAt = func(c mapdata.Cell) bool {
@@ -157,13 +96,13 @@ func (s *startScene) setStopAt(n *npc) {
 }
 
 // combatant returns the walker and live entity record of entity i on this
-// map: the hero's party copy, or the GAME.N record of anyone else.
+// map: a party member's party copy, or the GAME.N record of anyone else.
 func (s *startScene) combatant(i int) (*walker, *gamestate.Entity) {
 	if i < 0 {
 		return nil, nil
 	}
-	if s.hero != nil && len(s.party) > 0 && s.party[0].Index == i {
-		return s.hero, &s.party[0]
+	if m, e := s.partyMember(i); m != nil {
+		return &m.walker, e
 	}
 	if n, ok := s.byEntity[i]; ok {
 		return &n.walker, &s.game.Entities[i]
@@ -218,9 +157,7 @@ func (s *startScene) combatTick() {
 		}
 		s.settlementTick()
 	}
-	if s.hero != nil && len(s.party) > 0 {
-		s.heroTick()
-	}
+	s.partyTick()
 	// Path searches are shared round-robin (0x004116CC with the last served
 	// entity 0x00A3E690): the pass starts after the last member that used
 	// one, so members whose search keeps failing can't starve the rest.
@@ -241,8 +178,10 @@ func (s *startScene) combatTick() {
 			}
 		}
 	}
-	if s.hero != nil && len(s.party) > 0 {
-		s.actTick(s.hero, &s.party[0], nil)
+	for _, m := range s.members {
+		if m != nil {
+			s.actTick(&m.walker, &s.party[m.k], nil)
+		}
 	}
 	for _, n := range s.npcs {
 		s.actTick(&n.walker, &s.game.Entities[n.entity], n)
@@ -285,7 +224,7 @@ func (s *startScene) swing(aw *walker, a *gamestate.Entity, target int, targetCe
 	return false
 }
 
-// actTick plays hit reactions and deaths (n is nil for the hero).
+// actTick plays hit reactions and deaths (n is nil for party members).
 func (s *startScene) actTick(w *walker, e *gamestate.Entity, n *npc) {
 	creature := n != nil && n.mode == npcCreature
 	villager := n != nil && s.game.Groups[n.group].VillageGroup()
@@ -318,6 +257,8 @@ func (s *startScene) actTick(w *walker, e *gamestate.Entity, n *npc) {
 			delete(s.occ, w.cell)
 			if n != nil {
 				n.mode = npcStill
+			} else {
+				s.sel = gamestate.Deselect(s.sel, e.Index) // port choice: the dead leave the selection
 			}
 		}
 		w.advanceAct()
@@ -357,13 +298,18 @@ func (s *startScene) kill(a *gamestate.Entity, tw *walker, t *gamestate.Entity, 
 	s.dropLoot(t, tw.cell, bonus, level)
 }
 
-// flinch starts the hit reaction (type 2/8) of a character that isn't
-// walking.
+// flinch starts the hit reaction (type 2/8) of a character hit hard: the
+// swings (0x00422131 party, 0x00412657 creatures) and arrows start it
+// whatever the victim is doing, so a walk ends at once (the walker goes
+// back to the cell it was leaving). A party member's walk order goes on
+// afterwards (+2 bit 0x08 stays; idleTick).
 func (s *startScene) flinch(tw *walker) {
-	if !tw.walking {
-		tw.path = nil
-		tw.startAct(gamestate.ActFlinch)
+	if m, _ := s.partyMember(tw.entity); m != nil && &m.walker == tw && (tw.walking || len(tw.path) > 0) &&
+		m.intent&(gamestate.IntentMelee|gamestate.IntentShoot) == 0 && m.intent&gamestate.IntentWalk != 0 {
+		m.resume, m.resumeSet = tw.goal, true
 	}
+	tw.halt()
+	tw.startAct(gamestate.ActFlinch)
 }
 
 // alarmGroup is 0x004248A0: group g is alarmed against the party (+0x1D =
@@ -385,10 +331,7 @@ func (s *startScene) alarmGroup(g int) {
 
 // alarmCheck is 0x0041D0FC → 0x00412C30 for the creature groups on this map.
 func (s *startScene) alarmCheck() {
-	var party [][2]int
-	if s.hero != nil && len(s.party) > 0 && alive(s.hero, &s.party[0]) {
-		party = append(party, [2]int{s.hero.cell.Row, s.hero.cell.Col})
-	}
+	party := s.partyPositions()
 	members := map[int][][2]int{}
 	for _, n := range s.npcs {
 		if n.mode == npcCreature && alive(&n.walker, &s.game.Entities[n.entity]) {
@@ -401,91 +344,6 @@ func (s *startScene) alarmCheck() {
 		if gr.Alarm == gamestate.AlarmAttack {
 			gr.Enemy = 0
 		}
-	}
-}
-
-// heroTick is the hero's part of a game tick: its order (see startFight) or,
-// without one, retaliation.
-func (s *startScene) heroTick() {
-	h, hero := s.hero, &s.party[0]
-	if !alive(h, hero) || h.act == gamestate.ActFlinch {
-		return
-	}
-	if s.shoot {
-		s.heroShoot()
-		return
-	}
-	if s.target >= 0 {
-		if tw, t := s.combatant(s.target); !alive(tw, t) {
-			s.target = -1 // 0x0041E384: look for another enemy
-			if h.act == gamestate.ActAttack {
-				h.act = 0
-			}
-		}
-	}
-	if s.target < 0 {
-		if !s.melee {
-			s.retaliate()
-			return
-		}
-		if h.walking {
-			return // the step in progress ends first
-		}
-		t := s.nearestEnemy()
-		if t < 0 {
-			s.endFight() // no enemy left: the intent ends (0x0041E453)
-			return
-		}
-		s.startFight(t)
-	}
-	tw, t := s.combatant(s.target)
-	switch {
-	case h.act == gamestate.ActAttack:
-		if s.swing(h, hero, s.target, s.targetCell) {
-			h.act = 0 // killed or moved: next tick finds a new target or approaches again (0x0041F258)
-			if !alive(tw, t) {
-				s.target = -1
-			}
-		}
-	case h.walking || len(h.path) > 0:
-		if tw.cell != s.targetCell {
-			s.targetCell = tw.cell
-			h.chase(tw.cell)
-		}
-	default: // idle with the intent: the planner 0x0041ED8C
-		s.targetCell = tw.cell
-		if adjacent(h.cell, tw.cell) {
-			gamestate.EnterStance(hero) // the swing enters the stance (0x004149F5)
-			h.look = lookOf(*hero)
-			h.startAct(gamestate.ActAttack)
-			return
-		}
-		h.chase(tw.cell)
-		if len(h.path) == 0 {
-			s.endFight() // unreachable
-		}
-	}
-}
-
-// retaliate is 0x0041EC0C for the idle hero: a neighbour of another group
-// going for the hero (melee intent, target = hero) is struck back.
-func (s *startScene) retaliate() {
-	h, hero := s.hero, &s.party[0]
-	if h.walking || len(h.path) > 0 || h.act != 0 {
-		return
-	}
-	for _, n := range s.npcs {
-		if n.intent&intentMelee == 0 || n.target != hero.Index || !adjacent(h.cell, n.cell) ||
-			!alive(&n.walker, &s.game.Entities[n.entity]) {
-			continue
-		}
-		s.startFight(n.entity)
-		s.targetCell = n.cell
-		gamestate.EnterStance(hero)
-		h.look = lookOf(*hero)
-		h.dir = facing(h.cell, n.cell)
-		h.startAct(gamestate.ActAttack)
-		return
 	}
 }
 
@@ -547,11 +405,11 @@ func (s *startScene) creatureChase(n *npc, g *gamestate.Group) {
 
 // creatureDecide is 0x00412E00 for an idle creature (or a dormant one).
 func (s *startScene) creatureDecide(n *npc, e *gamestate.Entity, g *gamestate.Group) {
-	heroOK := s.hero != nil && len(s.party) > 0 && alive(s.hero, &s.party[0])
+	partyOK := len(s.livingMembers()) > 0
 	tactic := gamestate.TacticOf(e.Flags4)
 	switch g.Alarm {
 	case gamestate.AlarmAttack:
-		if !heroOK || g.Enemy != 0 {
+		if !partyOK || g.Enemy != 0 {
 			return
 		}
 		switch tactic {
@@ -574,13 +432,17 @@ func (s *startScene) creatureDecide(n *npc, e *gamestate.Entity, g *gamestate.Gr
 				return
 			}
 		}
-		s.goFor(n, s.party[0].Index)
+		if t := s.creatureTarget(n, tactic, nil, true); t >= 0 {
+			s.goFor(n, t)
+		}
 	case gamestate.AlarmReturn:
 		if n.act == gamestate.ActShoot {
 			return
 		}
-		if n.intent&intentMelee != 0 && heroOK && g.LeashArea().Contains(s.hero.cell.Row, s.hero.cell.Col) {
-			if s.returnTarget(n, tactic) && s.goFor(n, s.party[0].Index) {
+		leash := g.LeashArea()
+		inLeash := func(c mapdata.Cell) bool { return leash.Contains(c.Row, c.Col) }
+		if n.intent&intentMelee != 0 && partyOK && s.nearestMember(n.cell, inLeash, nil) >= 0 {
+			if t := s.returnTarget(n, tactic, inLeash); t >= 0 && s.goFor(n, t) {
 				return
 			}
 		}
@@ -596,18 +458,45 @@ func (s *startScene) creatureDecide(n *npc, e *gamestate.Entity, g *gamestate.Gr
 	}
 }
 
-// returnTarget is the kind switch of the return state (0x004132FE): who may
-// keep fighting. With the hero as the only enemy, the assist and unengaged
-// selectors find it unless (unengaged) a group-mate already goes for it;
-// the others (and stationary creatures) find nothing there.
-func (s *startScene) returnTarget(n *npc, tactic gamestate.Tactic) bool {
+// creatureTarget is the target selector of the attack state by tactic,
+// with the party as the enemy group: assist (0x00420178) a group-mate's
+// living target, unengaged and dormant (0x004203A0) the nearest member no
+// group-mate attacks; with fallback, or for the other tactics, the nearest
+// member (0x004202A8). inside, when set, limits the candidates. -1 = none.
+func (s *startScene) creatureTarget(n *npc, tactic gamestate.Tactic, inside func(mapdata.Cell) bool, fallback bool) int {
 	switch tactic {
 	case gamestate.TacticAssist:
-		return s.mateTargets(n, s.party[0].Index)
+		for _, m := range s.npcs {
+			if m == n || m.group != n.group || m.intent&intentMelee == 0 || !alive(&m.walker, &s.game.Entities[m.entity]) {
+				continue
+			}
+			if tw, t := s.combatant(m.target); alive(tw, t) && t.Group == 0 && (inside == nil || inside(tw.cell)) {
+				return m.target
+			}
+		}
 	case gamestate.TacticUnengaged, gamestate.TacticDormant:
-		return !s.mateTargets(n, s.party[0].Index)
+		if t := s.nearestMember(n.cell, inside, func(i int) bool { return s.mateTargets(n, i) }); t >= 0 {
+			return t
+		}
+	default:
+		return s.nearestMember(n.cell, inside, nil)
 	}
-	return false
+	if !fallback {
+		return -1
+	}
+	return s.nearestMember(n.cell, inside, nil)
+}
+
+// returnTarget is the kind switch of the return state (0x004132FE): who may
+// keep fighting. The assist and unengaged selectors run without the
+// nearest fallback, over the members inside the leash; the others (and
+// stationary creatures) find nothing there.
+func (s *startScene) returnTarget(n *npc, tactic gamestate.Tactic, inLeash func(mapdata.Cell) bool) int {
+	switch tactic {
+	case gamestate.TacticAssist, gamestate.TacticUnengaged, gamestate.TacticDormant:
+		return s.creatureTarget(n, tactic, inLeash, false)
+	}
+	return -1
 }
 
 // mateTargets reports a living group-mate of n with the melee intent on
@@ -656,15 +545,18 @@ func (s *startScene) reachable(c mapdata.Cell) bool {
 	return false
 }
 
-// stationarySwing is 0x00412F62: swing at an adjacent enemy, never move.
+// stationarySwing is 0x00412F62: swing at an adjacent member of the enemy
+// group (the first living member next to it), never move.
 func (s *startScene) stationarySwing(n *npc) {
-	h := s.hero
-	if !adjacent(n.cell, h.cell) {
+	for _, m := range s.livingMembers() {
+		if !adjacent(n.cell, m.cell) {
+			continue
+		}
+		n.target, n.targetCell, n.intent = s.party[m.k].Index, m.cell, intentRetaliate
+		n.dir = facing(n.cell, m.cell)
+		n.startAct(gamestate.ActAttack)
 		return
 	}
-	n.target, n.targetCell, n.intent = s.party[0].Index, h.cell, intentRetaliate
-	n.dir = facing(n.cell, h.cell)
-	n.startAct(gamestate.ActAttack)
 }
 
 // gameOverDelay is how long the dead hero stays on screen before the menu
