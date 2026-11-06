@@ -170,9 +170,10 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00423FBA`, `0x004305E4`, `0x00465A24` | routines, data | Hover handler (status line, switch `0x004244B3`); item description; stat short names | [character window](konung_character_window.md#hover-texts-verified) |
 | `0x0042C914`, `0x0043FD18` | routines | Bag cell tint; palette tint | [character window](konung_character_window.md#bag-strip-0x0042f50c) |
 | `0x004290AC`, `0x0042DBBC` | routines | Press a HUD button for one loop pass; window draw dispatcher (table `0x0042F4C8`, index = arg + 1) | [interface](konung_interface_res.md) |
+| `0x00422C01`, `0x00436EB9`, `0x0042F491`, `0x0043141C`, `0x004153B0`, `0x004106E0` | routines, code | Map button (HUD hotspot 3) and M key; window 5 (map) case of `0x0042DBBC`; map window draw (not traced); misc type 20 opens the map; called by the magic-orb cases with constants (not traced) | [not ported](konung_not_ported.md#map-window-and-travel-by-item) |
 | `0x0046281C`, `0x00462B1C` | data | Combat-stance equipment draw order: 4 actions × 8 facings × 6 `int32` (bow-drawn variant) | [GAME.N](konung_game_format.md#equipment-overlays-verified) |
 | `0x0042179C` | routine | Toggle combat stance of the selection `0x0083B93C` (Space, HUD hotspot 2) | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |
-| `0x00421698` | routine | Whole party into combat stance (key A, HUD hotspot 5) | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |
+| `0x00421698` | routine | Whole party into combat stance and attack (key A, HUD hotspot 5) | [combat](konung_combat.md#attack-order-verified) |
 | `0x0042192C` | routine | Select weapon mode `+0x12` (keys 1/2/3 → 2/0/1; HUD hotspot 1 → cycle) | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |
 | `0x004227A0` | routine | Release an entity's items (equipment `+0x66`, bag `+0x72`, `+0xB2`) | [GAME.N](konung_game_format.md#inventory-and-items-verified) |
 | `0x00437301` | code | Keyboard switch of the in-game key handler (keys: Space, 1/2/3, A, F, I, L, M, Q, S, T, Tab, numpad +/− speed, ` quick bag) | [GAME.N](konung_game_format.md#weapons-and-combat-stance-verified) |

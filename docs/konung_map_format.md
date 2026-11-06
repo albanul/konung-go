@@ -135,8 +135,7 @@ So `KONUNG.1` (Volk's start) is «Родники», and «Старый лаге�
 ## Open questions
 
 * Characters/NPCs/monsters come from `GAME.N`, not from the map; see [the GAME.N notes](konung_game_format.md).
-* Animated static objects (header `+0x18` > 0, frame cycling) and random variants: the port always draws variant 0.
-* ID substitution from the game-state table at `0x0043CB21`.
+* Animated static objects (header `+0x18` > 0, frame cycling) and random variants: the port always draws variant 0 (`mapdata/objects.go`).
 * Objects anchored above y = 0 are clipped in `map-render` PNGs; the game scrolls past them.
 * Section 1 semantics beyond walls (`0xFFF`) and arrow obstacles (bits `0xC0`): the other bits.
-* The `LIGHTS.N` shading path. The loader reads `0x3200` bytes to `0x00671440` (80 × 160, one byte per terrain cell, indexed `row*0x50 + col` by the lit draw path) and `0xC800` bytes to `0x00664C40` (both parts decoded: [day and night](konung_daylight.md#lightsn-lit-cells)).
+* The fine-grid `LIGHTS.N` values beyond zero / non-zero ([day and night](konung_daylight.md#open-questions)); the terrain part and the lit terrain path are decoded and ported.

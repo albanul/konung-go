@@ -1,6 +1,6 @@
 # Herbs and potions (знахарство)
 
-Category 9 items are herbs and potions (herb table `0x004594B0`, 128-byte records; see [GAME.N](konung_game_format.md#inventory-and-items-verified)). Potions are made by pouring one herb onto another in the character window and are drunk from the bag or the portrait. Making them trains the **healing skill** `+0x48` (знахарство, sheet number 15), which in turn sets the strength of new potions.
+Category 9 items are herbs and potions (herb table `0x004594B0`, 128-byte records; see [GAME.N](konung_game_format.md#inventory-and-items-verified)). Potions are made by pouring one herb onto another in the character window and are drunk from the bag or the portrait. Making them trains the **healing skill** `+0x48` (знахарство, sheet number 15), which in turn sets the strength of new potions. Herbs come from the ground, loot, the start bag, merchants and the healer's stock ([trade](konung_trade.md#shop-stock-production)).
 
 Status: mixing `0x0041BC24` and use `0x0041DB64` traced and ported (`gamestate/potions.go`); the recipe table is read from the exe (`resfmt.ExeTables.Recipes`). Checked against `GAME.0` (`gamestate.TestMixGame0`, `TestPotionTimerGame0`, `TestInHandBoxGame0`).
 
@@ -91,5 +91,4 @@ Status: traced and ported (`Game.Lit`, `resfmt.LightsGlow`, `startScene.drawPile
 ## Open questions
 
 * `0x00414B3C` (revival by Живая Вода); the port's party has no dead members (the hero's death ends the game).
-* Misc items other than the torch used on the box or a portrait (`0x00414E64`, cursor 9).
-* Herb sources other than the ground, loot and the start bag: the healer and merchants (dialogue).
+* Misc items other than the torch and the shovel (`0x00414E64`, cursor 9); see [not ported](konung_not_ported.md#other-misc-items).

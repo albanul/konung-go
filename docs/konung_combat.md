@@ -12,7 +12,7 @@ Entity `+0x00` is the action type, relative to the animation set: 0–5 in the c
 | 1 / 7 | `0x0042218D` | walk | 12 / 12 |
 | 2 / 8 | `0x004224F8` | hit reaction, then idle (`0x00414AB4`) | 7 / 6 |
 | 3 / 9 | `0x00422447` | death: at step count−2 `+2` = 0, `+4 \|= 0x80`, the cell's occupant bits are cleared; the last step stays | 12 / 12 |
-| 4 | `0x0042255E` | bow shot (not traced) | 12 / 1 |
+| 4 | `0x0042255E` | bow shot ([bows](#bows-verified)) | 12 / 1 |
 | 5 | `0x00421E8C` | melee swing; always type 5 | 12 / 12 |
 
 `0x004143DC(e, type)` starts an action at step 0. `0x00413DE4(e)` advances `+0x10` once per game tick and returns 0 (staying on the last step) when the step would reach the count `+0xD7`. `0x004391BC(e, dir)` turns one octant toward `dir`, the shorter way round. `0x0043976C` gives the direction between two cells.
@@ -33,7 +33,7 @@ Entity `+0x00` is the action type, relative to the animation set: 0–5 in the c
 
 ## Attack order (verified)
 
-**A** or HUD button 5 «Атаковать (A)» (key switch `0x00437272`, VK `0x41` → `0x00436DB0`):
+**A** or HUD button 4 «Атаковать (A)» (hotspot 5) (key switch `0x00437272`, VK `0x41` → `0x00436DB0`):
 
 * With `0x00A3E754` set (apparently Shift held: it is set and cleared around VK `0x10`), A selects every living party member.
 * Without Shift it runs `0x00421698`: sound 4, return a held item (`0x00429194(1)`), press button 4 with image 7 (`0x004290AC(4, 7)`). Each living party member then gets `+6` = 0, `+2` = `0x44` with the bow active (else `0x41`), `+0x14` = `0xFF`, and enters the stance (type − 6, `+3 |= 4`).
@@ -41,7 +41,7 @@ Entity `+0x00` is the action type, relative to the animation set: 0–5 in the c
 * Eligible groups: on the current map, not the party, `+0x1E` bit `0x80` clear (no village) unless alarmed, and `+0x1E` ≠ `0x53`. The group whose living member inside the area is closest to the leader wins. Then `0x004203A0` / `0x004202A8` pick that member.
 * When the target dies, the same search finds the next one. This also happens after a right-click attack, because the intent stays. With no enemy left, the intent ends (`+2 &= ~1`, `0x0041E456`).
 
-Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent). Bows are not ported, so with the bow active the order does nothing.
+Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent). With the bow active the hero shoots instead (`+2` = `0x44`, `heroShoot`, [bows](#bows-verified)). Shift+A (select the whole party) has nothing to select: the party is the hero alone.
 
 ## Creature AI (verified)
 
@@ -64,7 +64,7 @@ Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent).
     | `0x43`, `0x45` | the nearest enemy no group-mate is attacking (`0x004203A0`), else the nearest |
     | `0x44`, `0x57` | never move: swing at an adjacent member of the enemy group, `+2` = 2 (`0x00412F62`) |
     | `0x46`, `0x4C`, `0x55` | dormant (type 4 at step 0): first wake up (play type 4); then as `0x43` |
-    | others | animated: the nearest. Humanoids (bandits) first enter the stance (re-equip `0x004105A0`); with a bow and arrows they shoot (type 4, `0x00410E84`; not ported), else the nearest. |
+    | others | animated: the nearest. Humanoids (bandits) first enter the stance (re-equip `0x004105A0`); with a bow and arrows they shoot (type 4, `0x00410E84`, [below](#bows-verified)), else the nearest. |
 
     Distance `0x00439944` (`gamestate.Dist`): the larger axis difference, plus 1 if the smaller one exceeds 1.
   * `0x20` return: a member with the melee intent keeps fighting while a party member is inside the leash (`0x0041FD74`). Kinds `0x41`/`0x4D`/`0x4F` and `0x43`/`0x45` use their selector without the nearest fallback; stationary ones stop; others find nothing. Otherwise the intent ends. A member outside the territory walks to a free cell picked like `0x0041F5D8` (`gamestate.WanderTarget`) with `+2` = 8.
@@ -269,12 +269,17 @@ Approximations:
 * The party is the hero alone, so every target selector resolves to the hero.
 
 Not ported:
-* the surrender film;
-* item use and the healer (the only HP gains);
-* the character window's raise buttons (`RaiseCost` is ready for them).
+* the films `GAMEOVER.FLM` (hero death) and `DEFEAT<map>.FLM` (village surrender), played by `0x0042B690`: the files are not installed. The port returns to the menu after 2 s and shows nothing on a surrender;
+* god mode (`0x00A3E768`, toggled by `0x00436E93`): damage to the hero is not reduced by 2;
+* kind `0x49` stepping back after its blow (`0x004101E4`, not traced);
+* the walk extras (`+0x11` throttle, the `0x4D`/`0x4F` pauses), see [creature AI](#creature-ai-verified);
+* the portrait feedback when a party member is hit (`0x0042D574`);
+* picking the best bag gear on re-equip (`0x004104D4`, not traced).
+
+HP is regained through [potions](konung_potions.md) and the healer's dialogue scripts 334/335 ([dialogues](konung_dialogue.md)); the raise buttons are in the [character window](konung_character_window.md#raise-column-verified). See [not ported](konung_not_ported.md) for the whole list.
 
 ## Open questions
 
-* Grid bits `0xC000` (obstacle kinds); `0x004104D4` (equip best), `0x00418364` (usable).
+* Grid bits `0xC000` (obstacle kinds); `0x004104D4` (equip best). (`0x00418364`, usable, is `Game.CanUse`, [character window](konung_character_window.md).)
 * The god-mode toggle `0x00436E93`; kind `0x49` retreat `0x004101E4`; HUD feedback `0x0042D574`; field `+0x11` (walk throttle), `+0x14`.
 * Films `GAMEOVER.FLM`, `DEFEAT<n>.FLM` (`0x0042B690`), not in the installed files.

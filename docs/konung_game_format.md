@@ -159,7 +159,7 @@ Gear records also hold the damage or armour value (`uint16 +0x2C`), a required s
 * Leave (if in stance): `type = 6` when `type > 3` (an attack ends in idle), else `type += 6`; `+2 &= 0xFA`, becoming `0x40` if 0; clear the bit.
 * Walking entities (type 7/1) re-init their model (`0x00414078`), others restart their action (`0x004143DC(e, type)`). Then the HUD stance button image becomes 10 (stance) or 15.
 
-**Whole party `0x00421698`.** For every living party member: `+6 = 0`, `+2 = 0x44` (bow) or `0x41`, `+0x14 = 0xFF`, and enter the stance as above. Not ported (the port's `A` scrolls the camera).
+**Whole party `0x00421698`.** For every living party member: `+6 = 0`, `+2 = 0x44` (bow) or `0x41`, `+0x14 = 0xFF`, and enter the stance as above. Ported as the hero's attack order (A / HUD button 4, [combat: attack order](konung_combat.md#attack-order-verified)).
 
 **Weapon select `0x0042192C(mode)`.** For the selection (10 entries if `0x00A3E754` ≠ 0, else the first only; `0x00A3E754` not traced): modes 0–2 set `+0x12 = mode` only if equipment slot *mode* is non-empty. Any other mode cycles 0 → 1 → 2 → 0, skipping empty slots (nothing happens with all three empty). Afterwards, if `+0x12` ≠ 1 and `+2` bit `0x04` is set, the bit is cleared and `0x00414AB4` (not traced) is called.
 
@@ -181,7 +181,7 @@ Code: `resfmt.ExeTables` (`ItemOverlay`, `DrawOrder`, `CombatDrawOrder`, `Overla
 
 ## NPC AI (village AI traced)
 
-**Dispatcher `0x00421DA4`**, called once per game tick from the main loop (`0x00437854`/`0x00437888`, next to the animation step). It resets the path-search budget `0x00A3E720` and walks groups 0–199 that are active on the current map. Kind (`+0x1E`) bit `0x40` → creature AI `0x004123BC` ([below](#creature-ai-traced)). Otherwise bit `0x80` → village AI `0x00416058`. Otherwise → party AI (contains `0x0041F11C`).
+**Dispatcher `0x00421DA4`**, called once per game tick from the main loop (`0x00437854`/`0x00437888`, next to the animation step). It resets the path-search budget `0x00A3E720` and walks groups 0–199 that are active on the current map. Kind (`+0x1E`) bit `0x40` → creature AI `0x004123BC` ([below](#creature-ai-traced), rules in [combat](konung_combat.md#creature-ai-verified)). Otherwise bit `0x80` → village AI `0x00416058`. Otherwise → party AI (contains `0x0041F11C`).
 
 **Budget `0x004116CC`.** An entity may think only while `0x00A3E720 < 3` (incremented by each path search) and while it comes after the last served entity (`0x00A3E690`), so members are served round-robin.
 
@@ -225,11 +225,11 @@ It is reached only from `0x0041F11C` (AI step `0x00422415`), and only when entit
 
 ### Port
 
-`internal/game` `npc` with `npcMode`, and `gamestate` `Settlements`, `PostOf`, `VillageMoveThreshold`, `VillageStepTarget`. Village groups run the village AI above once per game tick (`walkTicksPerStep` updates), with the 3-search budget served round-robin and the 800×600 ranges. Paths are not limited to the rectangle; only targets are. Creature groups (kind bit `0x40`) run the creature combat AI ([combat](konung_combat.md#creature-ai-verified)). Groups without a rectangle stand still too. The party branch is not ported. Characters reserve the cell they step into, so they don't overlap.
+`internal/game` `npc` with `npcMode`, and `gamestate` `Settlements`, `PostOf`, `VillageMoveThreshold`, `VillageStepTarget`. Village groups run the village AI above once per game tick (`walkTicksPerStep` updates), with the 3-search budget served round-robin and the 800×600 ranges. Paths are not limited to the rectangle; only targets are. Creature groups (kind bit `0x40`) run the creature combat AI ([combat](konung_combat.md#creature-ai-verified)). Groups without a rectangle stand still too. The party branch is not ported. Characters reserve the cell they step into, so they don't overlap. An alarmed village (group `+0x1D` ≠ 0) runs `0x00416DA6` instead (`game.villagerTick`, [combat: village anger](konung_combat.md#village-anger-verified)). The post index from `+4` bits `0x38` (0 for every `GAME.0` villager) is not ported.
 
 ## Placement of entities without coordinates
 
-Entities with row = col = 0 are positioned at runtime around their group's position. The party code at `0x00411B8C` uses random formation offsets from tables near `0x0045FF79`. The port places them deterministically on the nearest free fine cells, using the `KONUNG.N` walk grid (`mapdata.WalkGrid.Blocked`). These positions are an **approximation**. The exact spawn routine for non-party groups is not traced.
+Entities with row = col = 0 are positioned at runtime around their group's position. The party code at `0x00411B8C` uses random formation offsets from tables near `0x0045FF79`. The port places them deterministically on the nearest free fine cells, using the `KONUNG.N` walk grid (`mapdata.WalkGrid.Blocked`). These positions are an **approximation** for villagers and the party. Creature groups are re-placed on map entry by the traced `0x00411DE4` (random cell in the territory, `Game.PlaceInTerritory`, [combat](konung_combat.md#upkeep-poison-and-respawn-verified)), so only non-creature groups without coordinates remain approximate.
 
 ## `KONUNG.1` (Volk's starting location) in `GAME.0`
 
@@ -269,9 +269,9 @@ Section 4 holds 250 × `0x11`-byte records; the loader (`0x0043BCEF`) counts the
 * **No per-map save.** Every entity lives in the one global array `0x007AB378` all game; the AI (`0x00421DA4`) runs only for groups whose map byte `+0x1B` is the current map, so other maps stay frozen and characters keep their position, HP, inventory and deaths.
   * Leaving a map (`0x00436AD0(map)`): for each group on it, dead members (`+4` bit `0x80`) are removed. Their items are freed (`0x00422778`), the later members move down (memmove, group count `+0x1C` − 1) and the settlement's post indices (`+0x3D2`, 5 × 8 bytes, settlement from `0x0043A1F8(map)`) are fixed up. If post 0 is then empty, the first living member with model `+0xD6` < 3 (the code reads `dword[+0xD3] >> 24`), `+4` bits `0x38` clear and `0x0041182C` = 0 takes it: its dialogue `+0xD0` becomes settlement byte `+0x3D1`, `+2` = 0, then `0x00414AB4`.
   * Entering a map (`0x0043C0FC(0)`, group loop `0x0043C612`): villagers and the party go back on their stored cells; animated models get `+2` = `0x40` (idle) and every member's animation is reset (`0x004143DC`). Creature groups get their alarm `+0x1D` cleared, every creature is placed at random in its territory (`0x00411DE4`), and respawn runs (`0x00420CCC`). See [combat: upkeep and respawn](konung_combat.md#upkeep-poison-and-respawn-verified); port `Game.EnterMap`. The port keeps the villagers' cells across visits (`startScene.storeWorld`).
-* **Travel by item** (`0x00422AD8`, click mode `0x00A3E740` = 5): uses up an item (`0x00421D24`) and takes the first exit whose target is the chosen map. Not ported.
+* **Travel by item** (`0x00422AD8`, window `0x00A3E740` = 5, the map window of HUD button 2 «Карта (M)»): a click with hotspot id ≥ `0x100` (`id >> 8` selects the target; not traced further) uses up an item (`0x00421D24`) and takes the first exit whose target is that map. Not ported, like the map window itself ([not ported](konung_not_ported.md#map-window-and-travel-by-item)).
 
-**Port** (`startScene.step`, `startScene.changeMap`, `gamestate.Game.ExitAt`, `Game.TakeExit`): a hero walk that ends on an exit without the pick-up intent writes the party back into the game, moves group 0 and rebuilds the scene for the target map. The hero is placed on the arrival cell or the nearest free one. Before the change, `startScene.storeWorld` writes the party and every other character's cell and facing back into `gamestate.Game`, so a map looks as it was left on the next visit (`OnMap` uses the stored cells). Piles, the held item, the game clock and speed carry over. The bridge gate is checked (`Game.ExitOpen`). The leave cleanup and the enter-time respawn are not ported.
+**Port** (`startScene.step`, `startScene.changeMap`, `gamestate.Game.ExitAt`, `Game.TakeExit`): a hero walk that ends on an exit without the pick-up intent writes the party back into the game, moves group 0 and rebuilds the scene for the target map. The hero is placed on the arrival cell or the nearest free one. Before the change, `startScene.storeWorld` writes the party and every other character's cell and facing back into `gamestate.Game`, so a map looks as it was left on the next visit (`OnMap` uses the stored cells). Piles, the held item, the game clock and speed carry over. The bridge gate is checked (`Game.ExitOpen`). The leave cleanup (`Game.LeaveMap`) and the enter-time placement and respawn (`Game.EnterMap`) run on every map change.
 
 Validation: `go test ./internal/gamestate -run Exits` checks the count, the `KONUNG.1` exits, `TakeExit` + `OnMap` placement on `KONUNG.3`, and the 109 teleport tiles; `go test ./internal/game -run StoreWorld` checks that a moved villager is back on its cell after `storeWorld`.
 
@@ -280,7 +280,7 @@ Validation: `go test ./internal/gamestate -run Exits` checks the count, the `KON
 * The game's animation tick rate. The scene uses 10 steps/s and offsets each entity's phase so neighbours don't move in lockstep; both are presentation choices.
 * Exact runtime spawn positions for groups whose entities have no coordinates.
 * Group field `+0x1E` beyond bits `0x40` (creature AI), `0x80` (village AI, low 2 bits = tribe) and `0x20` (party); kind `0x53` groups.
-* The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation. Actions other than idle/walk (attacks, hits, death) are not ported; the combat stance and drawn weapons are.
-* Item record fields other than category and type (`+4`/`+8` condition is a hypothesis); the gear table's remaining fields; which jewellery box is which; combat animation types 2, 4, 5; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
-* `GAME.N` section 4 (map exits) bytes `+0`, `+1`; the spawn check `0x00411DE4` and monster respawn `0x00420CCC` on map entry; travel by item (`0x00422AD8`). Settlement bytes outside the posts.
-* Creature AI leftovers: see [combat](konung_combat.md#open-questions). Village alarm state (group `+0x1D` ≠ 0, `0x00416DA6`) and the `+4` bits `0x38` post path.
+* The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation.
+* Item record fields other than category and type (`+4`/`+8` condition is a hypothesis); the gear table's remaining fields; which jewellery box is which; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
+* `GAME.N` section 4 (map exits) bytes `+0`, `+1`; travel by item (`0x00422AD8`). Settlement bytes outside the posts and the traced stock/timer fields.
+* Creature AI leftovers: see [combat](konung_combat.md#open-questions). The `+4` bits `0x38` post path.

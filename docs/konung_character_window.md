@@ -144,4 +144,4 @@ Port: `startScene.statusText` (a click message still wins for its short lifetime
 ## Open questions
 
 * `0x00A3E768` (god mode, see [combat](konung_combat.md#open-questions)).
-* Misc items on the in-hand box or a portrait (cursor mode 9, `0x00414E64`). (Background tiling, **T**, is traced and ported: [settings](konung_settings.md#background-tiling-t).)
+* Misc items on the in-hand box or a portrait (cursor mode 9, `0x00414E64`), see [not ported](konung_not_ported.md#other-misc-items). (Background tiling, **T**, is traced and ported: [settings](konung_settings.md#background-tiling-t).)
