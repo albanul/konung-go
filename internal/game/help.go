@@ -14,7 +14,7 @@ import (
 
 // The key help is a port addition: a small box in the top-right corner of
 // the game view, in Go Regular (crisp at native resolution, unlike the
-// 6×16 debug font), toggled with F1.
+// 6×16 debug font; Go Regular covers Cyrillic), in Russian, toggled with F1.
 
 const helpFontSize = 11
 
@@ -29,19 +29,19 @@ var helpFace = func() *text.GoTextFace {
 
 // helpLines is the key help for the current state.
 func (s *startScene) helpLines() []string {
-	follow := "off"
+	follow := "выкл"
 	if s.follow {
-		follow = "on"
+		follow = "вкл"
 	}
 	return []string{
-		"Left click: walk     Right click: walk + take",
-		"Space: stance     A: attack nearest enemy",
-		"Right click on a character in the stance: attack it, otherwise: talk",
-		"Ctrl + right click on a party member: talk",
-		"1/2/3: weapon     I: character     ~: bag     Q: quest log",
-		fmt.Sprintf("+/-: speed x%d     C: camera follow %s     Arrows: scroll", s.speed+1, follow),
-		"F: all to me (party gathers)",
-		"Esc: menu     F1: hide this help",
+		"Левый клик: идти     Правый клик: идти и подобрать",
+		"Пробел: боевая стойка     A: атаковать ближайшего врага",
+		"Правый клик по персонажу в стойке: атаковать, иначе: говорить",
+		"Ctrl + правый клик по члену отряда: говорить",
+		"1/2/3: оружие     I: персонаж     ~: сумка     Q: журнал заданий",
+		fmt.Sprintf("+/-: скорость x%d     C: следить камерой (%s)     Стрелки: прокрутка", s.speed+1, follow),
+		"F: «Все ко мне» (отряд собирается)",
+		"Esc: меню     F1: скрыть подсказку",
 	}
 }
 
