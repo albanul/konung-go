@@ -148,6 +148,7 @@ type sceneAssets struct {
 	rawTiles       []*image.RGBA
 	tiles          []*ebiten.Image
 	glow           *ebiten.Image  // LIGHTS.RES glow map (resfmt.GlowMask); nil if the file is missing
+	arrowGlow      *ebiten.Image  // LIGHTS.RES incendiary arrow glow (resfmt.ArrowGlow); nil if missing
 	lightMasks     [][]byte       // LIGHTS.RES light masks for the lit terrain path; nil if missing
 	flames         *flameImages   // FLAMES.RES; nil if missing
 	quests         *resfmt.Quests // QUESTR.RES dialogues; nil if missing (no one talks)
@@ -199,7 +200,10 @@ func loadSceneAssets(graphPath, objectsPath, mapDir, exePath, intrPath string) (
 	} else if glow, err := resfmt.LightsGlow(data); err != nil {
 		log.Printf("%s: %v", lightsPath, err)
 	} else {
-		a.glow = ebiten.NewImageFromImage(resfmt.GlowMask(glow))
+		a.glow = ebiten.NewImageFromImage(resfmt.GlowMask(glow, resfmt.GlowWidth))
+		if ag, err := resfmt.ArrowGlow(data); err == nil {
+			a.arrowGlow = ebiten.NewImageFromImage(resfmt.GlowMask(ag, resfmt.ArrowGlowSize))
+		}
 		a.lightMasks, _ = resfmt.LightMasks(data)
 	}
 	// QUESTR.RES next to GAME.N (0x0043BDD5): dialogues and quest texts.

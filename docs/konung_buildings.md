@@ -1,6 +1,6 @@
 # Village buildings, the bridge gate and the voevoda's training
 
-Status: traced against `konung.exe`. The map-load object IDs are checked against every `GAME.N` and `KONUNG.N`. Ported: `gamestate.Game.SettlementPass` (`production.go`), `buildingPass`, `voevodaPass`, `BuildingObjects` (`buildings.go`), `startScene.updateBuildings` / `placeObjects` (`internal/game/buildings.go`); setting buildings on fire (`Game.ArrowOnBuilding`, `LineOfFireBuilding`, `startScene.shootBuilding` / `arrowOnBuilding`); the bridge gate (`Game.ExitOpen`). `cmd/map-render -game` draws the buildings in their state. Tests: `TestBuildingObjectsMatchMaps`, `TestRuinRebuilt`, `TestBuildingBurns`, `TestVoevodaTrains`, `TestBuildingSpriteFollowsState`, `TestArrowsSetBuildingOnFire`, `TestArrowOnBuilding`, `TestLineOfFireBuilding`, `TestExitGate`.
+Status: traced against `konung.exe`. The map-load object IDs are checked against every `GAME.N` and `KONUNG.N`. Ported: `gamestate.Game.SettlementPass` (`production.go`), `buildingPass`, `voevodaPass`, `BuildingObjects` (`buildings.go`), `startScene.updateBuildings` / `placeObjects` (`internal/game/buildings.go`); setting buildings on fire (`Game.ArrowOnBuilding`, `LineOfFireBuilding`, `startScene.shootBuilding` / `arrowOnBuilding`); the bridge gate (`Game.ExitOpen`). `cmd/map-render -game` draws the buildings in their state. Tests: `TestBuildingObjectsMatchMaps`, `TestRuinRebuilt`, `TestBuildingBurns`, `TestVoevodaTrains`, `TestBuildingSpriteFollowsState`, `TestArrowsSetBuildingOnFire`, `TestArrowOnBuilding`, `TestLineOfFireBuilding`, `TestOilMakesIncendiaryArrows`, `TestExitGate`.
 
 Both run in the settlement pass `0x0041D39F`, every 16 ticks (`(time + 7) & 0xF == 0`), for all 20 settlements. The rest of the pass (tribute, healer, smith) is in [trade: production](konung_trade.md#shop-stock-production). The surrender and alarm checks are in [combat](konung_combat.md).
 
@@ -88,7 +88,7 @@ Net effect: each member gains at most one point per stat per period, up to the c
 
 ## Setting a building on fire
 
-Only the selection's bow can do it. Placements with flag `+0x22` bit `0x01` are the settlement buildings: every building placement has `0xFF`, other objects 0 (a few `0xFF`).
+Only the selection's bow can do it, with **incendiary arrows**: arrows whose special `+2` is 0. «Масло» of concentration ≥ 10 dropped on the arrows in the in-hand box makes them ([potions](konung_potions.md); `TestOilMakesIncendiaryArrows`). `GAME.0`–`GAME.2` have none at the start. Placements with flag `+0x22` bit `0x01` are the settlement buildings: every building placement has `0xFF`, other objects 0 (a few `0xFF`).
 
 1. **Hover** (`0x00A3E6A4`): the object draw pass (`0x004270A6` and three siblings) tests each flagged placement it draws with `0x0043F89C` (an opaque pixel of the drawn image under the cursor). The last one drawn, so the front-most, wins; `0x0042AD2E` clears it. Port: `startScene.buildingUnderCursor` (in `Draw`, after the world).
 2. **Cursor 6** (flame, `0x00428AF3`): checked before the character cursor. It needs a building hovered, a settlement on the map (`0x00A3E6A8`), and a selected member that is alive (`+4` bit `0x80` clear, `+0` not 9 or 3), in the stance (`+3 & 4`), with the bow active (`+0x12` = 1), a bow `+0x68`, a quiver `+0xCC` and **incendiary arrows** (quiver item `+2` = 0). Port: `fireReady`.
@@ -129,5 +129,4 @@ Building the bridge (dialogue script 360, [dialogues](konung_dialogue.md#script-
 
 ## Not ported / open
 
-* The incendiary arrows' 64×64 glow (`0x005B0010`).
 * Record `+4`.

@@ -256,3 +256,24 @@ func TestLineOfFireBuilding(t *testing.T) {
 		t.Errorf("character target through a wall: %d", r)
 	}
 }
+
+// TestOilMakesIncendiaryArrows: «Масло» of concentration ≥ 10 dropped on
+// the boxed arrows (UseHerb, 0x0041DB64) makes them incendiary, which the
+// fire order needs; weaker oil is refused.
+func TestOilMakesIncendiaryArrows(t *testing.T) {
+	tk := talkSetup(t)
+	g := tk.G
+	e := g.Entities[tk.Hero]
+	arrows := g.newStock(CatArrows, 30)
+	e.Quiver = arrows
+	weak := g.newStock(CatHerb, HerbOil)
+	g.setConcentration(weak, 9.9)
+	if g.UseHerb(&e, tk.T, arrows, weak) || g.Incendiary(e) {
+		t.Fatal("oil 9.9 made incendiary arrows")
+	}
+	oil := g.newStock(CatHerb, HerbOil)
+	g.setConcentration(oil, 10)
+	if !g.UseHerb(&e, tk.T, arrows, oil) || !g.Incendiary(e) {
+		t.Fatal("oil 10 did not make incendiary arrows")
+	}
+}

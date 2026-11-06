@@ -142,7 +142,7 @@ A bow shot spawns a **projectile**. The hit is decided by what the arrow flies i
 
     The arrow is removed in every case. **Friendly fire exists.**
   * Otherwise it moves on.
-* **Drawing** (`0x00426D90`): INTR image slot `+0x1C` + (game time & 1) (slots 184–199: two frames per facing; 32×6, 29×17, 6×23), at the position plus the sprite offset, depth y + 0x5E. Incendiary arrows also get a 64×64 glow (`0x005B0010`, unknown).
+* **Drawing** (`0x00426D90`): INTR image slot `+0x1C` + (game time & 1) (slots 184–199: two frames per facing; 32×6, 29×17, 6×23), at the position plus the sprite offset, depth y + 0x5E. Incendiary arrows (special `+0x1E` = 0) are drawn over a glow: the 64×64 map of `LIGHTS.RES` `+0` (`0x005B0010`) blended by `0x0043DE4D` (yellow brightening, as the [loot highlight](konung_potions.md#loot-highlight-0x00a3e758)) with its top-left at the position − 32 (floats at `0x00450224`/`0x00450228`), in both arrow draw paths (`0x00426F5C`, `0x00427489`). Port: `startScene.drawArrows`, `resfmt.ArrowGlow`.
 * **Bandits and alarmed villagers** (`0x004130EE`, `0x00416F65`): first `0x004105A0` re-equips (quiver from the bag, best gear; slot `+0x12` = 1 with bow and arrows, else 0 with an axe, else 2) and enters the stance. Then they shoot via `0x00410E84` if possible, else go for the nearest in melee. The test is the gear (a bow equipped and arrows in the quiver), not the active weapon (`gamestate.HasBow`); the bow becomes active before each shot test, and a failed test falls back to melee with the axe/club or the blade (fists without one). They only shoot when they decide while idle, at a grid distance of at least 3 and within the bow's reach (range·32 px: about 6 cells sideways, 24 rows up or down). A shooter already walking into melee does not shoot until it stops again.
 * Arrows are not recoverable. Slayer specials 1–11: оборотень 5000 (kind 85), муравьи 500 (65), ичетик 3000 (70), пауки 2000 (77), червяки 3000 (78), морок 3500 (73), омутник 4000 (75), скелеты 4000 (76), нави 4000 (74), мертвяк 4500 (69), моховик 5000 (72); special 0 = incendiary.
 
@@ -275,6 +275,6 @@ Not ported:
 
 ## Open questions
 
-* Grid bits `0xC000` (obstacle kinds); the incendiary glow buffer `0x005B0010`; `0x004104D4` (equip best), `0x00418364` (usable).
+* Grid bits `0xC000` (obstacle kinds); `0x004104D4` (equip best), `0x00418364` (usable).
 * The god-mode toggle `0x00436E93`; kind `0x49` retreat `0x004101E4`; HUD feedback `0x0042D574`; field `+0x11` (walk throttle), `+0x14`.
 * Films `GAMEOVER.FLM`, `DEFEAT<n>.FLM` (`0x0042B690`), not in the installed files.
