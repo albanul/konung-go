@@ -42,7 +42,7 @@ Validation: `resfmt.TestWorldMap` checks the area, the 30 regions, a hit at (250
 56 bytes, one per map (index map − 1), saved with the game ([saves](konung_save_format.md), `Game.KnownMaps`).
 
 * The map loader sets the loaded map's flag (`0x0043C12A`, `[0x00A3E0A7 + map] = 1`). Port: `Game.KnowMap` in `buildScene`.
-* Misc item type 0 (case `0x00414E95`) picks a random region, `rand() % 56`. From there it takes the first region, wrapping around, that is neither known nor excluded by `0x0045AE90`, and marks it known. The item is used up (byte +0 = `0xFF`). **Not ported.**
+* Misc item type 0 «Потерянная карта» (case `0x00414E95`), used from the bag, the in-hand box or a portrait, picks a random region, `rand() % 56`. From there it takes the first region, wrapping around, that is neither known nor excluded by `0x0045AE90`, and marks it known. If every candidate is known, nothing changes. The scroll is used up: item byte +0 = `0xFF`, and the common tail `0x00415BD3` removes it from the user's bag (`0x00421D24`) and plays sound 10 (`0x00415C6C`). Port: `Game.RevealMap`, `Game.UseMisc`. The exclusion list is the constant `neverRevealed`, which `TestRevealMap` checks against the exe bytes.
 
 ## Hit test and hover
 
@@ -64,5 +64,4 @@ The travel click plays no sound of its own. Port: `Game.Travel` returns the exit
 
 ## Not ported / open
 
-* Misc item type 0 (reveal a random location), see above.
 * The 640×480 layout is decoded (`WorldMap(0)`), but the port runs at 800×600 only.

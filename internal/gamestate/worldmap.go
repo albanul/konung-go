@@ -1,14 +1,50 @@
 package gamestate
 
+import "math/rand/v2"
+
 // The world map window (window 5, resfmt.WorldMap) shows the locations the
 // party knows: flag byte 0x00A3E0A8[map − 1] (Game.KnownMaps, saved with
 // the game). The map loader sets the flag of every map it loads
-// (0x0043C12A); misc item type 0 sets the flag of a random unknown map
-// (0x00414E95, not ported).
+// (0x0043C12A); misc item type 0 «Потерянная карта» sets the flag of a
+// random unknown map (0x00414E95, RevealMap).
 
 // jumpOrbType is misc item type 20 «Шар магического прыжка»: travel by the
 // map window needs one in the bag (0x00434C90(0x15)).
 const jumpOrbType = 20
+
+// lostMapType is misc item type 0 «Потерянная карта» (UseMisc, RevealMap).
+const lostMapType = 0
+
+// neverRevealed is 0x0045AE90: 1 for the maps (index map − 1) the lost map
+// never picks, 42–55.
+var neverRevealed = func() (b [knownMapsSize]bool) {
+	for i := 41; i <= 54; i++ {
+		b[i] = true
+	}
+	return b
+}()
+
+// RevealMap is case 0 of 0x00414E64 (0x00414E95): start at rand() % 56 and
+// mark the first map, wrapping around, that is neither known nor in
+// 0x0045AE90; nothing when every candidate is known.
+func (g *Game) RevealMap() {
+	n := len(g.KnownMaps)
+	r := g.rand(n)
+	for range n {
+		if g.KnownMaps[r] == 0 && !neverRevealed[r] {
+			g.KnownMaps[r] = 1
+			return
+		}
+		r = (r + 1) % n
+	}
+}
+
+func (g *Game) rand(n int) int {
+	if g.Rand != nil {
+		return g.Rand(n)
+	}
+	return rand.IntN(n)
+}
 
 // KnowMap marks map m (≥ 1) as known, like the map loader (0x0043C12A).
 func (g *Game) KnowMap(m int) {

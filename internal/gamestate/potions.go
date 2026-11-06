@@ -3,6 +3,7 @@ package gamestate
 import (
 	"encoding/binary"
 	"math"
+	"slices"
 
 	"konung1.5/internal/resfmt"
 )
@@ -223,12 +224,18 @@ func (g *Game) drink(e *Entity, t *resfmt.ExeTables, target, item int) bool {
 // torchType is the misc item «Факел» (misc table 0x0046053C).
 const torchType = 31
 
-// UseMisc is the part of 0x00414E64(e, target, item) the port has: case 31,
-// the torch, sets Game.Lit (0x004156E6); case 20, «Шар магического прыжка»,
-// hides the bag strip, opens the map window (0x004153B0, Game.OpenMap) and
-// plays sound 10. Both stay; with a target the item then goes to the front
-// of e's bag (the common tail 0x00415BD3). Other misc items return false
-// (the shovel's case is handled by UseBagItem).
+// UseMisc is the part of 0x00414E64(e, target, item) the port has:
+//   - case 31, the torch, sets Game.Lit (0x004156E6);
+//   - case 20, «Шар магического прыжка», hides the bag strip and opens the
+//     map window (0x004153B0, Game.OpenMap);
+//   - case 0, «Потерянная карта», marks a random location known
+//     (0x00414E95, RevealMap) and is used up (item +0 = 0xFF).
+//
+// The common tail 0x00415BD3 then puts a kept item with a target at the
+// front of e's bag, removes a used-up one from e's bag (0x00421D24) and
+// plays sound 10 (0x00415C6C; case 20 has already played it once,
+// 0x004153CC). Other misc items return false (the shovel's case is handled
+// by UseBagItem).
 func (g *Game) UseMisc(e *Entity, target, item int) bool {
 	it, ok := g.Item(item)
 	if !ok || it.Category != 11 {
@@ -239,12 +246,21 @@ func (g *Game) UseMisc(e *Entity, target, item int) bool {
 		g.Lit = true
 	case jumpOrbType:
 		g.OpenMap = true
-		g.sound(SoundUse) // 0x004153CC
+	case lostMapType:
+		g.RevealMap()
+		g.items[item*itemStride] = 0xFF
+		if k := slices.Index(e.Bag[:], item); k >= 0 {
+			copy(e.Bag[k:], e.Bag[k+1:])
+			e.Bag[len(e.Bag)-1] = 0
+		}
+		g.sound(SoundUse)
+		return true
 	default:
 		return false
 	}
 	if target != 0 {
 		BagInsert(e, item)
 	}
+	g.sound(SoundUse)
 	return true
 }

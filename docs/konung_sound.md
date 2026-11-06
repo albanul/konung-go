@@ -38,7 +38,7 @@ Port: `soundSystem.play` renders the sample to 44.1 kHz stereo with the gains (`
 | 6 | the party's blow is dodged (`0x0041C480` = −2), at the target | `0x0042204B` | `startScene.swing` |
 | 7 | the hero starts walking (action 1) | `0x004146F6` | `walkTo` |
 | 9 | a herb is used: mixed or drunk | `0x0041E195` | `UseHerb` |
-| 10 | the shovel (misc type 24) | `0x00415520` | `UseBagItem` |
+| 10 | misc item use: the shovel (misc type 24, `0x00415520`); the common tail of `0x00414E64` for the torch, the jump orb (which plays it once more in its case, `0x004153CC`) and «Потерянная карта» | `0x00415520`, `0x00415C6C` | `UseBagItem`, `UseMisc` |
 | 8m + 0x22 … 0x24 | human voice (model m = `+0xD6`): death (action 3) +0, idle +1 (5 %), hit reaction (2) +2 | table `0x00414768` | `startAct`, idle |
 | 8·`+0x04` − 0x1D0 + k | animated models (creatures, women, children; `+0x04` with bit `0x40`): k = 0 swing (5), 1 wake-up cry (step 1 of action 4, `0x00412A60`), 2 death (3), 3 idle (5 %) or walk (25 %), 4 hit reaction (2) | table `0x00414500` | `startAct`, `creatureTick`, idle |
 | 0x100 + (map − 1)·8 + 0…7 | ambient: once per main-loop pass with `rand() % 100 > 98` | `0x004376F4` | `soundTick` |

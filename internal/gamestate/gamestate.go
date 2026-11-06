@@ -101,6 +101,9 @@ type Game struct {
 	// OpenMap asks the scene to open the map window (window 5, the jump
 	// orb, UseMisc); the scene clears it.
 	OpenMap bool
+	// Rand is rand() % n for game rules without their own source (the lost
+	// map, RevealMap); nil = math/rand.
+	Rand func(n int) int
 	// Saved with the game (0x00424E34): the quest flags 0x00625068
 	// (QUESTR.RES tail, SetQuestFlags; QuestFlag, SetQuestFlag, QuestLog in
 	// dialogue.go) and the known-map flags 0x00A3E0A8 (worldmap.go).
