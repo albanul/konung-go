@@ -28,15 +28,19 @@ type Menu struct {
 	buttons     [menuItems][2]*ebiten.Image
 	selected    int
 	buttonRects [menuItems]rect
-	world       *startScene
-	newWorld    func() (*startScene, error) // a fresh New Game scene (after a game over)
+	world       *startScene // nil until a game starts
+	assets      *sceneAssets
 	inWorld     bool
 	// running mirrors [0x00A3E728]: a game is in progress, so the menu also
 	// offers «Вернуться в игру» and «Сохранить игру» (items 0 and 1).
 	running bool
-	fresh   bool // world has not been played yet
 	saves   *saveScreen
 	inSaves bool // the load or save screen is shown
+	// newHero is the character-creation screen (state 2); starting is set
+	// for the frame that shows «Ok» pressed before the game loads.
+	newHero   *newHeroScreen
+	inNewHero bool
+	starting  bool
 	// config holds the settings (KONUNG.CFG at cfgPath, next to the game
 	// files as in the original 0x0083DE58); settings is their screen.
 	config     gamestate.Config
@@ -98,16 +102,12 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, err
 	}
+	// KONUNG.N, GAME.N, the saves and KONUNG.CFG live in the game directory.
 	mapPath, err := FindGameResource("assets/Konung/KONUNG.1")
 	if err != nil {
 		return nil, err
 	}
-	// The game opens GAME.<hero model>; model 0 is Volk, whose start map is
-	// model*3+1 = KONUNG.1. Hero choice is not implemented yet.
-	gamePath, err := FindGameResource("assets/Konung/GAME.0")
-	if err != nil {
-		return nil, err
-	}
+	gameDir := filepath.Dir(mapPath)
 	exePath, err := FindGameResource("assets/Konung/konung.exe")
 	if err != nil {
 		return nil, err
@@ -116,12 +116,17 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, err
 	}
-	newWorld := func() (*startScene, error) {
-		return loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath, 0, 1)
-	}
-	world, err := newWorld()
+	assets, err := loadSceneAssets(graphPath, objectsPath, gameDir, exePath, intrPath)
 	if err != nil {
-		return nil, fmt.Errorf("load KONUNG.1 scene: %w", err)
+		return nil, err
+	}
+	newhPath, err := FindGameResource("assets/Konung/NEWH800R.RES")
+	if err != nil {
+		return nil, err
+	}
+	newHero, err := newNewHeroScreen(newhPath, assets)
+	if err != nil {
+		return nil, err
 	}
 
 	saveRes, err := FindGameResource("assets/Konung/SAVE800R.RES")
@@ -129,13 +134,13 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		return nil, err
 	}
 	// 0x0042D3DC: SAVE<width>R.RES; slots and names live next to the game files.
-	saves, err := newSaveScreen(saveRes, filepath.Dir(mapPath), world.tables, world.assets.largeFont)
+	saves, err := newSaveScreen(saveRes, gameDir, assets.tables, assets.largeFont)
 	if err != nil {
 		return nil, err
 	}
 
 	// 0x0042BA60: read the settings at startup; defaults without the file.
-	cfgPath := filepath.Join(filepath.Dir(mapPath), gamestate.ConfigFile)
+	cfgPath := filepath.Join(gameDir, gamestate.ConfigFile)
 	cfgData, err := os.ReadFile(cfgPath)
 	if err != nil {
 		cfgData = nil
@@ -146,7 +151,7 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	config := gamestate.ParseConfig(cfgData)
 	// 0x00438E04: SOUNDS.RES and MUSICS.RES load at startup and a random
 	// track starts, before the menu.
-	startAudio(filepath.Dir(mapPath), config.Music != 0, config.Sound != 0)
+	startAudio(gameDir, config.Music != 0, config.Sound != 0)
 
 	m := &Menu{
 		config:     config,
@@ -155,9 +160,8 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		saves:      saves,
 		background: ebiten.NewImageFromImage(frames[0]),
 		sword:      ebiten.NewImageFromImage(swordFrame),
-		world:      world,
-		newWorld:   newWorld,
-		fresh:      true,
+		assets:     assets,
+		newHero:    newHero,
 		selected:   itemNewGame,
 	}
 	for i := range m.cursors {
@@ -195,6 +199,13 @@ func (m *Menu) Update() error {
 			m.inSaves = false
 			return nil
 		}
+		// New game (0x004374DB): back to the menu; the game that was
+		// running is over ([0x00A3E728] = 0).
+		if m.inNewHero {
+			m.inNewHero = false
+			m.running = false
+			return nil
+		}
 		// Settings (0x00437517): restore the values and go back.
 		if m.inSettings {
 			m.settings.restore(&m.config)
@@ -223,14 +234,12 @@ func (m *Menu) Update() error {
 			if m.selected < m.firstItem() {
 				m.selected = itemNewGame
 			}
-			w, err := m.newWorld()
-			if err != nil {
-				return err
-			}
-			m.world = w
-			m.fresh = true
+			m.world = nil
 		}
 		return nil
+	}
+	if m.inNewHero {
+		return m.updateNewHero()
 	}
 	if m.inSaves {
 		return m.updateSaves()
@@ -281,17 +290,9 @@ func (m *Menu) activate(item int) error {
 	case itemLoad:
 		m.saves.open(screenLoad, nil)
 		m.inSaves = true
-	case itemNewGame:
-		if !m.fresh {
-			w, err := m.newWorld()
-			if err != nil {
-				return err
-			}
-			m.world = w
-		}
-		m.fresh = false
-		m.running = true
-		m.inWorld = true
+	case itemNewGame: // 0x00437B91: the character-creation screen
+		m.newHero.open()
+		m.inNewHero = true
 	case itemSettings:
 		m.settings.open(m.config)
 		m.inSettings = true
@@ -326,14 +327,47 @@ func (m *Menu) updateSaves() error {
 		}
 		m.inWorld = true
 	case screenLoad:
-		w, err := m.world.assets.loadSaved(s.dir, s.selected)
+		w, err := m.assets.loadSaved(s.dir, s.selected)
 		if err != nil {
 			log.Printf("load slot %d: %v", s.selected, err)
 			return nil
 		}
-		m.world, m.fresh, m.running, m.inWorld = w, false, true, true
+		m.world, m.running, m.inWorld = w, true, true
 		// Loading restores them (0x004249AC); KONUNG.CFG is not rewritten.
 		m.config.DayNight, m.config.Lighting = w.game.Options[0], w.game.Options[1]
+	}
+	return nil
+}
+
+// updateNewHero runs the character-creation screen (0x00437E86): a left
+// click acts on the hotspot under the mouse, otherwise it shows that
+// hotspot's description. «Ok» (state 8) is drawn pressed for a frame, then
+// the game starts with the chosen hero (0x00438F3F); «Отмена» returns to the
+// menu and ends a running game ([0x00A3E728] = 0).
+func (m *Menu) updateNewHero() error {
+	if m.starting {
+		m.starting = false
+		w, err := m.assets.newGame(m.newHero.hero)
+		if err != nil {
+			// 0x004390E8: the map failed to load; the game reports it.
+			log.Printf("new game: %v", err)
+			m.inNewHero, m.running = false, false
+			return nil
+		}
+		m.world, m.inNewHero, m.running, m.inWorld = w, false, true, true
+		return nil
+	}
+	mx, my := ebiten.CursorPosition()
+	hit := gamestate.NewHeroHit(mx, my)
+	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		m.newHero.hover(hit)
+		return nil
+	}
+	switch ok, cancel := m.newHero.click(hit); {
+	case ok:
+		m.starting = true
+	case cancel:
+		m.inNewHero, m.running = false, false
 	}
 	return nil
 }
@@ -397,6 +431,11 @@ func (m *Menu) Draw(screen *ebiten.Image) {
 	}
 	if m.inSettings {
 		m.settings.draw(screen, m.config)
+		drawAt(screen, m.sword, mx-1, my-1)
+		return
+	}
+	if m.inNewHero {
+		m.newHero.draw(screen)
 		drawAt(screen, m.sword, mx-1, my-1)
 		return
 	}

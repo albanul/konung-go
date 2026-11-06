@@ -136,10 +136,11 @@ type sceneAssets struct {
 	flames         *flameImages  // FLAMES.RES; nil if missing
 }
 
-// loadStartScene loads the shared resources and the GAME.N start state and
-// builds the scene for map mapNumber.
-func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath string, gameNumber, mapNumber int) (*startScene, error) {
-	a := &sceneAssets{mapDir: filepath.Dir(mapPath), gamePath: gamePath}
+// loadSceneAssets loads the resources a game needs (they stay loaded across
+// map changes, new games and loaded saves). mapDir holds KONUNG.N, GAME.N,
+// LIGHTS.N and QUESTR.RES.
+func loadSceneAssets(graphPath, objectsPath, mapDir, exePath, intrPath string) (*sceneAssets, error) {
+	a := &sceneAssets{mapDir: mapDir}
 	var err error
 	if a.graph, err = os.ReadFile(graphPath); err != nil {
 		return nil, err
@@ -153,14 +154,6 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	}
 	if a.tables, err = resfmt.NewExeTables(exeData); err != nil {
 		return nil, err
-	}
-	gameData, err := os.ReadFile(gamePath)
-	if err != nil {
-		return nil, err
-	}
-	game, err := gamestate.Parse(gameData)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", gamePath, err)
 	}
 	intrData, err := os.ReadFile(intrPath)
 	if err != nil {
@@ -196,8 +189,25 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	if a.flames, err = loadFlames(filepath.Join(filepath.Dir(graphPath), "FLAMES.RES")); err != nil {
 		log.Print(err)
 	}
-	game.HeroModelFromGame(gameNumber, gamestate.PlaceholderHeroPalette)
-	game.InitSettlementFlags(gameNumber) // 0x0043BD5C
+	return a, nil
+}
+
+// newGame is the game start 0x00438F3F with the hero made on the
+// character-creation screen: GAME.<model> is loaded, the hero takes the
+// template's choices (gamestate.Game.StartHero) and the scene is built for
+// the start map KONUNG.<model·3 + 1>.
+func (a *sceneAssets) newGame(hero gamestate.Entity) (*startScene, error) {
+	a.gamePath = filepath.Join(a.mapDir, fmt.Sprintf("GAME.%d", hero.Model))
+	gameData, err := os.ReadFile(a.gamePath)
+	if err != nil {
+		return nil, err
+	}
+	game, err := gamestate.Parse(gameData)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", a.gamePath, err)
+	}
+	game.StartHero(hero)
+	game.InitSettlementFlags(hero.Model) // 0x0043BD5C
 	// 0x0043BDD5: QUESTR.RES next to GAME.N; the port keeps only the quest
 	// flags, for saves.
 	if questr, err := readGameFile(a.mapDir, "QUESTR.RES"); err != nil {
@@ -205,7 +215,7 @@ func loadStartScene(graphPath, objectsPath, mapPath, gamePath, exePath, intrPath
 	} else if err := game.SetQuestFlags(questr); err != nil {
 		log.Printf("QUESTR.RES: %v", err)
 	}
-	return a.buildScene(game, mapNumber, nil, nil)
+	return a.buildScene(game, game.Groups[0].Map, nil, nil)
 }
 
 // changeMap takes map exit x (0x00421CCD, then the main loop's map change at

@@ -49,4 +49,4 @@ Entry 15 uses palette 152 and entry 16 uses palette 159. Entry IDs must use the 
 
 ## Remaining map and runtime work
 
-The New Game scene renders `KONUNG.1` from map data with a scrollable camera: terrain, decorations, merged 50% shadows, and depth-sorted static objects. Characters and creatures come from `GAME.0` ([GAME.N notes](konung_game_format.md)), and the camera starts on the player inside the village. The earlier hand-placed warrior and house previews are gone.
+The New Game scene renders `KONUNG.1` from map data with a scrollable camera: terrain, decorations, merged 50% shadows, and depth-sorted static objects. Characters and creatures come from `GAME.0` when Волк is chosen ([GAME.N notes](konung_game_format.md), [new game](konung_new_game.md)), and the camera starts on the player inside the village. The earlier hand-placed warrior and house previews are gone.

@@ -19,9 +19,18 @@ func TestSaveAndLoadScene(t *testing.T) {
 			t.Skip("asset missing:", err)
 		}
 	}
-	w, err := loadStartScene(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir+"KONUNG.1", dir+"GAME.0", dir+"konung.exe", dir+"Intr800r.res", 0, 1)
+	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
 	if err != nil {
 		t.Fatal(err)
+	}
+	hero := gamestate.NewHeroTemplate()
+	gamestate.SelectHero(&hero, gamestate.HeroVolk)
+	w, err := a.newGame(hero)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.mapNumber != 1 {
+		t.Fatalf("Volk starts on KONUNG.%d, want KONUNG.1", w.mapNumber)
 	}
 	if w.hero == nil {
 		t.Fatal("no hero")

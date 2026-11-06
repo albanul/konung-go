@@ -12,7 +12,7 @@ The new-game code (`0x00438F3F`–`0x004390D5`) copies the hero template into en
 | 1 | `GAME.1` | `KONUNG.4` | Dragomir (the user recognized model 1 as Dragomir) |
 | 2 | `GAME.2` | `KONUNG.7` | Michail (Михаил), per the user |
 
-Entity 0's model, name and palette in the files (model 1, name 124 «Драгомир», palette 33 in all three) are placeholders that this code overwrites. **Hero selection (verified)** writes the name index `+0xD4` and the body model `+0xD6` together: Волк 10 / model 0 (`0x00438042`), Драгомир 124 / model 1 (`0x00437EC3`), Михаил 151 / model 2 (`0x00437F88`). The palette comes from the character-creation screen, which is not decoded. The port applies model and name (`Game.HeroModelFromGame`, `HeroNameIndex`) with **placeholder palette 72**. Palettes 70–74 and 113–114 render model 0 cleanly; 33 does not.
+Entity 0's model, name and palette in the files (model 1, name 124 «Драгомир», palette 33 in all three) are placeholders that this code overwrites. **Hero selection (verified)** writes the name index `+0xD4` and the body model `+0xD6` together: Волк 10 / model 0 (`0x00438042`), Драгомир 124 / model 1 (`0x00437EC3`), Михаил 151 / model 2 (`0x00437F88`). The palette is set with them: Волк 74, Драгомир 33, Михаил 39 (`gamestate.HeroPalette`). The game start writes the rest of the [creation template](konung_new_game.md#game-start-0x00438f3f) (class, stats, skills, level 1) over the file's hero (`Game.StartHero`). `Game.HeroModelFromGame` sets only model, name and palette, for `cmd/map-render`.
 
 Code: `internal/gamestate` (`Parse`, `Game.OnMap`, `Game.HeroModelFromGame`, `WorldPos`, `Placed.LoadSprite`, `Placed.LoadAnimation`), `resfmt.LoadEntitySprite`, `resfmt.LoadEntityAnimation`. `cmd/map-render -game assets/Konung/GAME.0` draws them (Volk's game). By default `map-render` draws map content only, which keeps the site's map pages clean.
 
@@ -237,7 +237,7 @@ The user identified `KONUNG.1` as Volk's (Волк) initial location.
 
 | Group | Entities | Content |
 |---|---|---|
-| 0 | 1 | the player (Volk): drawn as Type 0 model 0 with placeholder palette 72 (the file's model 1 / palette 33 are overwritten on new game), at row 86 col 33 inside the village |
+| 0 | 1 | the player (Volk): drawn as Type 0 model 0 with palette 74 (the file's model 1 / palette 33 are overwritten on new game), at row 86 col 33 inside the village |
 | 27 | 18 | villagers with fixed positions: Type 0 model 0 men; `OBJECTS` slot 14 women, slot 15 children (1-based index IDs 15/16) |
 | 64 | 1 | a single Type 0 villager |
 | 3 | 4 | giant spiders (slot 12, palette 148) at the nest around row 184 col 40 |
@@ -277,7 +277,6 @@ Validation: `go test ./internal/gamestate -run Exits` checks the count, the `KON
 
 ## Open questions
 
-* The character-creation screen: the hero template's palette (`0x00A3E65C`) and other fields.
 * The game's animation tick rate. The scene uses 10 steps/s and offsets each entity's phase so neighbours don't move in lockstep; both are presentation choices.
 * Exact runtime spawn positions for groups whose entities have no coordinates.
 * Group field `+0x1E` beyond bits `0x40` (creature AI), `0x80` (village AI, low 2 bits = tribe) and `0x20` (party); kind `0x53` groups.

@@ -385,26 +385,16 @@ func (g *Game) LoadAnimation(p Placed, objects, graph []byte, t *resfmt.ExeTable
 	return out, nil
 }
 
-// HeroNameIndex is the first-name index the hero-selection code writes to
-// the hero's +0xD4 together with its body model +0xD6 (VA 0x00438042,
-// 0x00437EC3, 0x00437F88): model 0 Волк, 1 Драгомир, 2 Михаил.
-var HeroNameIndex = [3]int{10, 124, 151}
-
-// PlaceholderHeroPalette is used for the hero until the character-creation
-// palette is decoded: palette 72, one of the clean dyes for Type 0 model 0
-// (70-74, 113-114 render cleanly; the file's 33 suits model 1 only).
-const PlaceholderHeroPalette = 72 * 512
-
 // HeroModelFromGame applies the new-game rule that ties the hero to GAME.N:
 // the loader opens GAME.<hero model byte> (VA 0x0043BBB2 reads the template's
 // +0xD6), and the start map is model*3+1 (VA 0x004390B4). So in GAME.N the
 // player's entity is shown with Type 0 model N; the file's own value is a
 // placeholder that the new-game code overwrites from the hero template.
 // Model 0 = Volk (KONUNG.1), model 1 = Dragomir. The hero's palette (+0xD8)
-// also comes from the template (VA 0x0043904E), set on the character-creation
-// screen, which is not decoded: pass a non-zero paletteOffset to override the
-// file's placeholder.
-func (g *Game) HeroModelFromGame(n int, paletteOffset uint32) {
+// also comes from the template (VA 0x0043904E): HeroPalette[n]. This sets
+// only model, name and palette, for tools that show a GAME.N as is; a new
+// game applies the whole template (StartHero).
+func (g *Game) HeroModelFromGame(n int) {
 	if len(g.Groups) == 0 {
 		return
 	}
@@ -414,8 +404,8 @@ func (g *Game) HeroModelFromGame(n int, paletteOffset uint32) {
 		if n >= 0 && n < len(HeroNameIndex) {
 			g.Entities[i].NameIndex = HeroNameIndex[n]
 		}
-		if paletteOffset != 0 {
-			g.Entities[i].PaletteOffset = paletteOffset
+		if n >= 0 && n < len(HeroPalette) {
+			g.Entities[i].PaletteOffset = HeroPalette[n]
 		}
 	}
 }

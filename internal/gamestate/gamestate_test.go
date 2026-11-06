@@ -52,7 +52,7 @@ func TestGame0Konung1(t *testing.T) {
 	if got := g.Overlays(g.Entities[355], tables); len(got) != 4 {
 		t.Errorf("villager 355 overlays = %v, want 4 layers", got)
 	}
-	g.HeroModelFromGame(0, PlaceholderHeroPalette)
+	g.HeroModelFromGame(0)
 	if g.Entities[0].Model != 0 {
 		t.Fatalf("hero model = %d, want 0 (Volk)", g.Entities[0].Model)
 	}
@@ -136,7 +136,7 @@ func TestKonung1WalkAnimations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g.HeroModelFromGame(0, PlaceholderHeroPalette)
+	g.HeroModelFromGame(0)
 	for _, p := range g.OnMap(1, walk.Blocked) {
 		for dir := 0; dir < 8; dir++ {
 			q := p
@@ -199,7 +199,7 @@ func TestPartyHUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g.HeroModelFromGame(0, 0)
+	g.HeroModelFromGame(0)
 	hero := g.Entities[g.Groups[0].First]
 	if hero.HP != HPFull {
 		t.Fatalf("Volk starts with HP %d", hero.HP)
@@ -243,7 +243,7 @@ func TestStatusLines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g.HeroModelFromGame(0, 0)
+	g.HeroModelFromGame(0)
 	for _, c := range []struct {
 		i    int
 		want string
