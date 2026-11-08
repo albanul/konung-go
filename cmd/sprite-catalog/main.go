@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"konung1.5/internal/gamestate"
 	"konung1.5/internal/resfmt"
 	"konung1.5/internal/sitenav"
 )
@@ -128,7 +129,15 @@ func run() error {
 	}
 	var items []catalogItem
 	var failures []string
-	type0Items, type0Failures, err := extractGraphType0(graph, out, paletteData)
+	// The exe holds the overlay palettes; without it the Type 0 frames fall
+	// back to a preview palette.
+	var tables *resfmt.ExeTables
+	if exe, err := os.ReadFile(filepath.Join(root, "konung.exe")); err == nil {
+		if tables, err = resfmt.NewExeTables(exe); err != nil {
+			return err
+		}
+	}
+	type0Items, type0Failures, err := extractGraphType0(graph, out, paletteData, tables)
 	if err != nil {
 		return err
 	}
@@ -294,10 +303,29 @@ func labelKey(namespace, id, frame string) string {
 	return namespace + "\x00" + id + "\x00" + frame
 }
 
+// type0Palette is the palette the game draws Type 0 block id with, and a
+// label for it. Bodies (blocks 0–2) take the entity's +0xD8; the catalog
+// shows the hero of that body (gamestate.HeroPalette), and NPCs of the same
+// body use other palettes of its family (docs/konung_graph_sprites.md).
+// Overlays (blocks 3–26) have a fixed palette from the exe table
+// 0x00465DCC. Without the exe, overlays get preview palette 2.
+func type0Palette(id int, t *resfmt.ExeTables) (int, string) {
+	switch {
+	case id < len(gamestate.HeroPalette):
+		p := int(gamestate.HeroPalette[id] / 512)
+		return p, fmt.Sprintf("%d (body %d: hero palette; NPCs use their own +0xD8)", p, id)
+	case t != nil:
+		p := int(t.OverlayPalette(id-len(gamestate.HeroPalette)) / 512)
+		return p, fmt.Sprintf("%d (overlay %d: exe table 0x00465DCC)", p, id-len(gamestate.HeroPalette))
+	default:
+		return 2, "2 (preview: konung.exe not found)"
+	}
+}
+
 // extractGraphType0 preserves the validated Type 0 blocks and decodes their
-// indexed-RLE frames with a provisional preview palette. The block size
-// includes its 8-byte header; palette assignment still needs verification.
-func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA) ([]catalogItem, []string, error) {
+// indexed-RLE frames with the palette the game uses (type0Palette). The
+// block size includes its 8-byte header.
+func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA, tables *resfmt.ExeTables) ([]catalogItem, []string, error) {
 	const type0MetadataBytes = resfmt.Type0DataOffset - 8 // payload metadata, excluding the 8-byte header
 	blocks, err := resfmt.Type0Blocks(graph)
 	if err != nil {
@@ -312,7 +340,7 @@ func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA) ([]
 	var inventory bytes.Buffer
 	w := csv.NewWriter(&inventory)
 	w.Comma = '\t'
-	_ = w.Write([]string{"block_id", "file", "block_offset", "block_bytes", "payload_bytes", "type0_metadata_bytes", "remaining_payload_bytes", "offset_table_nonzero", "block_end", "decoded_frames", "decode_failures", "preview_palette"})
+	_ = w.Write([]string{"block_id", "file", "block_offset", "block_bytes", "payload_bytes", "type0_metadata_bytes", "remaining_payload_bytes", "offset_table_nonzero", "block_end", "decoded_frames", "decode_failures", "palette"})
 	for id, blk := range blocks {
 		off, size, end := blk.Offset, uint64(len(blk.Data)), blk.Offset+len(blk.Data)
 		payloadBytes := int(size) - 8
@@ -332,6 +360,7 @@ func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA) ([]
 		dataStart := off + resfmt.Type0DataOffset
 		dataBytes := payloadBytes - type0MetadataBytes
 		decodedFrames, decodeFailures := 0, 0
+		pal, palLabel := type0Palette(id, tables)
 		for frameIndex, fr := range resfmt.FrameRanges(blk.Data[resfmt.Type0PairsOffset:resfmt.Type0DataOffset], dataBytes) {
 			frameStart, frameEnd := fr.Start, fr.End
 			if frameEnd <= frameStart || frameEnd > uint32(dataBytes) {
@@ -340,9 +369,9 @@ func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA) ([]
 				continue
 			}
 			frameData := graph[dataStart+int(frameStart) : dataStart+int(frameEnd)]
-			img, err := resfmt.DecodeIndexedRLEFrame(frameData, &palettes[2])
+			img, err := resfmt.DecodeIndexedRLEFrame(frameData, &palettes[pal])
 			if err != nil {
-				img, err = resfmt.DecodeIndexedRLELegacyFrame(frameData, &palettes[2])
+				img, err = resfmt.DecodeIndexedRLELegacyFrame(frameData, &palettes[pal])
 			}
 			if err != nil {
 				failures = append(failures, fmt.Sprintf("GRAPH.T0\t%d\tframe %d: %v", id, frameIndex, err))
@@ -370,14 +399,14 @@ func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA) ([]
 				Namespace: "GRAPH.T0", Resource: "GRAPH.RES", ID: strconv.Itoa(id), Kind: "Type 0 animation", Frame: frameIndex,
 				Image: imageName, EntryOffset: hexOffset(uint64(off)), FrameOffset: hexOffset(uint64(dataStart + int(frameStart))),
 				IndexedBytes: size, PayloadBytes: uint64(frameEnd - frameStart), Width: img.Bounds().Dx(), Height: img.Bounds().Dy(),
-				Palette: "2 (preview; mapping unverified)", Note: "Type 0 indexed-RLE frame; preview palette is provisional",
+				Palette: palLabel, Note: "Type 0 indexed-RLE frame",
 			})
 			decodedFrames++
 		}
 		_ = w.Write([]string{
 			strconv.Itoa(id), filepath.ToSlash(filepath.Join("raw", "GRAPH.T0", name)), hexOffset(uint64(off)),
 			strconv.FormatUint(size, 10), strconv.Itoa(payloadBytes), strconv.Itoa(type0MetadataBytes),
-			strconv.Itoa(dataBytes), strconv.Itoa(nonzeroOffsets), hexOffset(uint64(end)), strconv.Itoa(decodedFrames), strconv.Itoa(decodeFailures), "2 (unverified)",
+			strconv.Itoa(dataBytes), strconv.Itoa(nonzeroOffsets), hexOffset(uint64(end)), strconv.Itoa(decodedFrames), strconv.Itoa(decodeFailures), palLabel,
 		})
 	}
 	w.Flush()
@@ -590,7 +619,7 @@ body{font:14px system-ui;margin:20px;background:#1d2024;color:#eee}input,select{
 </style></head><body>
 __NAV__
 <h1>Konung image catalog</h1>
-<p class="notice"><b>Review note.</b> GRAPH Type 0 animation frames are decoded and grouped below. The shown palette is a visual preview only; the original palette assignment is not yet verified. Complete raw blocks and offsets are in <a href="type0.tsv">type0.tsv</a>. The preceding 64 KiB region is unidentified.</p>
+<p class="notice"><b>Note.</b> GRAPH Type 0 animation frames are decoded and grouped below with the game's palettes: bodies with their hero's palette (NPCs of the same body use other palettes of its family, entity +0xD8), overlays with the exe table 0x00465DCC. Complete raw blocks and offsets are in <a href="type0.tsv">type0.tsv</a>.</p>
 <p>Animated resources are grouped by model. Open “Explore frames” on a card to inspect the animation and directions.</p>
 <input id="q" placeholder="Search ID, note, label, or offset">
 <select id="ns"><option value="">All image entries</option></select><p id="count"></p>

@@ -52,7 +52,6 @@ Ported, but not bit-exact.
 
 ## Format unknowns
 
-* `GRAPH.RES`: the 64 KiB gap at `0x1ED8B6`; the Type 0 palette/dye choice for NPCs and the model ID → character mapping ([GRAPH](konung_graph_sprites.md)).
 * `GAME.N`: item fields other than category and type; the gear table's remaining fields; which jewellery box is which; group `+0x1E` bits other than `0x20`/`0x40`/`0x80` and kind `0x53`; map exit bytes `+0`/`+1`; settlement bytes outside the traced ones ([GAME.N](konung_game_format.md#open-questions)).
 * Saves: later use of the hero copy `0x00A3E584` after a load ([saves](konung_save_format.md#open-questions)).
 * `SPEECHS.RES` and `FACES<width>.RES`: not installed.

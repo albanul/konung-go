@@ -305,3 +305,26 @@ func TestApprenticePost(t *testing.T) {
 		t.Fatal("a woman or child is an apprentice")
 	}
 }
+
+// TestEntityPalettes: every entity's palette (+0xD8, added to the palette
+// block by the draws 0x004272CB and 0x0042737A) is a whole GRAPH.RES
+// palette, and every Type 0 body is model 0–2, in all three start files.
+func TestEntityPalettes(t *testing.T) {
+	for _, n := range []string{"GAME.0", "GAME.1", "GAME.2"} {
+		g, err := Parse(load(t, n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, gr := range g.Groups {
+			for k := range gr.Count {
+				e := g.Entities[gr.First+k]
+				if e.PaletteOffset%512 != 0 || e.PaletteOffset/512 >= 256 {
+					t.Errorf("%s entity %d: palette offset %#x", n, e.Index, e.PaletteOffset)
+				}
+				if !e.Animated() && (e.Model < 0 || e.Model > 2) {
+					t.Errorf("%s entity %d: Type 0 model %d", n, e.Index, e.Model)
+				}
+			}
+		}
+	}
+}

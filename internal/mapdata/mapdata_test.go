@@ -1,11 +1,14 @@
 package mapdata
 
 import (
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"konung1.5/internal/resfmt"
 )
 
 func TestKonung1Terrain(t *testing.T) {
@@ -224,5 +227,20 @@ func TestWalkGridValues(t *testing.T) {
 	}
 	if n == 0 {
 		t.Skip("no KONUNG.N installed")
+	}
+}
+
+// TestGraphTerrainBlockEnd: the GRAPH.RES loader reads the terrain block's
+// 8-byte header, its 0x1000-byte table and then the header's size of image
+// data (0x0043B69D–0x0043B6D6), and goes straight on to the Type 0 blocks.
+// The data ends exactly at resfmt.Type0BlockStart: there is no gap.
+func TestGraphTerrainBlockEnd(t *testing.T) {
+	graph, err := os.ReadFile("../../assets/Konung/GRAPH.RES")
+	if err != nil {
+		t.Skip("GRAPH.RES not available:", err)
+	}
+	size := int(binary.LittleEndian.Uint32(graph[graphTileBlock+4:]))
+	if end := graphTileBlock + 8 + 0x1000 + size; end != resfmt.Type0BlockStart {
+		t.Fatalf("terrain block ends at %#x, Type 0 blocks start at %#x", end, resfmt.Type0BlockStart)
 	}
 }

@@ -63,7 +63,7 @@ One line per file family. Details live in the linked documents; "verified" means
 | File | Layout summary | Status | Doc |
 |---|---|---|---|
 | `FLAMES.RES`, `MENU*R.RES`, `NEWH*R.RES`, `SAVE*R.RES` | Sequential Type 5 frames (BE tag 5, LE size), RGB555 row-RLE; `FLAMES.RES` = 74 flame frames (7 types); `SAVE*R.RES` = load and save screen backgrounds; `NEWH*R.RES` = the 13 frames of the hero-creation screen | verified | [res format](docs/konung_res_format.md), [flames](docs/konung_flames.md), [menu RES](docs/konung_menu_res.md), [saves](docs/konung_save_format.md#save-and-load-screen), [new game](docs/konung_new_game.md#resources-newh800rres--newh640rres) |
-| `GRAPH.RES` | 256 palettes → 11 Type 5 cursors → Type 1 terrain tile block (512-slot table) → 64 KiB gap → 27 Type 0 blocks (3 bodies + 24 equipment overlays) | verified except gap and Type 0 palette/dye | [GRAPH layout](docs/konung_graph_sprites.md) |
+| `GRAPH.RES` | 256 palettes → 11 Type 5 cursors → Type 1 terrain tile block (512-slot table) → 27 Type 0 blocks (3 bodies dyed by the entity's palette + 24 equipment overlays) | verified | [GRAPH layout](docs/konung_graph_sprites.md) |
 | `OBJECTS.RES` | 512-slot table; slots 0–29 animated (Type 2), others static | verified | [start location](docs/konung_start_location.md), [exe loaders](docs/konung_exe_resource_loaders.md) |
 | `KONUNG.N` | 4 sections: terrain (160×80×2 tile bytes), 320×160 flag grid, flat decorations (16-byte records), static object placements (36-byte records) | verified | [map format](docs/konung_map_format.md) |
 | `GAME.N` | Start state: 6 sections incl. 8192 items, 378 ground piles, map exits, 200 entity groups (group 0 = player) and 2000 × 256-byte entities (each with 6 equipment slots + 32-item bag) | groups (incl. alarm/respawn fields)/entities/inventory/piles/sprites/settlements (posts, flags)/map exits verified; item fields beyond the type open; spawn placement approximate; all six sections identified | [GAME.N](docs/konung_game_format.md) |
@@ -147,11 +147,9 @@ $C sed -n '53935,54260p' /tmp/kn/text.asm | awk -F'\t' '{print $1, $3}'   # addr
 Highest-value unknowns, roughly in priority order. The full list of missing features and approximations, with VAs, is in [not ported](docs/konung_not_ported.md).
 
 1. The game's own movement code (speed, path rules); spawn positions of non-creature groups without coordinates. See [GAME.N](docs/konung_game_format.md#open-questions).
-2. Type 0 model palette/dye selection for NPCs (the heroes' palettes are [known](docs/konung_new_game.md#the-hero-template)) and the model ID → character mapping. See [exe notes](docs/konung_exe_resource_loaders.md).
-3. The 64 KiB gap in `GRAPH.RES` at `0x1ED8B6`.
-4. Dialogues: `SPEECHS.RES`. See [dialogues](docs/konung_dialogue.md#open-questions). Saves: the hero copy `0x00A3E584` after a load ([saves](docs/konung_save_format.md#open-questions)).
-5. HUD: hired faces need `FACES800.RES`, which is not installed. See [interface](docs/konung_interface_res.md#hired-faces-faceswidthres-missing-file).
-6. Ground items: see [ground items](docs/konung_ground_items.md#open-questions).
-7. Sound: dialogue greetings and `SPEECHS.RES` (not installed) are not ported ([sound](docs/konung_sound.md#not-ported)). All settings are honoured. See [settings](docs/konung_settings.md#open-questions).
-8. Misc items with no use case (Сын Луны, Медная лампа, …): presumably dialogue-only, see [misc items](docs/konung_misc_items.md#open-questions). The rest of `LIGHTS.RES`.
-9. `cmd/sprite-catalog` has its own Type 0 walker that duplicates `resfmt.DecodeType0Frames`; consolidate when touching it.
+2. Dialogues: `SPEECHS.RES`. See [dialogues](docs/konung_dialogue.md#open-questions). Saves: the hero copy `0x00A3E584` after a load ([saves](docs/konung_save_format.md#open-questions)).
+3. HUD: hired faces need `FACES800.RES`, which is not installed. See [interface](docs/konung_interface_res.md#hired-faces-faceswidthres-missing-file).
+4. Ground items: see [ground items](docs/konung_ground_items.md#open-questions).
+5. Sound: dialogue greetings and `SPEECHS.RES` (not installed) are not ported ([sound](docs/konung_sound.md#not-ported)). All settings are honoured. See [settings](docs/konung_settings.md#open-questions).
+6. Misc items with no use case (Сын Луны, Медная лампа, …): presumably dialogue-only, see [misc items](docs/konung_misc_items.md#open-questions). The rest of `LIGHTS.RES`.
+7. `cmd/sprite-catalog` has its own Type 0 walker that duplicates `resfmt.DecodeType0Frames`; consolidate when touching it.

@@ -21,7 +21,7 @@ Observed facts for `KONUNG.1`:
 
 ## Village-chief screenshot clue
 
-The supplied gameplay screenshot labels the selected speaker as a level-5 warrior and village elder (`староста`). In the image catalog, `OBJECTS.RES` entries 87 and 88 are wooden house images, while entry 89 is a dark shadow image; these are building art and cannot be the person. The executable's initializer at VA `0x00414078` confirms an in-game Type 0 model path based at `0x007145B4`, with `0x4D28` bytes per model block. Entity fields choose the model, variant, and direction/animation slot. The palette/dye operation remains untraced, and the screenshot has not been tied to a specific Type 0 block or confirmed `KONUNG.N` map.
+The supplied gameplay screenshot labels the selected speaker as a level-5 warrior and village elder (`староста`). In the image catalog, `OBJECTS.RES` entries 87 and 88 are wooden house images, while entry 89 is a dark shadow image; these are building art and cannot be the person. The executable's initializer at VA `0x00414078` confirms an in-game Type 0 model path based at `0x007145B4`, with `0x4D28` bytes per model block. Entity fields choose the model, variant, and direction/animation slot. The body is dyed by the entity's palette `+0xD8` ([exe notes](konung_exe_resource_loaders.md#map-entity-and-warrior-model-initialization)). The screenshot has not been tied to a specific entity or confirmed `KONUNG.N` map.
 
 ## `GRAPH.RES` terrain tile block
 
