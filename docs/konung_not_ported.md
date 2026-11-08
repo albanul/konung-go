@@ -14,7 +14,7 @@ Ported: every case of `0x00414E64` ([misc items](konung_misc_items.md)), includi
 
 ### Movement
 
-**Not traced.** The game's walk code (speed, path rules, direction choice) is reimplemented: A* on the fine grid (`mapdata/finegrid.go`), 10 animation steps/s. Also missing: the per-entity walk throttle `+0x11` (ticks where `time & m == m`) and the random pauses of creature kinds `0x4D`/`0x4F` ([combat: creature AI](konung_combat.md#creature-ai-verified)).
+Ported ([movement](konung_movement.md)): the 60 ms tick, the game's path search (straight routes, 31-step paths), turning one octant per tick, the creature throttle `+0x11` and the `0x4D`/`0x4F` pauses. Left over (see [remaining differences](konung_movement.md#remaining-differences)): a blocked goal of the player's order still sends the walker to the nearest free cell; during a step both cells stay held; the party's re-search ignores the AI budget.
 
 ### Films
 
@@ -32,7 +32,7 @@ Ported, but not bit-exact.
 |---|---|---|
 | Random numbers | Go's RNG | the C runtime's `rand()`; same distributions, different sequences |
 | Spawn of non-creature groups without coordinates | nearest free fine cells around the group ([GAME.N](konung_game_format.md#placement-of-entities-without-coordinates)) | `0x00411B8C` formation offsets, not traced for villagers |
-| Animation rate | 10 steps/s, per-entity phase offset | tick rate not traced |
+| Idle animation | one frame per tick, with a per-entity phase offset | one frame per tick from step 0 |
 | Creature chase | re-plans the whole path when the target moves | patches the last step |
 | Arrow points | nearest cell centre | `0x00439BDC` |
 | Search budget | separate 3-search budgets for the combat AI and the calm village AI | one budget `0x00A3E720` |

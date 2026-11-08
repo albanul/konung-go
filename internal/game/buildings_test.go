@@ -156,9 +156,7 @@ func TestAnimatedObjects(t *testing.T) {
 	}
 	// The step runs in the game tick.
 	before := o.counter
-	for range walkTicksPerStep {
-		s.step()
-	}
+	s.step()
 	if o.counter == before {
 		t.Error("a game tick did not step the animation")
 	}

@@ -79,7 +79,7 @@ func TestHeroChasesTarget(t *testing.T) {
 	occ := map[mapdata.Cell]bool{antCell: true}
 	s := &startScene{game: g, party: []gamestate.Entity{g.Entities[0]}, npcs: []*npc{ant},
 		byEntity: map[int]*npc{921: ant}, occ: occ, pileAt: map[mapdata.Cell]int{}}
-	m := setHero(s, walker{entity: 0, cell: mapdata.Cell{Row: 92, Col: 36}, searchCap: pathSearchLimit})
+	m := setHero(s, walker{entity: 0, cell: mapdata.Cell{Row: 92, Col: 36}})
 	hero := &m.walker
 	hero.blocked = func(c mapdata.Cell) bool { return occ[c] }
 	s.startFight(m, 921)
@@ -88,9 +88,7 @@ func TestHeroChasesTarget(t *testing.T) {
 		if hero.cell == antCell {
 			t.Fatal("hero walked into the target's cell")
 		}
-		if i%walkTicksPerStep == 0 {
-			s.memberTick(m)
-		}
+		s.memberTick(m)
 	}
 	if hero.act != gamestate.ActAttack || !adjacent(hero.cell, antCell) {
 		t.Fatalf("hero at %v (action %d), want swinging next to %v", hero.cell, hero.act, antCell)
@@ -126,7 +124,7 @@ func TestCreatureFightsBack(t *testing.T) {
 	occ := map[mapdata.Cell]bool{antCell: true, heroCell: true}
 	free := func(c mapdata.Cell) bool { return occ[c] }
 	volk := g.Entities[g.Groups[0].First]
-	ant := &npc{walker: walker{entity: 921, cell: antCell, blocked: free, searchCap: pathSearchLimit},
+	ant := &npc{walker: walker{entity: 921, cell: antCell, blocked: free},
 		mode: npcCreature, group: grp, target: -1}
 	s := &startScene{
 		game: g, tables: tb, party: []gamestate.Entity{volk},
@@ -136,11 +134,11 @@ func TestCreatureFightsBack(t *testing.T) {
 		rng:      rand.New(rand.NewPCG(3, 4)),
 		pileAt:   map[mapdata.Cell]int{},
 	}
-	h := setHero(s, walker{entity: volk.Index, cell: heroCell, blocked: free, searchCap: pathSearchLimit})
+	h := setHero(s, walker{entity: volk.Index, cell: heroCell, blocked: free})
 	s.setStopAt(ant)
 	attacked, struck := false, false
 	for i := 0; i < 2000 && !g.Entities[921].Dead() && !s.party[0].Dead(); i++ {
-		s.tick = i * walkTicksPerStep
+		s.tick = i
 		s.combatTick()
 		attacked = attacked || (ant.act == gamestate.ActAttack && ant.target == volk.Index)
 		struck = struck || h.target == 921
@@ -171,7 +169,7 @@ func TestCreatureReturnsHome(t *testing.T) {
 	area, _ := g.Groups[grp].WanderArea()
 	start := mapdata.Cell{Row: area.RowMax + 6, Col: area.ColMax + 3}
 	occ := map[mapdata.Cell]bool{start: true}
-	ant := &npc{walker: walker{entity: 921, cell: start, searchCap: pathSearchLimit}, mode: npcCreature, group: grp, target: -1,
+	ant := &npc{walker: walker{entity: 921, cell: start}, mode: npcCreature, group: grp, target: -1,
 		rng: rand.New(rand.NewPCG(5, 6)).IntN}
 	ant.blocked = func(c mapdata.Cell) bool { return occ[c] }
 	ant.reserve = func(c mapdata.Cell) bool {
@@ -197,9 +195,7 @@ func TestCreatureReturnsHome(t *testing.T) {
 	for i := 0; i < 20000 && !area.Contains(ant.cell.Row, ant.cell.Col); i++ {
 		s.tick = i
 		ant.update()
-		if i%walkTicksPerStep == 0 {
-			s.combatTick()
-		}
+		s.combatTick()
 	}
 	if g.Groups[grp].Alarm != gamestate.AlarmReturn || !area.Contains(ant.cell.Row, ant.cell.Col) {
 		t.Fatalf("alarm %#x, ant at %v; want return and inside %+v", g.Groups[grp].Alarm, ant.cell, area)

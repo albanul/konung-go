@@ -174,7 +174,7 @@ func (a *sceneAssets) loadSaved(dir string, i int) (*startScene, error) {
 // built scene. Record piles take the active copy's contents; runtime piles
 // are added to the game.
 func (w *startScene) restoreSaved(st gamestate.SaveState) {
-	w.tick = st.Time * walkTicksPerStep
+	w.tick = st.Time
 	w.arrows = append([]gamestate.Arrow(nil), st.Arrows...)
 	for _, ap := range st.Active {
 		p := ap.Pile

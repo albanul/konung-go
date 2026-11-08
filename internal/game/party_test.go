@@ -34,7 +34,7 @@ func hireSmith(t *testing.T) (*startScene, *member) {
 
 // run advances the scene by n game ticks.
 func run(s *startScene, n int) {
-	for range n * walkTicksPerStep {
+	for range n {
 		s.step()
 	}
 }
@@ -44,7 +44,7 @@ func freeCellAway(s *startScene, c mapdata.Cell, dr int) mapdata.Cell {
 	for d := 0; d < 40; d++ {
 		for _, r := range []int{c.Row + dr + d, c.Row - dr - d} {
 			if x := (mapdata.Cell{Row: r, Col: c.Col}); !s.blocked(x) {
-				if p := mapdata.FindPath(c, x, s.blocked, pathSearchLimit); len(p) > 0 {
+				if p := mapdata.FindPath(c, x, s.blocked); len(p) > 0 {
 					return x
 				}
 			}

@@ -21,7 +21,7 @@ import (
 // after gamestate.PileRespawnTicks.
 
 // gameTime is the game clock 0x00A3E770, one tick per AI tick.
-func (s *startScene) gameTime() int { return s.tick / walkTicksPerStep }
+func (s *startScene) gameTime() int { return s.tick }
 
 // activatePiles adds the map's piles that the loader rule allows and that
 // aren't active yet.

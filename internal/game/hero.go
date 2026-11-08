@@ -10,22 +10,19 @@ import (
 )
 
 const (
-	// walkTicksPerStep is how many 60 Hz updates each walk animation step
-	// lasts. One 12-step walk cycle moves a character exactly one fine cell
-	// (the frames' anchors carry the displacement), so this sets the walking
-	// speed: 4 gives 0.8 s per cell. The original tick rate is not traced.
-	walkTicksPerStep = 4
+	// defaultWalkSteps is the walk frame count when a look has no walk
+	// frames. A step into the next cell shows one walk frame per game tick
+	// (0x00413DE4), so a 12-frame walk takes 12 ticks = 0.72 s per cell.
 	defaultWalkSteps = 12
-	// pathSearchLimit caps A* exploration so a click on an unreachable spot
-	// can't stall a frame.
-	pathSearchLimit = 30000
-	walkTypeOffset  = 1 // walk = idle type + 1 (6 idle, 7 walk; 0/1 in the combat stance), seen in the body records
+	walkTypeOffset   = 1 // walk = idle type + 1 (6 idle, 7 walk; 0/1 in the combat stance), seen in the body records
 )
 
-// walker is a character that walks the fine grid like the original: one cell
-// per walk cycle. While stepping it stays anchored on its current cell and the
-// walk frames' per-step anchors carry the body toward the next cell; at the
-// end of the cycle it snaps to that cell. The hero and wandering NPCs share it.
+// walker is a character that walks the fine grid like the original
+// (docs/konung_movement.md): update runs once per game tick; a step first
+// turns one octant per tick toward the next cell, then shows one walk frame
+// per tick. While stepping it stays anchored on its current cell and the
+// walk frames' anchors carry the body toward the next cell; at the end of
+// the step it snaps to that cell. The hero and the NPCs share it.
 type walker struct {
 	entity  int // GAME.N entity index (name, status line)
 	cell    mapdata.Cell
@@ -33,7 +30,7 @@ type walker struct {
 	goal    mapdata.Cell
 	dir     mapdata.Direction
 	walking bool
-	stepT   int // ticks into the current cell step
+	stepT   int // walk frame of the current cell step (one per tick)
 	phase   int // idle animation offset
 
 	// Frames per look (stance, weapon), kind (0 idle, 1 walk) and facing,
@@ -52,10 +49,13 @@ type walker struct {
 	// accepts (the hero's attack target, 0x004149B0).
 	stopAt func(mapdata.Cell) bool
 
-	blocked   func(mapdata.Cell) bool // cells this walker may not path through
-	reserve   func(mapdata.Cell) bool // claim the next cell; false if taken
-	release   func(mapdata.Cell)      // free the cell just left
-	searchCap int
+	blocked func(mapdata.Cell) bool // cells this walker may not path through
+	reserve func(mapdata.Cell) bool // claim the next cell; false if taken
+	release func(mapdata.Cell)      // free the cell just left
+	// hold, when set, is asked once the step's frames have played: true
+	// keeps the walker there this tick (the pauses of creature kinds
+	// 0x4D/0x4F, 0x004127BD).
+	hold func() bool
 	// sound plays the action sound (0x004143DC); busy tracks the last
 	// game frame's walking/action state for the idle sound.
 	sound func(w *walker, act int)
@@ -113,7 +113,7 @@ func (w *walker) walkTo(goal mapdata.Cell) {
 	if w.walking {
 		start = w.path[0]
 	}
-	path := mapdata.FindPath(start, goal, w.blocked, w.searchCap)
+	path := mapdata.FindPath(start, goal, w.blocked)
 	if w.walking {
 		path = append([]mapdata.Cell{start}, path...)
 	}
@@ -132,40 +132,37 @@ func (w *walker) walkSteps() int {
 	return defaultWalkSteps
 }
 
-// faceNext turns toward path[0] using the grid's neighbour table.
-func (w *walker) faceNext() {
+// stepDir is the direction from the walker's cell to path[0].
+func (w *walker) stepDir() mapdata.Direction {
 	for _, n := range mapdata.Neighbors(w.cell) {
 		if n.Cell == w.path[0] {
-			w.dir = n.Dir
-			return
+			return n.Dir
 		}
 	}
 	ax, ay := mapdata.CellCenter(w.cell)
 	bx, by := mapdata.CellCenter(w.path[0])
-	w.dir = mapdata.DirectionTo(float64(ax), float64(ay), float64(bx), float64(by))
+	return mapdata.DirectionTo(float64(ax), float64(ay), float64(bx), float64(by))
 }
 
-// startStep claims path[0]. If someone took it, it replans once toward the
-// goal; if that fails too, the walker stops.
+// startStep claims path[0] (0x0041492E). If someone holds it the walk stops
+// and the path is dropped; the AI or the party planner decides again on a
+// later tick.
 func (w *walker) startStep() bool {
 	if w.stopAt != nil && w.stopAt(w.path[0]) {
 		w.path = nil
 		return false
 	}
 	if w.reserve == nil || w.reserve(w.path[0]) {
-		w.faceNext()
-		return true
-	}
-	if p := mapdata.FindPath(w.cell, w.goal, w.blocked, w.searchCap); len(p) > 0 && w.reserve(p[0]) {
-		w.path = p
-		w.faceNext()
 		return true
 	}
 	w.path = nil
 	return false
 }
 
-// update advances the walk cycle by one tick.
+// update is one game tick of the walk case (0x0042218D, 0x00412717): a
+// walker not facing the step's direction turns one octant (0x004391BC) and
+// does nothing else; otherwise it shows the next walk frame, and after the
+// last one it enters the next cell and starts the next step.
 func (w *walker) update() {
 	if !w.walking {
 		if len(w.path) == 0 || !w.startStep() {
@@ -173,8 +170,15 @@ func (w *walker) update() {
 		}
 		w.walking, w.stepT = true, 0
 	}
-	w.stepT++
-	if w.stepT < w.walkSteps()*walkTicksPerStep {
+	if d := w.stepDir(); w.dir != d {
+		w.turnToward(d)
+		return
+	}
+	if w.stepT+1 < w.walkSteps() {
+		w.stepT++
+		return
+	}
+	if w.hold != nil && w.hold() {
 		return
 	}
 	old := w.cell
@@ -195,7 +199,7 @@ func (w *walker) position() (float64, float64) {
 		return float64(ax), float64(ay)
 	}
 	bx, by := mapdata.CellCenter(w.path[0])
-	t := float64(w.stepT) / float64(w.walkSteps()*walkTicksPerStep)
+	t := float64(w.stepT) / float64(w.walkSteps())
 	return float64(ax) + float64(bx-ax)*t, float64(ay) + float64(by-ay)*t
 }
 
@@ -206,9 +210,9 @@ func (w *walker) frame(tick int) (sceneFrame, bool) {
 	if frames := w.framesFor(w.act); w.act != 0 && len(frames) > 0 {
 		f = frames[min(w.actStep, len(frames)-1)]
 	} else if frames := w.framesFor(1); w.walking && len(frames) > 0 {
-		f = frames[min(w.stepT/walkTicksPerStep, len(frames)-1)]
+		f = frames[min(w.stepT, len(frames)-1)]
 	} else if frames := w.framesFor(0); len(frames) > 0 {
-		f = frames[(tick/ticksPerStep+w.phase)%len(frames)]
+		f = frames[(tick+w.phase)%len(frames)] // one idle frame per game tick
 	} else {
 		return f, false
 	}
@@ -277,7 +281,7 @@ func (w *walker) chase(goal mapdata.Cell) {
 		start = w.path[0]
 	}
 	blocked := func(c mapdata.Cell) bool { return c != goal && w.blocked(c) }
-	path := mapdata.FindPath(start, goal, blocked, w.searchCap)
+	path := mapdata.FindPath(start, goal, blocked)
 	if w.walking {
 		path = append([]mapdata.Cell{start}, path...)
 	}
@@ -356,11 +360,27 @@ type npc struct {
 	targetCell mapdata.Cell
 	intent     byte
 	rng        func(int) int
+	// pause is +0x12 of creature kinds 0x4D/0x4F: ticks still to wait at
+	// the end of a walk step (pauseHold).
+	pause int
 }
 
-const (
-	npcSearchCap = 4000
-)
+// pauseHold is 0x004127BD for creature kinds 0x4D/0x4F, asked when a walk
+// step's frames have played: with no pause running it starts one of
+// (rand() % 2) · (rand() % frames, 0 below 2 frames) + 1 ticks and waits;
+// otherwise it counts down and lets the walk go on when it reaches 0.
+func (n *npc) pauseHold() bool {
+	if n.pause == 0 {
+		k := 0
+		if f := n.walkSteps(); f >= 2 {
+			k = n.rng(f)
+		}
+		n.pause = n.rng(2)*k + 1
+		return true
+	}
+	n.pause--
+	return n.pause != 0
+}
 
 func (n *npc) idle() bool { return !n.walking && len(n.path) == 0 && n.act == 0 }
 

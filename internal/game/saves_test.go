@@ -41,7 +41,7 @@ func TestSaveAndLoadScene(t *testing.T) {
 	drop := mapdata.Cell{Row: cell.Row + 4, Col: cell.Col}
 	w.game.Piles = append(w.game.Piles, gamestate.Pile{Index: -1, Map: 1, Row: drop.Row, Col: drop.Col, Gold: 5})
 	w.pileAt[drop] = len(w.game.Piles) - 1
-	w.tick = 40 * walkTicksPerStep
+	w.tick = 40
 
 	tmp := t.TempDir()
 	data, err := w.game.MarshalSave(w.saveState())

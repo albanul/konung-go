@@ -206,6 +206,9 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0041165C` | routine | `(row, col, row0, col0)` → the direction in which (row, col) neighbours (row0, col0), −1 if not a neighbour (the apprentice test) | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
 | `0x0041182C` | routine | Entity → post slot (1-based, 0 = none) in its map's settlement | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
 | `0x004142D4` | routine | Set an entity's move target `(e, row, col, state)` | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
+| `0x0043EDB7`, `0x0051ECD0`, `0x0052ECD0`, `0x00592CD0`, `0x0051EC80` | routine, buffers, globals | Path search (flood, costs 10/14, first 31 steps to `+0x13`); its queue, node table, generation stamp, found flag | [movement](konung_movement.md#path-search-0x0043edb7-hand-written-assembly) |
+| `0x0043ECBA`, `0x0047FD2C`, `0x0047FD6C` | routine, tables | Next cell in a direction; step offsets by row parity; reverse steps for the path | [movement](konung_movement.md) |
+| `0x0042218D`, `0x00412717` | code | Walk case: party, creatures (turn, frame, step end, next step) | [movement](konung_movement.md#a-walk-step) |
 | `0x004116CC` | routine | AI budget: < 3 path searches this tick (`0x00A3E720`), round-robin after `0x00A3E690` | [GAME.N](konung_game_format.md#npc-ai-village-ai-traced) |
 | `0x00835B18`, `0x00A3E6A8` | buffer, global | Settlements (`GAME.N` section 6, 20 × `0x4B5`); current map's settlement | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
 | `0x00433AF8` | routine | Dismiss party member into the settlement's village group (script 332) | [dialogues](konung_dialogue.md#script-functions-verified) |

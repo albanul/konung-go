@@ -130,23 +130,83 @@ func TestFindPathKonung1(t *testing.T) {
 	blocked := func(c Cell) bool { return g.Blocked(c.Row, c.Col) }
 	start := Cell{86, 33} // Volk's start
 	goal := NearestFree(Cell{184, 40}, blocked, 6)
-	path := FindPath(start, goal, blocked, 0)
-	if len(path) == 0 || path[len(path)-1] != goal {
-		t.Fatalf("no path from %v to %v", start, goal)
+	// A walker searches again where a 31-step path ends (0x0042218D).
+	prev, segments := start, 0
+	for prev != goal && segments < 50 {
+		path := FindPath(prev, goal, blocked)
+		if len(path) == 0 || len(path) > PathSteps {
+			t.Fatalf("no path from %v to %v", prev, goal)
+		}
+		segments++
+		for _, c := range path {
+			if blocked(c) {
+				t.Fatalf("path crosses blocked cell %v", c)
+			}
+			ok := false
+			for _, n := range Neighbors(prev) {
+				ok = ok || n.Cell == c
+			}
+			if !ok {
+				t.Fatalf("path step %v -> %v is not adjacent", prev, c)
+			}
+			prev = c
+		}
 	}
-	prev := start
-	for _, c := range path {
-		if blocked(c) {
-			t.Fatalf("path crosses blocked cell %v", c)
+	if prev != goal || segments < 2 {
+		t.Fatalf("stopped at %v after %d segments", prev, segments)
+	}
+}
+
+// TestFindPathRules: the rules of 0x0043EDB7 on an open grid.
+func TestFindPathRules(t *testing.T) {
+	open := func(Cell) bool { return false }
+	dirs := func(from Cell, path []Cell) []int {
+		var out []int
+		for _, c := range path {
+			for _, n := range Neighbors(from) {
+				if n.Cell == c {
+					out = append(out, int(n.Dir))
+				}
+			}
+			from = c
 		}
-		ok := false
-		for _, n := range Neighbors(prev) {
-			ok = ok || n.Cell == c
+		return out
+	}
+	start := Cell{100, 50}
+	// East: straight steps (14 each) beat a zigzag of diagonals (2 × 10).
+	if d := dirs(start, FindPath(start, Cell{100, 54}, open)); fmt.Sprint(d) != "[4 4 4 4]" {
+		t.Errorf("east: %v", d)
+	}
+	// North: row −2 is one straight step.
+	if d := dirs(start, FindPath(start, Cell{96, 50}, open)); fmt.Sprint(d) != "[2 2]" {
+		t.Errorf("north: %v", d)
+	}
+	// One row and one column: diagonals first in the even-row order (NW, NE).
+	if d := dirs(start, FindPath(start, Cell{99, 50}, open)); fmt.Sprint(d) != "[1]" {
+		t.Errorf("north-west neighbour: %v", d)
+	}
+	// Long paths keep 31 steps.
+	if p := FindPath(start, Cell{100, 120}, open); len(p) != PathSteps {
+		t.Errorf("long path has %d steps, want %d", len(p), PathSteps)
+	}
+	// A blocked goal, a goal with no free neighbour, and start = goal fail.
+	wall := Cell{100, 54}
+	if FindPath(start, wall, func(c Cell) bool { return c == wall }) != nil {
+		t.Error("path into a wall")
+	}
+	shut := func(c Cell) bool {
+		for _, n := range Neighbors(wall) {
+			if n.Cell == c {
+				return true
+			}
 		}
-		if !ok {
-			t.Fatalf("path step %v -> %v is not adjacent", prev, c)
-		}
-		prev = c
+		return false
+	}
+	if FindPath(start, wall, shut) != nil {
+		t.Error("path to an enclosed goal")
+	}
+	if FindPath(start, start, open) != nil {
+		t.Error("path to the start")
 	}
 }
 

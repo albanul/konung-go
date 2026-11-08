@@ -1,8 +1,8 @@
 package mapdata
 
 import (
-	"container/heap"
 	"math"
+	"sync"
 )
 
 // Cell is a position on the fine grid (WalkRows x WalkCols) that static
@@ -87,54 +87,139 @@ func DirectionTo(ax, ay, bx, by float64) Direction {
 	return [8]Direction{4, 5, 6, 7, 0, 1, 2, 3}[sector]
 }
 
-// FindPath returns the cells from start (exclusive) to goal (inclusive) along
-// a shortest path in world pixels, avoiding blocked cells, or nil when goal is
-// unreachable. It explores at most limit cells (0 = whole grid).
-func FindPath(start, goal Cell, blocked func(Cell) bool, limit int) []Cell {
-	if start == goal || blocked(goal) {
+// PathSteps is how many steps a path search keeps: the entity's path
+// buffer +0x13 holds 31 directions and an end byte (0x0043F740).
+const PathSteps = 31
+
+// Path search costs (0x0043F031, 0x0043F48D): a diagonal step (row ±1)
+// costs 10, a straight one (same row, or row ±2) 14.
+const (
+	pathCostDiagonal = 10
+	pathCostStraight = 14
+	pathQueueLen     = 4096 // 0x0051ECD0: 16-byte entries, 16-bit indices
+)
+
+type pathNode struct {
+	cell Cell
+	cost int
+}
+
+// pathScratch is the search's node table (0x0052ECD0): the best cost and
+// the direction each cell was reached by, valid when stamp is the current
+// generation (0x00592CD0).
+type pathScratch struct {
+	stamp [WalkRows][WalkCols]uint32
+	cost  [WalkRows][WalkCols]int32
+	dir   [WalkRows][WalkCols]int8
+	gen   uint32
+	queue [pathQueueLen]pathNode
+}
+
+var pathPool = sync.Pool{New: func() any { return new(pathScratch) }}
+
+func insideGrid(c Cell) bool { return c.Row >= 0 && c.Row < WalkRows && c.Col >= 0 && c.Col < WalkCols }
+
+// pathOrder is the order the search tries a cell's neighbours, as
+// Neighbors indices (= direction codes): the diagonals by row parity, then
+// W, E, N, S.
+var pathOrder = [2][8]int{
+	{1, 3, 7, 5, 0, 4, 2, 6}, // even row
+	{3, 1, 5, 7, 0, 4, 2, 6}, // odd row
+}
+
+// FindPath is the game's path search 0x0043EDB7: the cells from start
+// (exclusive) toward goal, at most PathSteps of them, or nil. It fails when
+// start is goal, goal is blocked, or no neighbour of goal is free (or
+// start). The search floods from start through a FIFO queue (a ring of
+// 4096 entries) in pathOrder, each step costing 10 (diagonal) or 14
+// (straight), recording a cell when its cost improves; the goal is
+// recorded but never queued, and once it is found no new cells are
+// queued. There is no search limit. start itself counts as free (the
+// walker frees its cell for the search, 0x00414326). A walker whose path
+// ends short of its goal searches again from there.
+func FindPath(start, goal Cell, blocked func(Cell) bool) []Cell {
+	if start == goal || !insideGrid(start) || !insideGrid(goal) || blocked(goal) {
 		return nil
 	}
-	dist := func(a, b Cell) float64 {
-		ax, ay := CellCenter(a)
-		bx, by := CellCenter(b)
-		return math.Hypot(float64(ax-bx), float64(ay-by))
-	}
-	g := map[Cell]float64{start: 0}
-	from := map[Cell]Cell{}
-	open := &cellHeap{{start, dist(start, goal)}}
-	closed := map[Cell]bool{}
-	for open.Len() > 0 {
-		cur := heap.Pop(open).(scored).c
-		if cur == goal {
-			var path []Cell
-			for c := goal; c != start; c = from[c] {
-				path = append(path, c)
-			}
-			for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
-				path[i], path[j] = path[j], path[i]
-			}
-			return path
-		}
-		if closed[cur] {
-			continue
-		}
-		closed[cur] = true
-		if limit > 0 && len(closed) > limit {
-			return nil
-		}
-		for _, n := range Neighbors(cur) {
-			if closed[n.Cell] || blocked(n.Cell) {
-				continue
-			}
-			ng := g[cur] + dist(cur, n.Cell)
-			if old, ok := g[n.Cell]; ok && old <= ng {
-				continue
-			}
-			g[n.Cell], from[n.Cell] = ng, cur
-			heap.Push(open, scored{n.Cell, ng + dist(n.Cell, goal)})
+	open := false
+	for _, n := range Neighbors(goal) {
+		if insideGrid(n.Cell) && (n.Cell == start || !blocked(n.Cell)) {
+			open = true
+			break
 		}
 	}
-	return nil
+	if !open {
+		return nil
+	}
+	sc := pathPool.Get().(*pathScratch)
+	defer pathPool.Put(sc)
+	sc.gen++
+	if sc.gen == 0 { // wrapped: clear the table (0x0043EFFC)
+		sc.stamp = [WalkRows][WalkCols]uint32{}
+		sc.gen = 1
+	}
+	gen := sc.gen
+	costOf := func(c Cell) int {
+		if sc.stamp[c.Row][c.Col] != gen {
+			return math.MaxInt
+		}
+		return int(sc.cost[c.Row][c.Col])
+	}
+	set := func(c Cell, cost, d int) {
+		sc.stamp[c.Row][c.Col], sc.cost[c.Row][c.Col], sc.dir[c.Row][c.Col] = gen, int32(cost), int8(d)
+	}
+	found := false
+	var head, tail uint16 // indices into the ring; empty when equal
+	cur := pathNode{start, 0}
+	for first := true; ; first = false {
+		if !first {
+			if head == tail {
+				break
+			}
+			cur = sc.queue[head%pathQueueLen]
+			head = (head + 1) % pathQueueLen
+		}
+		nb := Neighbors(cur.cell)
+		for _, k := range pathOrder[cur.cell.Row&1] {
+			n := nb[k].Cell
+			if !insideGrid(n) {
+				continue
+			}
+			cost := cur.cost + pathCostDiagonal
+			if k%2 == 0 {
+				cost = cur.cost + pathCostStraight
+			}
+			if n == goal {
+				if costOf(n) > cost {
+					found = true
+					set(n, cost, k)
+				}
+				continue
+			}
+			if found || (n != start && blocked(n)) || costOf(n) <= cost {
+				continue
+			}
+			set(n, cost, k)
+			sc.queue[tail%pathQueueLen] = pathNode{n, cost}
+			tail = (tail + 1) % pathQueueLen
+		}
+	}
+	if !found {
+		return nil
+	}
+	// Back from the goal by the recorded directions (step back = d + 4).
+	var rev []Cell
+	for c := goal; c != start; {
+		rev = append(rev, c)
+		d := int(sc.dir[c.Row][c.Col])
+		c = Neighbors(c)[(d+4)%8].Cell
+	}
+	n := min(len(rev), PathSteps)
+	path := make([]Cell, n)
+	for i := range path {
+		path[i] = rev[len(rev)-1-i]
+	}
+	return path
 }
 
 // NearestFree returns the unblocked cell closest (in world pixels) to c,
@@ -158,22 +243,4 @@ func NearestFree(c Cell, blocked func(Cell) bool, radius int) Cell {
 		}
 	}
 	return best
-}
-
-type scored struct {
-	c Cell
-	f float64
-}
-
-type cellHeap []scored
-
-func (h cellHeap) Len() int           { return len(h) }
-func (h cellHeap) Less(i, j int) bool { return h[i].f < h[j].f }
-func (h cellHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-func (h *cellHeap) Push(x any)        { *h = append(*h, x.(scored)) }
-func (h *cellHeap) Pop() any {
-	old := *h
-	x := old[len(old)-1]
-	*h = old[:len(old)-1]
-	return x
 }

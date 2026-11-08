@@ -225,7 +225,7 @@ It is reached only from `0x0041F11C` (AI step `0x00422415`), and only when entit
 
 ### Port
 
-`internal/game` `npc` with `npcMode`, and `gamestate` `Settlements`, `PostOf`, `VillageMoveThreshold`, `VillageStepTarget`. Village groups run the village AI above once per game tick (`walkTicksPerStep` updates), with the 3-search budget served round-robin and the 800×600 ranges. Paths are not limited to the rectangle; only targets are. Creature groups (kind bit `0x40`) run the creature combat AI ([combat](konung_combat.md#creature-ai-verified)). Groups without a rectangle stand still too. The party branch is ported ([party](konung_party.md)). Characters reserve the cell they step into, so they don't overlap. An alarmed village (group `+0x1D` ≠ 0) runs `0x00416DA6` instead (`game.villagerTick`, [combat: village anger](konung_combat.md#village-anger-verified)). Apprentices follow their master's post (`Game.ApprenticePost`, `npc.apprenticeTick`).
+`internal/game` `npc` with `npcMode`, and `gamestate` `Settlements`, `PostOf`, `VillageMoveThreshold`, `VillageStepTarget`. Village groups run the village AI above once per game tick (60 ms), with the 3-search budget served round-robin and the 800×600 ranges. Paths are not limited to the rectangle; only targets are. Creature groups (kind bit `0x40`) run the creature combat AI ([combat](konung_combat.md#creature-ai-verified)). Groups without a rectangle stand still too. The party branch is ported ([party](konung_party.md)). Characters reserve the cell they step into, so they don't overlap. An alarmed village (group `+0x1D` ≠ 0) runs `0x00416DA6` instead (`game.villagerTick`, [combat: village anger](konung_combat.md#village-anger-verified)). Apprentices follow their master's post (`Game.ApprenticePost`, `npc.apprenticeTick`).
 
 ## Placement of entities without coordinates
 
@@ -277,10 +277,9 @@ Validation: `go test ./internal/gamestate -run Exits` checks the count, the `KON
 
 ## Open questions
 
-* The game's animation tick rate. The scene uses 10 steps/s and offsets each entity's phase so neighbours don't move in lockstep; both are presentation choices.
+* The idle animation's per-entity phase offset is a port choice (the game starts each idle at step 0); the tick is 60 ms ([movement](konung_movement.md#timing)).
 * Exact runtime spawn positions for groups whose entities have no coordinates.
 * Group field `+0x1E` beyond bits `0x40` (creature AI), `0x80` (village AI, low 2 bits = tribe) and `0x20` (party); kind `0x53` groups.
-* The game's own movement code (speed, path rules, direction computation) is not traced; the port's click-to-move is a reimplementation.
 * Item record fields other than category and type (`+4`/`+8` condition is a hypothesis); the gear table's remaining fields; which jewellery box is which; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
 * `GAME.N` section 4 (map exits) bytes `+0`, `+1`; travel by item (`0x00422AD8`). Settlement bytes outside the posts and the traced stock/timer fields.
 * Creature AI leftovers: see [combat](konung_combat.md#open-questions).

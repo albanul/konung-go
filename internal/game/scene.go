@@ -97,7 +97,7 @@ type startScene struct {
 	tintU          map[string]any // shader tables for tint
 	tintSh         *ebiten.Shader // nil if the shader failed to compile
 	camX, camY     int
-	tick           int // game ticks (one per step)
+	tick           int // game ticks (0x00A3E770, one per step, 60 ms each)
 	frame          int // drawn frames (Update calls)
 	speed          int // 0x00A3E764
 
@@ -520,7 +520,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 			sound: s.actionSound,
 		}
 		if k >= 0 {
-			w.blocked, w.searchCap = s.blocked, pathSearchLimit
+			w.blocked = s.blocked
 			m := &member{walker: w, k: k, target: -1}
 			// +2 survives a map change or a save; the fight orders don't.
 			m.intent = byte(p.Flags2) & (gamestate.IntentStrike | gamestate.IntentFollow | gamestate.IntentIdle)
@@ -538,7 +538,9 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 			continue
 		}
 		n := &npc{walker: w, rng: s.rng.IntN}
-		n.searchCap = npcSearchCap
+		if k := p.Flags4; k == 0x4D || k == 0x4F {
+			n.hold = n.pauseHold
+		}
 		gr := game.Groups[p.Group]
 		area, hasArea := gr.WanderArea()
 		n.area = area
@@ -583,12 +585,13 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	return s, nil
 }
 
-// updateNPCs runs the AI and advances every NPC by one update. The village AI
-// runs once per game tick (one animation step, walkTicksPerStep updates),
-// like 0x00421DA4 in the game loop; at most VillagePathBudget villagers may
-// start a walk per tick, served round-robin (0x004116CC).
+// updateNPCs runs the village AI and advances every NPC's walk by one game
+// tick, like 0x00421DA4 in the game loop; at most VillagePathBudget
+// villagers may start a walk per tick, served round-robin (0x004116CC). A
+// creature with a walk throttle +0x11 = m walks only on ticks where
+// time & m == m (0x0041271A).
 func (s *startScene) updateNPCs() {
-	if len(s.npcs) > 0 && s.tick%walkTicksPerStep == 0 {
+	if len(s.npcs) > 0 {
 		budget := gamestate.VillagePathBudget
 		for i := range s.npcs {
 			k := (s.aiNext + i) % len(s.npcs)
@@ -602,9 +605,13 @@ func (s *startScene) updateNPCs() {
 		}
 	}
 	for _, n := range s.npcs {
-		if n.act == 0 {
-			n.update()
+		if n.act != 0 {
+			continue
 		}
+		if m := s.game.Entities[n.entity].Throttle; n.mode == npcCreature && m != 0 && s.gameTime()&m != m {
+			continue
+		}
+		n.update()
 	}
 }
 
@@ -876,7 +883,7 @@ func (s *startScene) drawSelection(dst *ebiten.Image) {
 		if img == nil {
 			continue
 		}
-		step := min(m.stepT/walkTicksPerStep, m.walkSteps()-1)
+		step := min(m.stepT, m.walkSteps()-1)
 		dx, dy := gamestate.SelectionOffset(int(m.dir), step, m.walking)
 		x, y := mapdata.CellCenter(m.cell)
 		drawAt(dst, img, x+dx-s.camX, y+dy-s.camY)
@@ -1140,13 +1147,16 @@ func (s *startScene) Update() {
 		s.inv.open, s.inv.quick = false, false
 		s.wmap.open = true
 	}
-	// One drawn frame runs 1 + speed game ticks (0x00437849–0x004378CC);
-	// the extra ticks stop when the hero is dead.
-	for k := 0; k <= s.speed; k++ {
-		if k > 0 && len(s.party) > 0 && s.party[0].Dead() {
-			break
+	// The game draws a frame every 60 ms (0x00A3E6F4), one per 3.6 updates
+	// at 60 Hz, and each frame runs 1 + speed game ticks
+	// (0x00437849–0x004378CC); the extra ticks stop when the hero is dead.
+	if s.frame*5/18 != (s.frame-1)*5/18 {
+		for k := 0; k <= s.speed; k++ {
+			if k > 0 && len(s.party) > 0 && s.party[0].Dead() {
+				break
+			}
+			s.step()
 		}
-		s.step()
 	}
 	if s.hero != nil {
 		if s.follow {
@@ -1170,8 +1180,8 @@ func (s *startScene) Update() {
 	s.clampCamera()
 }
 
-// step advances the world by one game tick at the port's 60 Hz rate:
-// characters, the pick-up on arrival, map exits, pile respawn and the AI.
+// step advances the world by one game tick (60 ms): characters, the
+// pick-up on arrival, map exits, pile respawn and the AI.
 func (s *startScene) step() {
 	s.tick++
 	for _, m := range s.members {
@@ -1183,13 +1193,26 @@ func (s *startScene) step() {
 			m.update()
 		}
 		stopped := !m.walking && len(m.path) == 0
+		if moving && stopped && m.cell != m.goal && m.intent&gamestate.IntentWalk != 0 {
+			// 0x0042218D: the path ran out short of the goal (31 steps,
+			// mapdata.PathSteps) or a step was blocked; with the walk bit
+			// the planner (0x0041ED8C) searches again. If that fails the
+			// walk ends there, without a pick-up or an exit.
+			if p := mapdata.FindPath(m.cell, m.goal, m.blocked); len(p) > 0 {
+				m.path = p
+				continue
+			}
+		}
+		atGoal := m.cell == m.goal
 		switch {
 		case m.pickIntent && stopped:
 			m.pickIntent = false
-			s.arrive(m)
-		case moving && stopped:
-			// 0x00422346: a member's walk that ends without the pick-up
-			// intent on an exit cell takes the exit (0x00421BB8). A
+			if atGoal {
+				s.arrive(m)
+			}
+		case moving && stopped && atGoal:
+			// 0x00422346: a member's walk that ends at its goal without the
+			// pick-up intent on an exit cell takes the exit (0x00421BB8). A
 			// village's exit needs its bridge (ExitOpen, 0x00421C82).
 			if x, ok := s.game.ExitAt(s.mapNumber, m.cell.Row, m.cell.Col); ok && s.game.ExitOpen(x) {
 				s.changeMap(x)
@@ -1197,11 +1220,9 @@ func (s *startScene) step() {
 			}
 		}
 	}
-	if s.tick%walkTicksPerStep == 0 {
-		s.activatePiles()
-		s.combatTick()
-		s.animateObjects()
-	}
+	s.activatePiles()
+	s.combatTick()
+	s.animateObjects()
 	s.updateNPCs()
 }
 

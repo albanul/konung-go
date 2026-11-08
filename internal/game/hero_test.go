@@ -8,7 +8,7 @@ import (
 
 func TestHeroWalksToGoal(t *testing.T) {
 	start := mapdata.Cell{Row: 86, Col: 33}
-	h := &walker{cell: start, searchCap: pathSearchLimit}
+	h := &walker{cell: start}
 	wall := func(c mapdata.Cell) bool { return c.Col == 36 && c.Row > 80 && c.Row < 96 } // force a detour
 	goal := mapdata.Cell{Row: 88, Col: 40}
 	h.blocked = wall
@@ -17,6 +17,19 @@ func TestHeroWalksToGoal(t *testing.T) {
 		t.Fatal("no path planned")
 	}
 	steps := len(h.path)
+	// One tick per walk frame, plus one per octant turned before a step
+	// (0x004391BC).
+	turns, dir, at := 0, h.dir, start
+	for _, c := range h.path {
+		for _, n := range mapdata.Neighbors(at) {
+			if n.Cell == c {
+				d := (int(n.Dir) - int(dir) + 8) % 8
+				turns += min(d, 8-d)
+				dir = n.Dir
+			}
+		}
+		at = c
+	}
 	ticks := 0
 	for ; ticks < 100000 && len(h.path) > 0; ticks++ {
 		prev := h.cell
@@ -34,8 +47,8 @@ func TestHeroWalksToGoal(t *testing.T) {
 			}
 		}
 	}
-	if want := steps * defaultWalkSteps * walkTicksPerStep; ticks != want {
-		t.Errorf("walk took %d ticks, want one walk cycle per cell = %d", ticks, want)
+	if want := steps*defaultWalkSteps + turns; ticks != want {
+		t.Errorf("walk took %d ticks, want %d frames per cell + %d turns = %d", ticks, defaultWalkSteps, turns, want)
 	}
 	if h.cell != goal || h.walking {
 		t.Fatalf("hero stopped at %v (walking %v), want %v", h.cell, h.walking, goal)
