@@ -28,7 +28,6 @@ The pile record with index 0 runs `0x0042B690(0x00450004)` = `WIN.FLM` when pick
 
 ### Village AI
 
-* The post index from entity `+4` bits `0x38` (checked before the settlement posts; 0 for every `GAME.0` villager, so nothing visible is missing in `GAME.0`).
 * Building record `+4` ([buildings](konung_buildings.md#not-ported--open)).
 
 ### Map drawing

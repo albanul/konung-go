@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/mapdata"
 )
 
 // giveMisc puts a new misc item of type typ at the front of the hero's bag
@@ -84,5 +85,40 @@ func TestKind49Retreat(t *testing.T) {
 	far := max(dr, -dr) >= gamestate.VillageRowRange || max(dc, -dc) >= gamestate.VillageColRange
 	if n.intent != intentWalk || !far {
 		t.Errorf("intent %#x, walk from %v to %v", n.intent, from, goal)
+	}
+}
+
+// TestApprenticeWalksToPost: an apprentice (+4 bits 0x38, script 354) walks
+// to a free cell next to its master's post and, once there, turns to the
+// post's facing (0x00416A94).
+func TestApprenticeWalksToPost(t *testing.T) {
+	s := newVolkScene(t)
+	n := s.byEntity[359]
+	if n == nil || n.mode != npcVillager {
+		t.Skip("villager 359 is not on the start map")
+	}
+	s.game.Entities[359].Flags4 |= 1 << 3
+	p, ok := s.game.ApprenticePost(359)
+	if !ok {
+		t.Fatal("no apprentice post")
+	}
+	apprentice := func() (gamestate.Post, bool) { return s.game.ApprenticePost(359) }
+	next := func(c mapdata.Cell) bool {
+		for _, nb := range mapdata.Neighbors(mapdata.Cell{Row: p.Row, Col: p.Col}) {
+			if nb.Cell == c {
+				return true
+			}
+		}
+		return false
+	}
+	if n.villageTick(1, apprentice) != 1 || len(n.path) == 0 || !next(n.path[len(n.path)-1]) {
+		t.Fatalf("no walk next to the post (%d,%d): path %v", p.Row, p.Col, n.path)
+	}
+	goal := n.path[len(n.path)-1]
+	n.halt()
+	n.cell, n.path = goal, nil
+	n.dir = mapdata.Direction(p.Facing+1) & 7
+	if n.villageTick(1, apprentice) != 0 || n.dir != mapdata.Direction(p.Facing&7) {
+		t.Errorf("next to the post: facing %d, want %d", n.dir, p.Facing&7)
 	}
 }

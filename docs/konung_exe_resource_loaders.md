@@ -203,8 +203,9 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00427A0C` | routine | Queue a clipped indexed blit `(image, palette, x, y, xmin, ymin, xmax, ymax)` (32-byte records at `0x0069B8B4`) | [interface](konung_interface_res.md) |
 | `0x0051ECB4` | global | Pointer to the `GRAPH.RES` palette block; images add a palette byte offset to it | [interface](konung_interface_res.md) |
 | `0x00421DA4` | routine | Per-tick NPC AI dispatcher: kind `0x40` → `0x004123BC` (creatures, not traced), `0x80` → `0x00416058` (village), else party | [GAME.N](konung_game_format.md#npc-ai-village-ai-traced) |
-| `0x00416058`, `0x00416934` | routines | Village AI: per-group loop; per-villager decision (post, or random walk at 25 % / 50 %) | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
+| `0x00416058`, `0x00416934` | routines | Village AI: per-group loop; per-villager decision (apprentice, post, or random walk at 25 % / 50 %) | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
 | `0x00413A84` | routine | Village random step target (quadrant, ranges `0x00A3E818`/`0x00A3E7DC`) | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
+| `0x0041165C` | routine | `(row, col, row0, col0)` → the direction in which (row, col) neighbours (row0, col0), −1 if not a neighbour (the apprentice test) | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
 | `0x0041182C` | routine | Entity → post slot (1-based, 0 = none) in its map's settlement | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
 | `0x004142D4` | routine | Set an entity's move target `(e, row, col, state)` | [GAME.N](konung_game_format.md#village-ai-verified-against-code-and-game0) |
 | `0x004116CC` | routine | AI budget: < 3 path searches this tick (`0x00A3E720`), round-robin after `0x00A3E690` | [GAME.N](konung_game_format.md#npc-ai-village-ai-traced) |

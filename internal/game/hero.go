@@ -365,10 +365,14 @@ const (
 func (n *npc) idle() bool { return !n.walking && len(n.path) == 0 && n.act == 0 }
 
 // villageTick is one AI tick of 0x00416934 for an idle villager. budget is
-// the tick's remaining path searches; it returns the number used.
-func (n *npc) villageTick(budget int) int {
+// the tick's remaining path searches; it returns the number used. apprentice
+// is gamestate.Game.ApprenticePost for the villager.
+func (n *npc) villageTick(budget int, apprentice func() (gamestate.Post, bool)) int {
 	if !n.idle() || budget <= 0 {
 		return 0
+	}
+	if p, ok := apprentice(); ok {
+		return n.apprenticeTick(p)
 	}
 	if n.posted {
 		if at := (mapdata.Cell{Row: n.post.Row, Col: n.post.Col}); n.cell != at {
@@ -389,4 +393,27 @@ func (n *npc) villageTick(budget int) int {
 	}
 	n.walkTo(mapdata.Cell{Row: r, Col: c})
 	return 1
+}
+
+// apprenticeTick is the apprentice branch of 0x00416934 (0x00416A94): the
+// apprentice stands on a cell next to its master's post (0x0041165C: one of
+// the post cell's 8 neighbours) and turns to the post's facing. Elsewhere,
+// the post cell included, it walks to the post's first free neighbour
+// (0x00410FFC); with none it stays idle.
+func (n *npc) apprenticeTick(p gamestate.Post) int {
+	at := mapdata.Cell{Row: p.Row, Col: p.Col}
+	nb := mapdata.Neighbors(at)
+	for _, c := range nb {
+		if c.Cell == n.cell {
+			n.dir = mapdata.Direction(p.Facing & 7)
+			return 0
+		}
+	}
+	for _, c := range nb {
+		if c.Row >= 0 && c.Row < mapdata.WalkRows && c.Col >= 0 && c.Col < mapdata.WalkCols && !n.blocked(c.Cell) {
+			n.walkTo(c.Cell)
+			return 1
+		}
+	}
+	return 0
 }

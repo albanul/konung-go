@@ -279,3 +279,29 @@ func TestSelectionMarker(t *testing.T) {
 		t.Errorf("idle: %d,%d", dx, dy)
 	}
 }
+
+// TestApprenticePost: an apprentice of post k (+4 bits 0x38 = k << 3, script
+// 354) follows post k while it is held (0x00416A7A); with the post empty its
+// bits clear (0x00416BEE). Women and children are never apprentices.
+func TestApprenticePost(t *testing.T) {
+	g, err := Parse(load(t, "GAME.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &g.Entities[359] // KONUNG.1 villager; posts 1–3 held, 4 empty
+	if _, ok := g.ApprenticePost(359); ok {
+		t.Fatal("a plain villager is an apprentice")
+	}
+	e.Flags4 |= 2 << 3
+	p, ok := g.ApprenticePost(359)
+	if !ok || p.Slot != 3 || p.Entity != 357 {
+		t.Fatalf("post %+v, %v; want slot 3 held by 357", p, ok)
+	}
+	e.Flags4 = e.Flags4&^0x38 | 4<<3
+	if _, ok := g.ApprenticePost(359); ok || e.Flags4&0x38 != 0 {
+		t.Fatalf("empty post 4: ok %v, bits %#x", ok, e.Flags4&0x38)
+	}
+	if _, ok := g.ApprenticePost(367); ok { // +4 = 0x51 or 0x52: bits 0x10
+		t.Fatal("a woman or child is an apprentice")
+	}
+}

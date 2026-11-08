@@ -573,7 +573,8 @@ func (s *startScene) updateNPCs() {
 		for i := range s.npcs {
 			k := (s.aiNext + i) % len(s.npcs)
 			if n := s.npcs[k]; n.mode == npcVillager && !s.fighting(n) {
-				if used := n.villageTick(budget); used > 0 {
+				apprentice := func() (gamestate.Post, bool) { return s.game.ApprenticePost(n.entity) }
+				if used := n.villageTick(budget, apprentice); used > 0 {
 					budget -= used
 					s.aiNext = k + 1
 				}

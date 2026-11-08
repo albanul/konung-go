@@ -96,6 +96,31 @@ func (g *Game) PostOf(e Entity) (Post, bool) {
 	return Post{}, false
 }
 
+// ApprenticePost is the village AI's apprentice test for entity i
+// (0x00416A7A). Its +4 bits 0x38 hold k, the post whose holder it learns
+// from (set by script 354, startApprentice). It returns post k of the
+// settlement on the entity's map. When that post is empty, the bits clear
+// (0x00416BEE) and the entity is no apprentice. Women and children (+4 =
+// 0x51/0x52, whose bits 0x38 are 0x10) take their walk roll first and never
+// get here. Script 354 only sets k = 1..3; the original reads past the 5
+// posts for k ≥ 5, which this ignores.
+func (g *Game) ApprenticePost(i int) (Post, bool) {
+	e := &g.Entities[i]
+	k := int(e.Flags4&0x38) >> 3
+	if k == 0 || e.Flags4 == 0x51 || e.Flags4 == 0x52 || e.Group < 0 {
+		return Post{}, false
+	}
+	s := g.settlementOn(g.Groups[e.Group].Map)
+	if s == nil || k >= len(s.Posts) {
+		return Post{}, false
+	}
+	if s.Posts[k].Entity == 0 {
+		e.Flags4 &^= 0x38
+		return Post{}, false
+	}
+	return s.Posts[k], true
+}
+
 // VillageMoveThreshold is the 0..99 roll at or above which an idle villager
 // without a post starts a random walk (0x00416934): women and children
 // (entity +4 = 0x52 / 0x51) move on 75..99, everyone else on 50..99.
