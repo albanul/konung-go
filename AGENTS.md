@@ -148,7 +148,7 @@ Highest-value unknowns, roughly in priority order. The full list of missing feat
 3. `KONUNG.N` section 1 (320×160 flag grid): walls and arrow obstacles (bits `0xC0`) are known; the other bits are not.
 4. The fine-grid `LIGHTS.N` values. See [day and night](docs/konung_daylight.md#open-questions).
 5. The 64 KiB gap in `GRAPH.RES` at `0x1ED8B6`.
-6. Dialogues: `SPEECHS.RES`; building record `+4` ([buildings](docs/konung_buildings.md#not-ported--open)). See [dialogues](docs/konung_dialogue.md#open-questions). Saves: the hero copy `0x00A3E584` after a load ([saves](docs/konung_save_format.md#open-questions)).
+6. Dialogues: `SPEECHS.RES`. See [dialogues](docs/konung_dialogue.md#open-questions). Saves: the hero copy `0x00A3E584` after a load ([saves](docs/konung_save_format.md#open-questions)).
 7. HUD: hired faces need `FACES800.RES`, which is not installed. See [interface](docs/konung_interface_res.md#hired-faces-faceswidthres-missing-file).
 8. Ground items: see [ground items](docs/konung_ground_items.md#open-questions).
 9. Sound: dialogue greetings and `SPEECHS.RES` (not installed) are not ported ([sound](docs/konung_sound.md#not-ported)). All settings are honoured. See [settings](docs/konung_settings.md#open-questions).

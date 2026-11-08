@@ -131,4 +131,4 @@ The shop lists are empty in `GAME.0`–`GAME.2`; the game fills them at runtime.
 
 ## Open questions
 
-* Building construction, burning and the voevoda's training, which share the settlement pass, are in [buildings](konung_buildings.md#not-ported--open).
+* Building construction, burning and the voevoda's training, which share the settlement pass, are in [buildings](konung_buildings.md).

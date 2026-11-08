@@ -13,7 +13,7 @@ Settlement `+0x18 + 8r`, for r < 7 + extra buildings (`+0`) + fence pieces (`+1`
 | `+0` | int8 | building type, −1 = none (table `0x00458A30`) |
 | `+1` | int8 | state |
 | `+2` | uint16 | `KONUNG.N` section-3 placement index (the map object) |
-| `+4` | — | not used by this code |
+| `+4` | 2 bytes | unused padding: 0 in all 757 records of `GAME.0`–`GAME.2`, and no code reads or writes it on its own, only whole-settlement copies (load, save). Checked by scanning the exe for settlement `+0x1C`/`+0x1D` and for record pointers stepped by 8; the `dword[+4] >> 16` reads are the `+6` timer |
 | `+6` | int16 | timer in passes |
 
 The states are:
@@ -126,7 +126,3 @@ Only settlements 0–2 have their exit at the same index:
 | 22 | 2 | 12 | type 15, state 0: closed |
 
 Building the bridge (dialogue script 360, [dialogues](konung_dialogue.md#script-functions-verified)) and finishing it in the settlement pass opens the way. A bridge that burns (state 4–6) closes it again. The other villages' record 5 never gates anything. Port: `gamestate.Game.ExitOpen`, checked in `startScene` before `changeMap`.
-
-## Not ported / open
-
-* Record `+4`.

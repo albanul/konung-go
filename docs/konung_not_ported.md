@@ -26,10 +26,6 @@ Ported: every case of `0x00414E64` ([misc items](konung_misc_items.md)). Left ov
 
 The pile record with index 0 runs `0x0042B690(0x00450004)` = `WIN.FLM` when picked up ([ground items](konung_ground_items.md)). Hypothesis: the end-of-game pile. Not ported (missing film).
 
-### Village AI
-
-* Building record `+4` ([buildings](konung_buildings.md#not-ported--open)).
-
 ### Map drawing
 
 * Animated static objects and random variants: the loader picks `rand() % header[+0x0C]` and cycles frames when header `+0x18` > 0 ([map format](konung_map_format.md)); the port always draws variant 0 (`mapdata/objects.go`).
