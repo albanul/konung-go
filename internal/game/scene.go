@@ -261,13 +261,18 @@ func (a *sceneAssets) newGame(hero gamestate.Entity) (*startScene, error) {
 }
 
 // changeMap takes map exit x (0x00421CCD, then the main loop's map change at
-// 0x004377C6): the scene's characters go back into the game (storeWorld),
+// 0x004377C6). An exit or jump to the map the party is on only places the
+// party again (placeAgain). Otherwise the scene's characters go back into the game (storeWorld),
 // the leave cleanup runs while the party is still on the map it leaves (so
 // dead party members are removed too), the party moves to the exit's target
 // and the scene is rebuilt for that map. If the target fails to load, the
 // groups, entities and settlements are restored (items freed by the cleanup
 // stay freed).
 func (s *startScene) changeMap(x gamestate.MapExit) {
+	if x.To == s.mapNumber {
+		s.placeAgain(x)
+		return
+	}
 	s.storeWorld()
 	groups := append([]gamestate.Group(nil), s.game.Groups...)
 	entities := append([]gamestate.Entity(nil), s.game.Entities...)

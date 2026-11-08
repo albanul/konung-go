@@ -39,8 +39,8 @@ Port: `soundSystem.play` renders the sample to 44.1 kHz stereo with the gains (`
 | 7 | the hero starts walking (action 1) | `0x004146F6` | `walkTo` |
 | 9 | a herb is used: mixed or drunk | `0x0041E195` | `UseHerb` |
 | 10 | every misc item use: the common tail of `0x00414E64` ([misc items](konung_misc_items.md)); the shovel (`0x00415520`) and the jump orb (`0x004153CC`) play it once more in their cases | `0x00415C6C`, `0x00415520`, `0x004153CC` | `UseMisc` |
-| 8m + 0x22 … 0x24 | human voice (model m = `+0xD6`): death (action 3) +0, idle +1 (5 %), hit reaction (2) +2 | table `0x00414768` | `startAct`, idle |
-| 8·`+0x04` − 0x1D0 + k | animated models (creatures, women, children; `+0x04` with bit `0x40`): k = 0 swing (5), 1 wake-up cry (step 1 of action 4, `0x00412A60`), 2 death (3), 3 idle (5 %) or walk (25 %), 4 hit reaction (2) | table `0x00414500` | `startAct`, `creatureTick`, idle |
+| 8m + 0x22 … 0x24 | human voice (model m = `+0xD6`): death (action 3) +0, idle +1 (`rand() % 100 > 95`, 4 in 100; also on the hero-creation screen, [new game](konung_new_game.md#sound-verified)), hit reaction (2) +2 | table `0x00414768` | `startAct`, idle, `newHeroScreen.idle` |
+| 8·`+0x04` − 0x1D0 + k | animated models (creatures, women, children; `+0x04` with bit `0x40`): k = 0 swing (5), 1 wake-up cry (step 1 of action 4, `0x00412A60`), 2 death (3), 3 idle (`> 95`, 4 in 100) or walk (`> 75`, 24 in 100), 4 hit reaction (2) | table `0x00414500` | `startAct`, `creatureTick`, idle |
 | 0x100 + (map − 1)·8 + 0…7 | ambient: once per main-loop pass with `rand() % 100 > 98` | `0x004376F4` | `soundTick` |
 
 * Action sounds are played by `0x004143DC`, which starts an action animation (port `walker.startAct`); actions 6–9 (outside the stance) use 0–3. Character sounds are positional.

@@ -243,3 +243,42 @@ func TestWordsOfResurrection(t *testing.T) {
 		t.Error("the words stay in the bag")
 	}
 }
+
+// TestJumpToSameMap: an exit or jump to the map the party is on
+// (0x004377A6) keeps the scene and only places the party again
+// (0x004118DC): the hero on the arrival cell with its facing, idle, the
+// smith next to it; the old cells are free.
+func TestJumpToSameMap(t *testing.T) {
+	s, smith := hireSmith(t)
+	hero := s.lead()
+	objects, npcs := &s.objects[0], s.npcs[0]
+	oldHero, oldSmith := hero.cell, smith.cell
+	to := freeCellAway(s, hero.cell, 30)
+	if to == hero.cell {
+		t.Skip("no free cell")
+	}
+	hero.walkTo(freeCellAway(s, hero.cell, -20)) // a walk in progress is dropped
+	s.changeMap(gamestate.MapExit{To: s.mapNumber, Row: to.Row, Col: to.Col, Facing: 5})
+	if &s.objects[0] != objects || s.npcs[0] != npcs {
+		t.Fatal("the scene was rebuilt")
+	}
+	if hero.cell != to || hero.dir != 5 || hero.walking || len(hero.path) > 0 {
+		t.Fatalf("hero at %v dir %d walking %v", hero.cell, hero.dir, hero.walking)
+	}
+	if e := s.game.Entities[s.party[0].Index]; e.Row != to.Row || e.Col != to.Col || s.game.Groups[0].Map != s.mapNumber {
+		t.Errorf("game hero at %d,%d", e.Row, e.Col)
+	}
+	if smith.cell == oldSmith || smith.dir != 5 || max(absInt(smith.cell.Row-to.Row), absInt(smith.cell.Col-to.Col)) > 12 {
+		t.Errorf("smith at %v dir %d, hero at %v", smith.cell, smith.dir, to)
+	}
+	if s.occ[oldHero] || s.occ[oldSmith] || !s.occ[to] || !s.occ[smith.cell] {
+		t.Error("occupancy not moved")
+	}
+}
+
+func absInt(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}

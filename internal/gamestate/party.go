@@ -148,18 +148,21 @@ const placeSlots = 6
 // from there, each trying the first 6 slots from slot rand()%6. A member
 // placed takes the arrival facing and drops its intents (+2 &= 0xF0).
 // Members left unplaced keep their cell (0, 0 after TakeExit: OnMap puts
-// them next to the group cell). take marks a cell occupied.
-func (g *Game) PlaceParty(t *resfmt.ExeTables, rng func(int) int, free func(r, c int) bool, take func(r, c int)) {
+// them next to the group cell). take marks a cell occupied. It returns the
+// entity indices of the members placed.
+func (g *Game) PlaceParty(t *resfmt.ExeTables, rng func(int) int, free func(r, c int) bool, take func(r, c int)) []int {
 	gr := g.Groups[0]
 	if gr.Count == 0 || gr.First < 0 || gr.First >= len(g.Entities) {
-		return
+		return nil
 	}
+	var placed []int
 	facing := int(int8(gr.Raw[0x0C]))
 	hero := &g.Entities[gr.First]
 	place := func(e *Entity, r, c int) {
 		e.Variant, e.Row, e.Col = facing, r, c
 		e.Flags2 &= 0xF0
 		take(r, c)
+		placed = append(placed, e.Index)
 	}
 	start := 0
 	if insideGrid(gr.Row, gr.Col) && free(gr.Row, gr.Col) {
@@ -193,6 +196,7 @@ func (g *Game) PlaceParty(t *resfmt.ExeTables, rng func(int) int, free func(r, c
 			d = (d + 1) % 8
 		}
 	}
+	return placed
 }
 
 // reviveScan is how many cells the revival's fallback search tries.

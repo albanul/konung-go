@@ -70,9 +70,8 @@ func (g *Game) ExitAt(m, row, col int) (MapExit, bool) {
 // only when the cell is free and spreads the party around it); the other
 // party members are placed around it too.
 func (g *Game) TakeExit(x MapExit) {
+	g.SetArrival(x)
 	gr := &g.Groups[0]
-	gr.Map, gr.Row, gr.Col = x.To, x.Row, x.Col
-	gr.Raw[0x0C] = byte(x.Facing)
 	for k := 0; k < gr.Count; k++ {
 		if i := gr.First + k; i >= 0 && i < len(g.Entities) {
 			e := &g.Entities[i]
@@ -82,6 +81,16 @@ func (g *Game) TakeExit(x MapExit) {
 			}
 		}
 	}
+}
+
+// SetArrival writes exit x's target to the party group: map +0x1B, the
+// arrival cell +0x08/+0x10 and facing +0x0C (0x00421CCD, 0x004106E0). The
+// members keep their cells; for a jump to the map the party is on, that is
+// all before the placement (0x004377A6 → 0x004118DC).
+func (g *Game) SetArrival(x MapExit) {
+	gr := &g.Groups[0]
+	gr.Map, gr.Row, gr.Col = x.To, x.Row, x.Col
+	gr.Raw[0x0C] = byte(x.Facing)
 }
 
 // ExitOpen is the gate check of the exit trigger (0x00421C82): exit i is

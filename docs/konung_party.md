@@ -72,7 +72,9 @@ The routine is called after an exit or a jump.
    * Eight directions, each starting at slot rand()%6 and trying the first 6 formation slots, relative to the group cell. The table parity is the group row & 1.
    * A placed member gets the arrival facing and `+2 &= 0xF0`.
 
-`gamestate.Game.PlaceParty`. When the scene is the same map, the routine first clears the members' occupant bits.
+`gamestate.Game.PlaceParty` (returns the members placed).
+
+**Same map** (an in-map teleport, or an orb or key to the current map; main loop `0x004377A6`): no leave cleanup and no load, so creatures, piles and objects stay as they are. `0x004118DC` first clears the occupant bits of the members that can act (alive, type not 3/9; `0x00411906`), then places as above. A placed member gets the arrival facing, `+0x08`/`+0x0A` and `+0x0C`/`+0x0E` = its cell, `+2 &= 0xF0`, `+0x13` = `0xFF`, and starts its idle action (`0x004143DC`, 0 in the stance, else 6; `0x00411A1D`–`0x00411AE8`). Port: `startScene.placeAgain`; it also stops a member left unplaced (no free formation cell), whose walk the original lets run. Test: `game.TestJumpToSameMap`.
 
 **Dead members stay behind.** The leave cleanup `0x00436AD0(map)` loops over all 200 groups from group 0 and runs while group 0 is still on the map it leaves: the exit (`0x00421CCD`) sets only the arrival cell and facing, and `0x004118DC` writes the new map to `+0x1B` after the load (`0x00411999`). So a dead party member is removed like any other dead character: its items are freed, the later members move down one slot and the count drops. Its body stays on the old map until the cleanup; it is not on the new one, and it can no longer be revived. Port: `Game.LeaveMap` (from group 0), called by `startScene.changeMap` before `TakeExit`; the selection and the window's character are renumbered.
 

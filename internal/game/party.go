@@ -603,6 +603,44 @@ func (s *startScene) revive(e *gamestate.Entity) bool {
 	return true
 }
 
+// placeAgain is the main loop's map change to the map the party is on
+// (0x004377A6): a teleport exit within the map, or an orb or key whose map
+// is the current one. There is no leave cleanup and no load, so creatures,
+// piles and objects stay as they are. The party group gets the arrival cell
+// and facing, then 0x004118DC frees the cells of the members that can act
+// (0x00411906) and places the party around the arrival cell. A placed
+// member stops and idles with the arrival facing; its +0x0C/+0x0E become
+// its cell (0x00411A1D–0x00411AE8). The port also stops members that are
+// left unplaced (no free formation cell), whose walk the original lets run.
+func (s *startScene) placeAgain(x gamestate.MapExit) {
+	if s.tables == nil {
+		return
+	}
+	s.storeWorld()
+	for _, m := range s.members {
+		if m != nil && alive(&m.walker, &s.party[m.k]) {
+			m.halt()
+			delete(s.occ, m.cell)
+		}
+	}
+	s.game.SetArrival(x)
+	free := func(r, c int) bool { return !s.blocked(mapdata.Cell{Row: r, Col: c}) }
+	take := func(r, c int) { s.occ[mapdata.Cell{Row: r, Col: c}] = true }
+	for _, i := range s.game.PlaceParty(s.tables, s.rng.IntN, free, take) {
+		m, e := s.partyMember(i)
+		if m == nil {
+			continue
+		}
+		*e = s.game.Entities[i]
+		m.cell = mapdata.Cell{Row: e.Row, Col: e.Col}
+		m.targetCell = m.cell
+		m.dir = mapdata.Direction(e.Variant & 7)
+		m.intent = e.Flags2
+		m.act, m.actStep = 0, 0
+		m.pickIntent, m.resumeSet = false, false // +2 &= 0xF0 drops the walk bit 0x08
+	}
+}
+
 // reviveAll is «Слова Воскрешения» (0x00414FFB): every dead character of
 // every group on this map is revived (0x00414B3C), the party first, then
 // the others in group order.

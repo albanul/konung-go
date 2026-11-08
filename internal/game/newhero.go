@@ -80,11 +80,32 @@ func newNewHeroScreen(path string, a *sceneAssets) (*newHeroScreen, error) {
 	return s, nil
 }
 
-// open is «Новая игра» (0x00437B91): a fresh template, no description.
+// open is «Новая игра» (0x00437B91): a fresh template, no description,
+// and the template's idle action (0x00437D2C).
 func (s *newHeroScreen) open() {
 	s.hero = gamestate.NewHeroTemplate()
 	s.text = -1
 	s.ok = false
+	s.idle()
+}
+
+// idle is 0x004143DC(hero, 0), the screen's only sound: the template
+// starts its idle action, which plays the hero's idle voice (model·8 +
+// 0x23) on rand() % 100 > 95. The hero is its own listener, so the voice
+// plays at full volume, centred (0x00439F4C, 0x00439EEC). It is called
+// when the screen opens and on every hero portrait click.
+func (s *newHeroScreen) idle() {
+	if sfx == nil {
+		return
+	}
+	if id := idleVoice(s.hero, sfx.rng.IntN); id != 0 {
+		sfx.play(id, 0, 0)
+	}
+}
+
+// idleVoice is the sound id of the template's idle action, 0 = none.
+func idleVoice(hero gamestate.Entity, rnd func(int) int) int {
+	return gamestate.ActionSound(hero, gamestate.ActIdle, true, rnd)
 }
 
 // hover shows the description of the hotspot under the mouse
@@ -107,6 +128,7 @@ func (s *newHeroScreen) click(hit int) (ok, cancel bool) {
 	case hit >= gamestate.NewHeroPortrait && hit < gamestate.NewHeroClass:
 		gamestate.SelectHero(e, newHeroModels[hit])
 		s.text = hit
+		s.idle() // 0x00437F62, 0x0043801C, 0x004380E1
 	case hit >= gamestate.NewHeroClass && hit < gamestate.NewHeroStat:
 		gamestate.SelectClass(e, newHeroClasses[hit-gamestate.NewHeroClass])
 		s.text = hit

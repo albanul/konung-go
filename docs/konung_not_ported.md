@@ -10,9 +10,7 @@ Reasons used below: **not traced** (the exe code has not been read), **presentat
 
 ### Misc items
 
-Ported: every case of `0x00414E64` ([misc items](konung_misc_items.md)). Left over:
-
-* An orb jump to the map the party is already on rebuilds the scene like a map exit; the original only re-places the party (`0x004118DC`).
+Ported: every case of `0x00414E64` ([misc items](konung_misc_items.md)), including a jump to the map the party is on (only the party is placed again, `0x004377A6`).
 
 ### Movement
 
@@ -25,7 +23,6 @@ All four films play, with the original's triggers, timing and skip key ([films](
 ### Screens
 
 * The 640×480 layouts (`INTR640R.RES`, `MENU640R.RES`, `NEWH640R.RES`, the 640 hotspot map): every screen runs at 800×600 (**presentation**).
-* Sounds on the hero-creation screen were not looked for.
 
 ## Approximations
 

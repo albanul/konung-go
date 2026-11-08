@@ -114,7 +114,10 @@ State 8 runs the start:
 * «Ok» is drawn pressed for one frame, then the game loads. The old scene is dropped when the hero dies or a new game starts. Without a running game, `Menu.world` is nil.
 * `cmd/map-render -game` still shows a `GAME.N` as stored, with only model, name and palette set (`Game.HeroModelFromGame`).
 
+## Sound (verified)
+
+The screen has one sound. `0x004143DC(hero, 0)` starts the template's idle action when the screen opens (`0x00437D2C`) and after each hero click (`0x00437F62`, `0x0043801C`, `0x004380E1`). Like any idle action of a human, it plays the hero's idle voice, model·8 + `0x23`, when `rand() % 100 > 95` (4 in 100). The hero is its own listener, so the voice plays at full volume, centred. No click sound: the state switch runs the hit test and the click case directly (`0x00437E86`). Port: `newHeroScreen.idle`; test `game.TestNewHeroIdleVoice`.
+
 ## Open questions
 
-* Sounds on this screen were not looked for.
 * The 640×480 layout is not ported (all screens run at 800×600).

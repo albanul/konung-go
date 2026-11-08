@@ -101,7 +101,7 @@ A negative row or column counts as blocked (the bounds helper `0x00447CAA` skips
 
 * `gamestate.World` (`Game.World`, set by the scene every frame to `sceneWorld`) gives the map-wide cases the hero's live record, the party copies, live cells, the death and loot (`Kill`), walk orders (`Walk`), cell tests, the enemy group and the map change (`Jump`). With no world (tests without one), cases 9, 13, 14–19, 21, 30, 33, 35, 37, 44, 52 and 53 refuse.
 * The shovel asks the scene to close the window (`Game.CloseWindow`; the bag strip stays). The jump orb and the words keep their request fields `OpenMap` and `ReviveAll`.
-* A map change by an orb to the map the party is on rebuilds the scene like a map exit (`changeMap`). The original only re-places the party in that case (`0x004118DC`).
+* An orb or key to the map the party is on only places the party again, like the original (`startScene.placeAgain`, [party](konung_party.md#placement-after-a-map-change-0x004118dc-verified)).
 
 Validation: `gamestate.TestMiscTablesMatchExe` reads the jump table, the types without a use and the bound, the orbs' and keys' `push` arguments and compares, and the amulet compares from `konung.exe`. `TestUseMiscBooks`, `TestUseMiscCombine`, `TestUseMiscSelf`, `TestUseMiscMapWide` (magnet, doll, lamp, keys, orb, mirror), `TestUseMiscWhistle`, `TestUseMiscNoUse` and `TestFleeOffset` cover the behaviour through a fake `World`. In the scene, `game.TestMagicOrbJumps` (orb 18 → `KONUNG.3` at (141, 54), orb kept) and `TestShovelClosesWindow` run the real thing.
 
