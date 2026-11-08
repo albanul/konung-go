@@ -147,7 +147,8 @@ func (s *startScene) villagerTick(n *npc) {
 		return
 	}
 	if !e.InStance() {
-		s.game.ReEquip(e) // 0x004105A0
+		s.game.ReEquip(e, s.tables) // 0x004105A0
+		s.aiBudget--                // it counts a path search (0x00A3E720)
 		gamestate.EnterStance(e)
 		n.look = lookOf(*e)
 		return

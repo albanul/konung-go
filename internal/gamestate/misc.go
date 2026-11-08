@@ -317,10 +317,7 @@ func (g *Game) UseMisc(e *Entity, t *resfmt.ExeTables, target, item int) (bool, 
 	case target != 0 && !used:
 		BagInsert(e, item)
 	case used:
-		if k := slices.Index(e.Bag[:], item); k >= 0 {
-			copy(e.Bag[k:], e.Bag[k+1:])
-			e.Bag[len(e.Bag)-1] = 0
-		}
+		bagRemove(e, item)
 	}
 	g.sound(SoundUse)
 	return true, msg

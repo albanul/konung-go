@@ -3,6 +3,7 @@ package gamestate
 import (
 	"encoding/binary"
 	"math"
+	"slices"
 
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/resfmt"
@@ -209,25 +210,51 @@ func (g *Game) KillByArrow(shooter, victim *Entity, t *resfmt.ExeTables) int {
 	return xp
 }
 
-// ReEquip is the part of 0x004105A0 the port follows: an empty quiver takes
-// the first arrows (category 12) from the bag, and the active weapon becomes
-// the bow with bow and arrows, else the axe/club when one is worn, else the
-// blade. (The game also equips the best bag gear via 0x004104D4, not traced.)
-func (g *Game) ReEquip(e *Entity) {
-	if e.Quiver == 0 {
-		for k, i := range e.Bag {
-			if it, ok := g.Item(i); ok && it.Category == CatArrows {
-				e.Quiver, e.Bag[k] = i, 0
-				break
+// ReEquip is 0x004105A0, run by the AI before a man enters the stance:
+//   - an empty quiver takes the first arrows (category 12) in the bag that e
+//     can use (CanUse);
+//   - every empty equipment slot, in the order axe, bow, armour, helmet,
+//     shield, blade, takes the first usable bag item of its category
+//     (0x004104D4, which picks the first, not the best);
+//   - the active weapon becomes the bow with bow and arrows, else the
+//     axe/club when one is worn, else the blade.
+//
+// Items taken from the bag leave it, the rest shifting left (0x00421D24).
+// The routine also counts one path search (0x00A3E720); the caller charges
+// its budget.
+func (g *Game) ReEquip(e *Entity, t *resfmt.ExeTables) {
+	takeFirst := func(cat int) int {
+		for _, i := range e.Bag {
+			if it, ok := g.Item(i); ok && i != 0 && it.Category == cat && g.CanUse(*e, t, it) {
+				bagRemove(e, i)
+				return i
 			}
+		}
+		return 0
+	}
+	if e.Quiver == 0 {
+		e.Quiver = takeFirst(CatArrows)
+	}
+	for _, slot := range []int{WeaponAxe, WeaponBow, EquipArmour, EquipHelmet, EquipShield, WeaponBlade} {
+		if e.Equipment[slot] == 0 {
+			e.Equipment[slot] = takeFirst(slot) // categories 0–5 are the slots
 		}
 	}
 	switch {
-	case CanShoot(Entity{WeaponMode: WeaponBow, Equipment: e.Equipment, Quiver: e.Quiver}):
+	case e.Quiver != 0 && e.Equipment[WeaponBow] != 0:
 		e.WeaponMode = WeaponBow
 	case e.Equipment[WeaponAxe] != 0:
 		e.WeaponMode = WeaponAxe
 	default:
 		e.WeaponMode = WeaponBlade
+	}
+}
+
+// bagRemove is 0x00421D24: item leaves e's bag, the items after it
+// shifting left.
+func bagRemove(e *Entity, item int) {
+	if k := slices.Index(e.Bag[:], item); k >= 0 {
+		copy(e.Bag[k:], e.Bag[k+1:])
+		e.Bag[len(e.Bag)-1] = 0
 	}
 }

@@ -143,7 +143,7 @@ A bow shot spawns a **projectile**. The hit is decided by what the arrow flies i
     The arrow is removed in every case. **Friendly fire exists.**
   * Otherwise it moves on.
 * **Drawing** (`0x00426D90`): INTR image slot `+0x1C` + (game time & 1) (slots 184–199: two frames per facing; 32×6, 29×17, 6×23), at the position plus the sprite offset, depth y + 0x5E. Incendiary arrows (special `+0x1E` = 0) are drawn over a glow: the 64×64 map of `LIGHTS.RES` `+0` (`0x005B0010`) blended by `0x0043DE4D` (yellow brightening, as the [loot highlight](konung_potions.md#loot-highlight-0x00a3e758)) with its top-left at the position − 32 (floats at `0x00450224`/`0x00450228`), in both arrow draw paths (`0x00426F5C`, `0x00427489`). Port: `startScene.drawArrows`, `resfmt.ArrowGlow`.
-* **Bandits and alarmed villagers** (`0x004130EE`, `0x00416F65`): first `0x004105A0` re-equips (quiver from the bag, best gear; slot `+0x12` = 1 with bow and arrows, else 0 with an axe, else 2) and enters the stance. Then they shoot via `0x00410E84` if possible, else go for the nearest in melee. The test is the gear (a bow equipped and arrows in the quiver), not the active weapon (`gamestate.HasBow`); the bow becomes active before each shot test, and a failed test falls back to melee with the axe/club or the blade (fists without one). They only shoot when they decide while idle, at a grid distance of at least 3 and within the bow's reach (range·32 px: about 6 cells sideways, 24 rows up or down). A shooter already walking into melee does not shoot until it stops again.
+* **Bandits and alarmed villagers** (`0x004130EE`, `0x00416F65`): first `0x004105A0` re-equips: an empty quiver takes the first usable arrows in the bag; each empty slot, in the order axe, bow, armour, helmet, shield, blade, takes the first usable bag item of its category (`0x004104D4`: the first, not the best; usable = `0x00418364`); taken items leave the bag, which closes up (`0x00421D24`); `+0x12` = 1 with bow and arrows, else 0 with an axe, else 2. It also counts one path search (`0x00A3E720`). Port: `Game.ReEquip` (test `TestReEquip`); the callers charge `aiBudget` and enters the stance. Then they shoot via `0x00410E84` if possible, else go for the nearest in melee. The test is the gear (a bow equipped and arrows in the quiver), not the active weapon (`gamestate.HasBow`); the bow becomes active before each shot test, and a failed test falls back to melee with the axe/club or the blade (fists without one). They only shoot when they decide while idle, at a grid distance of at least 3 and within the bow's reach (range·32 px: about 6 cells sideways, 24 rows up or down). A shooter already walking into melee does not shoot until it stops again.
 * Arrows are not recoverable. Slayer specials 1–11: оборотень 5000 (kind 85), муравьи 500 (65), ичетик 3000 (70), пауки 2000 (77), червяки 3000 (78), морок 3500 (73), омутник 4000 (75), скелеты 4000 (76), нави 4000 (74), мертвяк 4500 (69), моховик 5000 (72); special 0 = incendiary.
 
 ## Loot (verified)
@@ -264,13 +264,11 @@ Approximations:
 * Characters entering the stance move to the stance animation set (type − 6, `gamestate.EnterStance`); calmed villagers leave it (`LeaveStance`).
 * A chasing creature re-plans its whole path when the target moves (the game patches one step).
 * Arrow points use the nearest cell centre instead of `0x00439BDC`.
-* `ReEquip` does not equip the best bag gear (`0x004104D4`).
 * A respawned member's untouched fields start empty instead of stale.
 
 Not ported:
 * the films `GAMEOVER.FLM` (hero death) and `DEFEAT<map>.FLM` (village surrender), played by `0x0042B690`: the files are not installed. The port returns to the menu after 2 s and shows nothing on a surrender;
-* the walk extras (`+0x11` throttle, the `0x4D`/`0x4F` pauses), see [creature AI](#creature-ai-verified);
-* picking the best bag gear on re-equip (`0x004104D4`, not traced).
+* the walk extras (`+0x11` throttle, the `0x4D`/`0x4F` pauses), see [creature AI](#creature-ai-verified).
 
 HP is regained through [potions](konung_potions.md) and the healer's dialogue scripts 334/335 ([dialogues](konung_dialogue.md)); the raise buttons are in the [character window](konung_character_window.md#raise-column-verified). See [not ported](konung_not_ported.md) for the whole list.
 
@@ -286,6 +284,6 @@ Port: `Game.GodMode`, set every frame from the session switch `game.godMode`, wh
 
 ## Open questions
 
-* Grid bits `0xC000` (obstacle kinds); `0x004104D4` (equip best). (`0x00418364`, usable, is `Game.CanUse`, [character window](konung_character_window.md).)
+* Grid bits `0xC000` (obstacle kinds). (`0x00418364`, usable, is `Game.CanUse`, [character window](konung_character_window.md).)
 * Field `+0x11` (walk throttle), `+0x14`.
 * Films `GAMEOVER.FLM`, `DEFEAT<n>.FLM` (`0x0042B690`), not in the installed files.

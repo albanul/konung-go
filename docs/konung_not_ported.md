@@ -22,12 +22,6 @@ Party play is ported ([party](konung_party.md)): every member walks, follows, fi
 
 **Not traced.** The game's walk code (speed, path rules, direction choice) is reimplemented: A* on the fine grid (`mapdata/finegrid.go`), 10 animation steps/s. Also missing: the per-entity walk throttle `+0x11` (ticks where `time & m == m`) and the random pauses of creature kinds `0x4D`/`0x4F` ([combat: creature AI](konung_combat.md#creature-ai-verified)).
 
-### Combat leftovers
-
-See [combat: port](konung_combat.md#port).
-
-* Equipping the best bag gear on re-equip (`0x004104D4`, not traced; `ReEquip` takes the quiver only).
-
 ### Films and voices (missing files)
 
 * `GAMEOVER.FLM` (hero death, `0x004376A8`), `DEFEAT<map>.FLM` (village surrender), `WIN.FLM` (the index-0 script pile, below), all through `0x0042B690`. No `.FLM` file is installed, and the format is unknown. The port returns to the menu 2 s after the hero's death and shows nothing else.

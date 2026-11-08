@@ -439,3 +439,67 @@ func TestGodMode(t *testing.T) {
 		t.Skip("the test item has no requirement a weak hero misses")
 	}
 }
+
+// TestReEquip: 0x004105A0 fills the quiver and every empty slot with the
+// first usable bag item of its category (0x004104D4), the bag closing up,
+// then picks the bow when bow and arrows are there.
+func TestReEquip(t *testing.T) {
+	tb := exeTables(t)
+	g, _, _, item := miscGame(t)
+	e := &g.Entities[500]
+	e.Equipment, e.Quiver, e.Bag = [6]int{}, 0, [32]int{}
+	e.Enchants = [2]int{-1, -1}
+	e.BaseStats, e.Stats, e.Level = [4]int{200, 200, 200, 200}, [4]int{200, 200, 200, 200}, 20
+	herb := item(CatHerb, 1)
+	blade1, blade2 := item(CatBlade, 0), item(CatBlade, 1)
+	armour, arrows, bow := item(CatArmour, 0x22), item(CatArrows, 0), item(CatBow, 6)
+	e.Bag[0], e.Bag[1], e.Bag[2], e.Bag[3], e.Bag[4], e.Bag[5] = herb, blade1, blade2, armour, arrows, bow
+	usable := func(i int) bool { it, _ := g.Item(i); return g.CanUse(*e, tb, it) }
+	wantBlade := blade1
+	if !usable(blade1) {
+		wantBlade = blade2
+	}
+	keepBow, keepArrows := usable(bow), usable(arrows)
+	g.ReEquip(e, tb)
+	if e.Equipment[WeaponBlade] != wantBlade || e.Equipment[EquipArmour] != armour && usable(armour) {
+		t.Errorf("equipment %v, want blade %d armour %d", e.Equipment, wantBlade, armour)
+	}
+	if keepBow && e.Equipment[WeaponBow] != bow || keepArrows && e.Quiver != arrows {
+		t.Errorf("bow %d quiver %d", e.Equipment[WeaponBow], e.Quiver)
+	}
+	if keepBow && keepArrows && e.WeaponMode != WeaponBow {
+		t.Errorf("weapon mode %d with bow and arrows", e.WeaponMode)
+	}
+	if e.Bag[0] != herb || e.Bag[1] == 0 && slices.ContainsFunc(e.Bag[2:], func(v int) bool { return v != 0 }) {
+		t.Errorf("bag did not close up: %v", e.Bag[:6])
+	}
+	// A worn item is kept; with nothing for the bow slot the axe or blade is active.
+	e2 := &g.Entities[501]
+	axe := item(CatAxe, 0)
+	e2.Equipment, e2.Quiver, e2.Bag = [6]int{axe}, 0, [32]int{}
+	g.ReEquip(e2, tb)
+	if e2.Equipment[WeaponAxe] != axe || e2.WeaponMode != WeaponAxe {
+		t.Errorf("axe wearer: %v mode %d", e2.Equipment, e2.WeaponMode)
+	}
+	// A weak character skips a blade it can't use and takes the next.
+	heavy, light := -1, -1
+	for typ := range 64 {
+		if _, min := tb.GearRequirement(typ); min > 1 && heavy < 0 {
+			heavy = typ
+		} else if min == 0 && light < 0 {
+			light = typ
+		}
+	}
+	if heavy < 0 || light < 0 {
+		t.Fatalf("gear types: heavy %d light %d", heavy, light)
+	}
+	w := &g.Entities[502]
+	w.Equipment, w.Quiver, w.Bag, w.Enchants = [6]int{}, 0, [32]int{}, [2]int{-1, -1}
+	w.BaseStats, w.Stats = [4]int{1, 1, 1, 1}, [4]int{1, 1, 1, 1}
+	hb, lb := item(CatBlade, heavy), item(CatBlade, light)
+	w.Bag[0], w.Bag[1] = hb, lb
+	g.ReEquip(w, tb)
+	if w.Equipment[WeaponBlade] != lb || w.Bag[0] != hb || w.Bag[1] != 0 {
+		t.Errorf("weak: blade %d (want %d), bag %v", w.Equipment[WeaponBlade], lb, w.Bag[:2])
+	}
+}

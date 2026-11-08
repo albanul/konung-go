@@ -453,8 +453,9 @@ func (s *startScene) creatureDecide(n *npc, e *gamestate.Entity, g *gamestate.Gr
 			}
 		case gamestate.TacticNearest:
 			if !e.Animated() && !e.InStance() {
-				s.game.ReEquip(e)        // 0x004105A0
-				gamestate.EnterStance(e) // humanoids take the stance first (0x00413108)
+				s.game.ReEquip(e, s.tables) // 0x004105A0
+				s.aiBudget--                // it counts a path search (0x00A3E720)
+				gamestate.EnterStance(e)    // humanoids take the stance first (0x00413108)
 				n.look = lookOf(*e)
 				return
 			}
