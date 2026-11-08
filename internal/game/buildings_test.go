@@ -116,3 +116,50 @@ func TestArrowsSetBuildingOnFire(t *testing.T) {
 		t.Errorf("not burning after the pass: %v", b)
 	}
 }
+
+// TestAnimatedObjects: on KONUNG.42 the cracked ground, the waterfall and
+// the pit cycle their variants, one step per game tick (0x0042480C); still
+// objects keep their one frame.
+func TestAnimatedObjects(t *testing.T) {
+	v := newVolkScene(t)
+	s, err := v.assets.buildScene(v.game, 42, v, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var anim []*sceneObject
+	for i := range s.objects {
+		o := &s.objects[i]
+		switch {
+		case o.period > 0:
+			if len(o.frames) < 2 || o.counter != o.period || o.variant >= len(o.frames) {
+				t.Fatalf("placement %d: %d frames, variant %d, counter %d/%d", o.placement, len(o.frames), o.variant, o.counter, o.period)
+			}
+			anim = append(anim, o)
+		case len(o.frames) != 1 || o.counter != 0:
+			t.Fatalf("still placement %d has %d frames", o.placement, len(o.frames))
+		}
+	}
+	if len(anim) != 11 {
+		t.Fatalf("%d animated objects, want 11", len(anim))
+	}
+	o := anim[0]
+	start, period := o.variant, o.period
+	for range period - 1 {
+		s.animateObjects()
+	}
+	if o.variant != start {
+		t.Fatalf("variant changed after %d ticks", period-1)
+	}
+	s.animateObjects()
+	if o.variant != (start+1)%len(o.frames) || o.counter != period {
+		t.Errorf("after %d ticks: variant %d (from %d), counter %d", period, o.variant, start, o.counter)
+	}
+	// The step runs in the game tick.
+	before := o.counter
+	for range walkTicksPerStep {
+		s.step()
+	}
+	if o.counter == before {
+		t.Error("a game tick did not step the animation")
+	}
+}

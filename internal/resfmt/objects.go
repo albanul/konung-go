@@ -124,6 +124,11 @@ type MapObject struct {
 	// Flames are drawn over the object (0x0042708D); header +8 is their
 	// count, entries of 5 bytes from +0x1C: type, dx, dy (int16).
 	Flames []Flame
+	// Variants is header +0x0C, the number of variants an animated object
+	// cycles through. Period is header +0x18: when > 0 the object is
+	// animated, starting at a random variant and showing each one for Period
+	// game ticks (loader 0x0043CC5E, step 0x0042480C; mapdata.StepObject).
+	Variants, Period int
 }
 
 // MapObjectSlot converts a KONUNG.N section-3 object ID to the 0-based
@@ -169,7 +174,8 @@ func LoadMapObject(objects, graph []byte, slot, variant int, paletteOffset uint3
 		return nil, fmt.Errorf("decode OBJECTS.RES slot %d image: %w", slot, err)
 	}
 	word := func(off int) int { return int(int16(binary.LittleEndian.Uint16(hdr[off+variant*8:]))) }
-	obj := &MapObject{Image: img, ImageDX: word(0xC4), ImageDY: word(0xC6), ShadowDX: word(0xC0), ShadowDY: word(0xC2)}
+	obj := &MapObject{Image: img, ImageDX: word(0xC4), ImageDY: word(0xC6), ShadowDX: word(0xC0), ShadowDY: word(0xC2),
+		Variants: int(int32(binary.LittleEndian.Uint32(hdr[0x0C:]))), Period: int(int32(binary.LittleEndian.Uint32(hdr[0x18:])))}
 	// The draw pass at 0x004268C3 skips the shadow when its offset is -1 or the
 	// header dword at +8 is >= 2.
 	nFlames := int(int32(binary.LittleEndian.Uint32(hdr[8:])))

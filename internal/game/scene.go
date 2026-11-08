@@ -43,17 +43,28 @@ type sceneObject struct {
 	// (0x00A3E6A4), the line of fire and the arrows (0x0043F89C); nil for
 	// other objects.
 	building *image.RGBA
-	frames   []sceneFrame
-	phase    int // step offset so neighbours don't animate in lockstep
-	depth    int // bottom-edge sort key (from the first step)
-	flames   []flame
+	// frames holds one frame per variant: one for a still object, the
+	// header's variant count for an animated one (mapdata.ObjectVariantSprites).
+	frames []sceneFrame
+	// variant and counter are placement +0x23 and +0x1C; period is header
+	// +0x18 (mapdata.StartObject, mapdata.StepObject).
+	variant, counter, period int
+	// depth is the bottom-edge sort key of variant 0. The variants of every
+	// placed animated object have the same size and offsets, so the order
+	// does not change as they cycle.
+	depth  int
+	flames []flame
 }
 
-func (o *sceneObject) frame(tick int) *sceneFrame {
-	if len(o.frames) == 1 {
-		return &o.frames[0]
+func (o *sceneObject) frame() *sceneFrame { return &o.frames[o.variant] }
+
+// animateObjects is 0x0042480C, once per game tick after the AI: every
+// animated object counts down and shows its next variant.
+func (s *startScene) animateObjects() {
+	for i := range s.objects {
+		o := &s.objects[i]
+		o.variant, o.counter = mapdata.StepObject(o.variant, o.counter, len(o.frames), o.period)
 	}
-	return &o.frames[(tick/ticksPerStep+o.phase)%len(o.frames)]
 }
 
 type startScene struct {
@@ -1184,6 +1195,7 @@ func (s *startScene) step() {
 	if s.tick%walkTicksPerStep == 0 {
 		s.activatePiles()
 		s.combatTick()
+		s.animateObjects()
 	}
 	s.updateNPCs()
 }
@@ -1293,7 +1305,7 @@ func (s *startScene) drawWorld(screen *ebiten.Image) ([]sceneFrame, []int) {
 		}
 	}
 	for i := range s.objects {
-		drawShadow(s.objects[i].frame(s.tick))
+		drawShadow(s.objects[i].frame())
 	}
 	// Characters move, so they are depth-sorted each frame and merged into
 	// the static objects' order.
@@ -1355,7 +1367,7 @@ func (s *startScene) drawWorld(screen *ebiten.Image) ([]sceneFrame, []int) {
 			drawFrame(&chars[ci])
 			ci++
 		}
-		drawFrame(s.objects[i].frame(s.tick))
+		drawFrame(s.objects[i].frame())
 		s.drawFlames(screen, &s.objects[i], advanceFlames)
 	}
 	for ; ci < len(chars); ci++ {

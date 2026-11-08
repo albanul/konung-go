@@ -44,15 +44,32 @@ func (s *startScene) placeObjects(placements []mapdata.Placement, where string, 
 	}
 	sorted := mapdata.DrawOrder(placements, objs)
 	var out []sceneObject
-	for i, sp := range mapdata.ObjectSprites(sorted) {
+	frame := func(sp mapdata.Sprite) sceneFrame {
 		img, sh := upload(sp.Image, sp.Shadow)
-		out = append(out, sceneObject{
+		return sceneFrame{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY, raw: sp.Raw}
+	}
+	for i, sp := range mapdata.ObjectSprites(sorted) {
+		o := sceneObject{
 			placement: sorted[i].Index,
 			building:  buildingImage(sorted[i]),
-			frames:    []sceneFrame{{img: img, shadow: sh, x: sp.X, y: sp.Y, sx: sp.SX, sy: sp.SY, raw: sp.Raw}},
+			frames:    []sceneFrame{frame(sp)},
 			depth:     sp.Depth,
 			flames:    s.newFlames(sp.Flames),
-		})
+		}
+		// Animated objects (0x0043CC5E): every variant, a random start.
+		variants, err := mapdata.ObjectVariantSprites(sorted[i], s.assets.objects, s.assets.graph)
+		if err != nil {
+			log.Printf("%s: %v", where, err)
+		}
+		if len(variants) > 1 {
+			o.frames = o.frames[:0]
+			for _, v := range variants {
+				o.frames = append(o.frames, frame(v))
+			}
+			o.variant, o.counter = mapdata.StartObject(sorted[i].Object, s.rng.IntN)
+			o.period = sorted[i].Object.Period
+		}
+		out = append(out, o)
 	}
 	return out
 }

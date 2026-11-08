@@ -115,7 +115,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x006324B8`, `0x00632500`, `0x0083BAB8`, `0x00A3E6C4` | buffers | `MUSICS.RES` table (9 × offset, size); `SOUNDS.RES` table (1000 × offset, size); loaded sound pointers; music data | [sound](konung_sound.md) |
 | `0x0042A664`, `0x00439F4C`, `0x00439EEC`, `0x004143DC` | routines | Play a sound (id, volume, pan, loop); volume by distance from the hero; pan by column; start an action animation and its sound | [sound](konung_sound.md) |
 | `0x0042A474`, `0x00429A98`, `0x0042A420`, `0x00438E04`, `0x0043D1D0` | routines | Play music track; next track when it ends; music volume; `MUSICS.RES` load and first track; per-map sound loading queue | [sound](konung_sound.md#music) |
-| `0x004376F4`, `0x0042A9C4`, `0x00A4E368` | code, routine, data | Ambient sound roll; `SPEECHS.RES` voice player; the three wave formats (22050/19050/25050 Hz) | [sound](konung_sound.md) |
+| `0x004376F4`, `0x0042A9C4`, `0x00A4E368` | code, routine, data | Ambient sound roll; `SPEECHS.RES` voice player (file never shipped: plays nothing); the three wave formats (22050/19050/25050 Hz) | [sound](konung_sound.md) |
 | `0x00A3E6BC` | global | Pointer to the T1 image data | GRAPH loader |
 | `0x00627FD8` | buffer | `KONUNG.N` terrain section (`0x6400`) | [map format](konung_map_format.md) |
 | `0x00828378` | buffer | `KONUNG.N` section 2: flat decorations (16-byte records); count at `0x00A3E7F8` | [map format](konung_map_format.md) |
@@ -123,6 +123,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00780DDC` | buffer | Static `OBJECTS.RES` headers, `0x100` bytes per map object ID (slot − 30) | [map format](konung_map_format.md) |
 | `0x00425A95` | routine | Decoration draw loop (after terrain) | [map format](konung_map_format.md) |
 | `0x00426833` | routine | Object shadow pass + depth bucketing | [map format](konung_map_format.md) |
+| `0x0042480C`, `0x0043CC5E` | routine, code | Animated map objects: per-tick variant step; the loader's random start variant and counter | [map format](konung_map_format.md#animated-objects-verified) |
 | `0x0043D3D8` | routine | Shadow RLE → per-row span list | [map format](konung_map_format.md) |
 | `0x0043E5DF` | routine | Apply shadow spans: halve RGB once per pixel | [map format](konung_map_format.md) |
 | `0x0043BB6C` | routine | `GAME.N` loader (6 sections) | [GAME.N](konung_game_format.md) |
@@ -169,7 +170,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x004290AC`, `0x0042DBBC` | routines | Press a HUD button for one loop pass; window draw dispatcher (table `0x0042F4C8`, index = arg + 1) | [interface](konung_interface_res.md) |
 | `0x00422C01`, `0x00436EB9`, `0x0042F491`, `0x00428698`, `0x00439A28`, `0x00422AD8`, `0x004153B0`, `0x00414E95` | routines, code | Map button (HUD hotspot 3) and M key; window 5 (map) case of `0x0042DBBC` (tiles the view); map window draw; map region hit test; travel by orb; misc type 20 opens the map; misc type 0 reveals a random location | [world map](konung_world_map.md) |
 | `0x0046280C`, `0x00456A7C`, `0x00450F1C`, `0x0045AE90`, `0x00A3E0A8` | tables, global | Map window area per video mode; region row offsets; region runs; regions misc type 0 never picks; known-map flags | [world map](konung_world_map.md#exe-tables-dgroup) |
-| `0x0043A5AA`, `0x0062F3D8`, `0x0083E090`, `0x0042D72D` | routine, buffers, code | `FACES<width>.RES` loader (not installed); its 540-entry table; its images; the companion portrait draw that uses them | [interface](konung_interface_res.md#hired-faces-faceswidthres-missing-file) |
+| `0x0043A5AA`, `0x0062F3D8`, `0x0083E090`, `0x0042D72D` | routine, buffers, code | `FACES<width>.RES` loader (file never shipped, so unused); its 540-entry table; its images; the companion portrait draw that uses them | [interface](konung_interface_res.md#hired-faces-faceswidthres-never-shipped) |
 | `0x004104D4` | routine | Equip the first usable bag item of a slot's category when the slot is empty (re-equip `0x004105A0`) | [combat](konung_combat.md#bows-verified) |
 | `0x00A3E768`, `0x00436E7F`, `0x0043A3DC` | global, routines | God mode; its toggle (Ctrl+Shift+L); startup init that clears it | [combat](konung_combat.md#god-mode-0x00a3e768) |
 | `0x004106E0`, `0x00410010`, `0x004101E4`, `0x0041BABC` | routines | Jump: pending map change `0x00A3E810` = −map, party row/col/facing (orbs, keys); join two amulet parts; flight offset (whistle, kind `0x49`); identify all of an entity's items | [misc items](konung_misc_items.md) |

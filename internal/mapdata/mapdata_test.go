@@ -2,6 +2,7 @@ package mapdata
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -242,5 +243,66 @@ func TestGraphTerrainBlockEnd(t *testing.T) {
 	size := int(binary.LittleEndian.Uint32(graph[graphTileBlock+4:]))
 	if end := graphTileBlock + 8 + 0x1000 + size; end != resfmt.Type0BlockStart {
 		t.Fatalf("terrain block ends at %#x, Type 0 blocks start at %#x", end, resfmt.Type0BlockStart)
+	}
+}
+
+// TestObjectAnimation: 0x0042480C shows each variant for period ticks and
+// wraps; KONUNG.42's cracked ground (slot 372, 2 variants, period 9) has
+// two variant sprites at the same place and size.
+func TestObjectAnimation(t *testing.T) {
+	v, c := 1, 3
+	var seen []int
+	for range 9 {
+		v, c = StepObject(v, c, 3, 3)
+		seen = append(seen, v)
+	}
+	if want := []int{1, 1, 2, 2, 2, 0, 0, 0, 1}; fmt.Sprint(seen) != fmt.Sprint(want) {
+		t.Errorf("variants %v, want %v", seen, want)
+	}
+	if v, c := StepObject(0, 0, 3, 3); v != 0 || c != 0 {
+		t.Errorf("a still object changed: %d %d", v, c)
+	}
+
+	dir := "../../assets/Konung/"
+	data, err1 := os.ReadFile(dir + "KONUNG.42")
+	objects, err2 := os.ReadFile(dir + "OBJECTS.RES")
+	graph, err3 := os.ReadFile(dir + "GRAPH.RES")
+	if err1 != nil || err2 != nil || err3 != nil {
+		t.Skip("assets missing")
+	}
+	placements, err := ParsePlacements(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objs, _ := LoadPlacedObjects(placements, objects, graph)
+	animated := map[int]int{}
+	for _, p := range DrawOrder(placements, objs) {
+		sprites, err := ObjectVariantSprites(p, objects, graph)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sprites == nil {
+			if p.Object.Period > 0 {
+				t.Errorf("object %d: period %d but no variants", p.ID, p.Object.Period)
+			}
+			continue
+		}
+		animated[resfmt.MapObjectSlot(p.ID)]++
+		if len(sprites) != p.Object.Variants {
+			t.Fatalf("object %d: %d sprites, want %d", p.ID, len(sprites), p.Object.Variants)
+		}
+		for _, sp := range sprites[1:] {
+			if sp.X != sprites[0].X || sp.Y != sprites[0].Y || sp.Depth != sprites[0].Depth || sp.Image == sprites[0].Image {
+				t.Errorf("object %d: variant moved or repeated", p.ID)
+			}
+		}
+		if p.Object.Variants == 2 && p.Object.Period == 9 {
+			if v, c := StartObject(p.Object, func(n int) int { return n - 1 }); v != 1 || c != 9 {
+				t.Errorf("start %d %d, want 1 9", v, c)
+			}
+		}
+	}
+	if animated[372] != 6 || animated[373] != 4 || animated[385] != 1 {
+		t.Errorf("animated placements %v, want 372:6 373:4 385:1", animated)
 	}
 }

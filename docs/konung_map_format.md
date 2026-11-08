@@ -87,11 +87,11 @@ Loader `0x0043CB98`; shadow pass and depth bucketing `0x00426833`–`0x00426B78`
 | `+0x00` | `int32` | Object ID. `OBJECTS.RES` 0-based slot = ID + `0x1E` (always a static entry). The loader replaces it with a pointer to the object's 0x100-byte header (`0x00780DDC + ID*0x100`). |
 | `+0x04` | `uint32` | Palette byte offset override; `0` → header `+0x14` |
 | `+0x08` | 20 bytes | runtime flame frame counters, one int8 per flame of the object (zero / `0xFF` in files; set by the loader, [flames](konung_flames.md)) |
-| `+0x1C` | `uint16` | runtime (animation counter, set from header `+0x18`) |
+| `+0x1C` | `uint16` | runtime animation counter: header `+0x18`, or 0 for a still object ([animated objects](#animated-objects-verified)) |
 | `+0x1E` | `uint16` | fine-grid column → replaced by world x |
 | `+0x20` | `uint16` | fine-grid row → replaced by world y |
 | `+0x22` | byte | flags: `0x08` raises the depth baseline by h/4; `0x80` runtime |
-| `+0x23` | byte | variant/frame. The loader sets it to 0, or to `rand() % header[+0x0C]` when header `+0x18` > 0. |
+| `+0x23` | byte | variant shown. The loader sets it to 0, or to `rand() % header[+0x0C]` when header `+0x18` > 0 (0 when `+0x0C` < 2); the animation step advances it. |
 
 Position (loader `0x0043CC0B`), on the same 160 × 320 fine grid as section 1:
 
@@ -111,13 +111,23 @@ Per variant `f` (0–7), 8-byte entries:
 | `+0x04` | data size in file; replaced at runtime by a pointer to the data after the header |
 | `+0x08` | flame count N; N ≥ 2: no shadow and the raw palette ([flames](konung_flames.md), [day and night](konung_daylight.md)) |
 | `+0x1C + 5i` | flame i: type (int8), dx, dy (int16) |
-| `+0x0C` | variant count (random variant pick) |
+| `+0x0C` | variant count of an animated object |
 | `+0x14` | default palette byte offset |
-| `+0x18` | > 0 enables animation / random variant |
+| `+0x18` | animation period in game ticks; > 0 = animated (random start variant, then cycling) |
 | `+0x80 + 8f` | shadow image offset (relative to the data after the header); −1 = none |
 | `+0x84 + 8f` | image offset; variant 0 is typically 0, so the image sits right after the header |
 | `+0xC0 + 8f`, `+0xC2 + 8f` | shadow dx, dy (`int16`) added to the placement position |
 | `+0xC4 + 8f`, `+0xC6 + 8f` | image dx, dy (`int16`) |
+
+### Animated objects (verified)
+
+Map loader `0x0043CC5E`: when header `+0x18` > 0, the placement's variant `+0x23` = `rand() % +0x0C` (0 if `+0x0C` < 2) and its counter `+0x1C` = `+0x18`; otherwise both are 0.
+
+Step `0x0042480C`, once per game tick in the main loop (`0x00437859`/`0x0043788D`, after the AI dispatcher `0x00421DA4`, before `0x0041D0FC`), for every placement whose counter is non-zero: at 1 the variant advances, wraps to 0 when it reaches `+0x0C`, and the counter restarts at `+0x18`; otherwise the counter counts down. Each variant shows for `+0x18` ticks. The object pass reads the variant's shadow, offsets and image through `+0x23` (`0x004268B1`, `0x00426A30`).
+
+Six objects are animated (slot: variants, period): 371: 3, 3 (a cave mouth whose inside glows orange; 2 flames, self-lit); 372: 2, 9 (cracked ground with glowing red cracks); 373: 4, 4 (a waterfall); 385: 2, 9 (a small pit with sparks; 1 flame); 481: 6, 9 and 482: 5, 9 (unplaced). Placed only on maps 39–50, about 60 times, mostly 372. The descriptions come from looking at the images. In the placed four, every variant has the same size and offsets, so the depth order never changes; 481/482 differ by a pixel.
+
+Port: `resfmt.MapObject.Variants`/`Period`, `mapdata.ObjectVariantSprites` (one sprite per variant), `mapdata.StartObject` (loader), `mapdata.StepObject` (step); `startScene.placeObjects` builds the frames and `startScene.animateObjects` runs in the game tick. `map-render` draws variant 0 (a still image). Tests: `mapdata.TestObjectAnimation`, `game.TestAnimatedObjects`.
 
 Example: `KONUNG.1`'s first record is ID 117 at col 27, row 33, giving world (1537, 528). It maps to slot 147, a 454 × 378 log house with image offset (−225, −346) and shadow offset (−432, −180).
 
@@ -161,5 +171,4 @@ So `KONUNG.1` (Volk's start) is «Родники», and «Старый лаге�
 ## Open questions
 
 * Characters/NPCs/monsters come from `GAME.N`, not from the map; see [the GAME.N notes](konung_game_format.md).
-* Animated static objects (header `+0x18` > 0, frame cycling) and random variants: the port always draws variant 0 (`mapdata/objects.go`).
 * Whether the game's camera ever shows the parts of objects that reach past the terrain (up to 391 px above it on `KONUNG.30`). Not traced; `map-render` draws them in full.

@@ -1,12 +1,12 @@
 # Sound effects and music
 
-`SOUNDS.RES` effects, `MUSICS.RES` music, what triggers which sound, and the «Музыка» / «Звук» settings. Status: **verified** against `konung.exe` code and the files, and ported, except the triggers listed under [not ported](#not-ported). Port: `gamestate/sound.go` (selection rules, `Game.Sounds` queue), `resfmt/audio.go` (`LoadMusicTracks`, `RenderSound`, `DSGain`, `DSPanGains`), `game/audio.go` (`soundSystem`, `startScene.playAt`, `actionSound`, `soundTick`). Tests: `gamestate.TestSoundRules`, `resfmt.TestLoadMusicTracks`, `resfmt.TestRenderSound`.
+`SOUNDS.RES` effects, `MUSICS.RES` music, what triggers which sound, and the «Музыка» / «Звук» settings. Status: **verified** against `konung.exe` code and the files, and fully ported. Port: `gamestate/sound.go` (selection rules, `Game.Sounds` queue), `resfmt/audio.go` (`LoadMusicTracks`, `RenderSound`, `DSGain`, `DSPanGains`), `game/audio.go` (`soundSystem`, `startScene.playAt`, `actionSound`, `soundTick`). Tests: `gamestate.TestSoundRules`, `resfmt.TestLoadMusicTracks`, `resfmt.TestRenderSound`.
 
 ## Files
 
 * **`SOUNDS.RES`**: Type 1 header, 1000 × (offset, size) at `0x00632500` (`0x1F40` bytes), raw mono 16-bit PCM ([res format](konung_res_format.md#soundsres--sounds_res)). 391 entries are used. The resource loader `0x0043A3DC` (from `0x0043A61F`) keeps ids 0–32 and the hero voice groups 32–55 resident. Others (creature voices, the map's ambient sounds) are queued per map and loaded one per main-loop pass (`0x0043D1D0`). An id whose data isn't loaded yet doesn't play. The port loads all entries at start.
 * **`MUSICS.RES`**: Type 1 header (tag 1 BE, data size LE), 9 × (offset, size) at `0x006324B8`, then the data, read whole into `[0x00A3E6C4]` (`0x00438E04`). Each track is an Ogg Vorbis stream (2.5 minutes each), decoded through `vorbisfile.dll` (`0x0042C558`, `0x0042C7AC`). `resfmt.LoadMusicTracks`.
-* **`SPEECHS.RES`** (dialogue voices, 8192-entry table `0x00634440`, played by `0x0042A9C4`) is not installed with this copy.
+* **`SPEECHS.RES`** (dialogue voices, 8192-entry table `0x00634440`, played by `0x0042A9C4`) was never shipped with the game (per the project owner). The loader (`0x0043A6D7`) skips the read when the open fails, so every entry's size (`0x00634444`) stays 0 and `0x0042A9C4` returns at once (size < 2). 22 of the 3644 dialogue nodes with text still name a voice: leftovers. Nothing to port.
 
 ## Playing a sound (`0x0042A664(id, volume, pan, loop)`)
 
@@ -64,6 +64,6 @@ Port: `startAudio` (from `game.New`) and `soundSystem.update` (each `Menu.Update
 * Sound rolls use the audio system's own RNG, so the AI's random sequence is unaffected.
 * All sounds are loaded up front, so the per-map loading delay is not reproduced.
 
-## Not ported
+## Dialogue greeting
 
-* The voices of `SPEECHS.RES` (missing file). The dialogue greeting (ids 12–15 at random without repeating, 16–19 for women and children, `0x004365EF`) is ported ([dialogues](konung_dialogue.md#opening-0x004364f0)); it is skipped, as in the game, when a shown line has speech.
+The dialogue greeting (ids 12–15 at random without repeating, 16–19 for women and children, `0x004365EF`) is ported ([dialogues](konung_dialogue.md#opening-0x004364f0)); it is skipped, as in the game, when a shown line has speech.

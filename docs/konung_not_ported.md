@@ -2,7 +2,9 @@
 
 What the Go port still leaves out, what it only approximates, and what is unknown about the formats. Each entry says what the original does (as far as it is traced), where it is in `konung.exe`, why it is missing, and what porting it would take. The topic docs remain the source of truth; this page collects their "not ported" and "open questions" lists in one place. Update both when an item is ported.
 
-Reasons used below: **not traced** (the exe code has not been read), **missing file** (the installed game lacks the resource), **presentation** (a deliberate port choice).
+Reasons used below: **not traced** (the exe code has not been read), **presentation** (a deliberate port choice).
+
+`SPEECHS.RES` (voices) and `FACES<width>.RES` (hired faces) are not on this list: the exe has code for them, but the game never shipped the files, so the original never uses that code ([sound](konung_sound.md#files), [interface](konung_interface_res.md#hired-faces-faceswidthres-never-shipped)).
 
 ## Features
 
@@ -19,15 +21,6 @@ Ported: every case of `0x00414E64` ([misc items](konung_misc_items.md)). Left ov
 ### Films
 
 All four films play, with the original's triggers, timing and skip key ([films](konung_films.md)).
-
-### Voices and faces (missing files)
-
-* `FACES800.RES` (hired companions' faces, chosen by `+0xF8`; [interface](konung_interface_res.md#hired-faces-faceswidthres-missing-file)): with no file the game draws the INTR faces, as the port does.
-* `SPEECHS.RES` voices for dialogue lines and the deferred reply action while a voice plays ([dialogues](konung_dialogue.md#open-questions), [sound](konung_sound.md#not-ported)).
-
-### Map drawing
-
-* Animated static objects and random variants: the loader picks `rand() % header[+0x0C]` and cycles frames when header `+0x18` > 0 ([map format](konung_map_format.md)); the port always draws variant 0 (`mapdata/objects.go`).
 
 ### Screens
 
@@ -54,4 +47,3 @@ Ported, but not bit-exact.
 
 * `GAME.N`: item fields other than category and type; the gear table's remaining fields; which jewellery box is which; group `+0x1E` bits other than `0x20`/`0x40`/`0x80` and kind `0x53`; map exit bytes `+0`/`+1`; settlement bytes outside the traced ones ([GAME.N](konung_game_format.md#open-questions)).
 * Saves: later use of the hero copy `0x00A3E584` after a load ([saves](konung_save_format.md#open-questions)).
-* `SPEECHS.RES` and `FACES<width>.RES`: not installed.

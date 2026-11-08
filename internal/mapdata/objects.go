@@ -102,8 +102,8 @@ type ObjectKey struct {
 }
 
 // LoadPlacedObjects decodes every distinct object referenced by placements,
-// using variant 0 (the loader picks a random variant only for headers with a
-// positive +0x18 field; frame animation is not ported). Objects that fail to
+// using variant 0. Animated objects (Object.Period > 0) have more variants:
+// ObjectVariantSprites, StartObject and StepObject. Objects that fail to
 // decode are reported in errs and left out of the map.
 func LoadPlacedObjects(placements []Placement, objects, graph []byte) (map[ObjectKey]*resfmt.MapObject, []error) {
 	out := map[ObjectKey]*resfmt.MapObject{}
@@ -192,6 +192,60 @@ func ObjectSprites(sorted []SortedPlacement) []Sprite {
 		})
 	}
 	return out
+}
+
+// ObjectVariantSprites returns one sprite per variant of an animated
+// placement (Object.Period > 0), in variant order, each with that variant's
+// image, offsets and shadow, as the object pass reads them through the
+// variant byte +0x23 (0x004268B1, 0x00426A30). It returns nil for a still
+// object. All variants share the header's flames.
+func ObjectVariantSprites(p SortedPlacement, objects, graph []byte) ([]Sprite, error) {
+	if p.Object == nil || p.Object.Period <= 0 || p.Object.Variants < 2 {
+		return nil, nil
+	}
+	out := make([]Sprite, 0, p.Object.Variants)
+	for v := range p.Object.Variants {
+		o, err := resfmt.LoadMapObject(objects, graph, resfmt.MapObjectSlot(p.ID), v, p.PaletteOffset)
+		if err != nil {
+			return nil, fmt.Errorf("object ID %d: %w", p.ID, err)
+		}
+		x, y := p.Pos()
+		q := p
+		q.Object, q.X, q.Y = o, x+o.ImageDX, y+o.ImageDY
+		out = append(out, ObjectSprites([]SortedPlacement{q})[0])
+	}
+	return out, nil
+}
+
+// StartObject is the map loader's setup of an object's animation
+// (0x0043CC5E): an animated object (Period > 0) starts at a random variant
+// (rand() % Variants, or 0 with fewer than 2) and its counter at Period;
+// a still object gets variant 0 and counter 0. intn(n) returns [0, n).
+func StartObject(o *resfmt.MapObject, intn func(int) int) (variant, counter int) {
+	if o == nil || o.Period <= 0 {
+		return 0, 0
+	}
+	if o.Variants >= 2 {
+		variant = intn(o.Variants)
+	}
+	return variant, o.Period
+}
+
+// StepObject is one game tick of 0x0042480C for one placement: a counter
+// of 0 means still; at 1 the variant advances (wrapping at variants) and
+// the counter restarts at period; otherwise the counter counts down. Each
+// variant therefore shows for period ticks.
+func StepObject(variant, counter, variants, period int) (int, int) {
+	switch counter {
+	case 0:
+		return variant, 0
+	case 1:
+		if variant++; variant == variants {
+			variant = 0
+		}
+		return variant, period
+	}
+	return variant, counter - 1
 }
 
 // SortSprites orders sprites by depth; ties keep their input order.

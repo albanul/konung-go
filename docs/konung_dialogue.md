@@ -1,6 +1,6 @@
 # Dialogues and quests (`QUESTR.RES`)
 
-Status: the file layout, the dialogue engine (open, branch, lines, replies, conditions, actions, quest flags), the dialogue window, the quest log and every script function used by the data are traced against `konung.exe` and checked against the file. Ported: `resfmt.ParseQuests` (decoder), `gamestate.Talk` (engine and script functions, `dialogue.go`, `scriptfuncs.go`, `scriptvillage.go`), `game.talkWindow` (windows 1 and 2, `internal/game/dialogue.go`). Not ported: `SPEECHS.RES` voices. The settlement pass builds what 355–361 start ([buildings](konung_buildings.md)). Script 275 opens the [trade window](konung_trade.md).
+Status: the file layout, the dialogue engine (open, branch, lines, replies, conditions, actions, quest flags), the dialogue window, the quest log and every script function used by the data are traced against `konung.exe` and checked against the file. Ported: `resfmt.ParseQuests` (decoder), `gamestate.Talk` (engine and script functions, `dialogue.go`, `scriptfuncs.go`, `scriptvillage.go`), `game.talkWindow` (windows 1 and 2, `internal/game/dialogue.go`). Nothing is left to port (`SPEECHS.RES` voices were never shipped). The settlement pass builds what 355–361 start ([buildings](konung_buildings.md)). Script 275 opens the [trade window](konung_trade.md).
 
 Validation: `resfmt.TestParseQuests`, `TestDialogueLayout`; `gamestate.TestDialogueElder` (the elder of «Родники» through the Amulet chain), `TestDialogueRoles`, `TestQuestLog`, `TestScriptMoney`, `TestRecruitAndDismiss`; `game.TestRightClickTalks` (right click opens the dialogue and the hero does not move), `TestHireRebuildsScene`.
 
@@ -27,7 +27,7 @@ A list or text id is the `uint16` index of its first entry within its block.
 | `+0` | `uint32` | text id; `0xFFFFFFFF` = none |
 | `+4` | `uint16` | next node; `0xFFFE` = end of dialogue; `0xFFFF` = back (a reply) / stop (a branch) |
 | `+6` | `uint16` | condition list; `0xFFFF` = always |
-| `+8` | `uint16` | `SPEECHS.RES` entry; `0xFFFF` = none |
+| `+8` | `uint16` | `SPEECHS.RES` entry; `0xFFFF` = none. The file was never shipped; 22 nodes still name one |
 | `+0xA` | `uint16` | action list; `0xFFFF` = none; in a header `0xFFFE` marks a **branch node** |
 | `+0xC` | `uint16` | header: number of replies |
 | `+0xE` | `uint16` | header: number of NPC lines (branch node: number of branches) |
@@ -66,7 +66,7 @@ Lines' actions run when the node is shown, **before** any reply: many nodes pay 
 
 ## Choosing a reply (`0x00423501` → `0x0041F18C`)
 
-A left click on reply *k* (hotspot `k<<8 | 0x64`, hit test `0x0043969C`): if the reply has speech, it plays first and the click acts when it ends (`0x00A3E704`); the port has no `SPEECHS.RES` and acts at once. Then: run the reply's actions; next `0xFFFF` → back to the stored previous node; `0xFFFE` → close (`0x00A3E740` = 0, redraw `0x004292E4`); else that node. Advance; on 0 close, else redraw. `Talk.Choose`.
+A left click on reply *k* (hotspot `k<<8 | 0x64`, hit test `0x0043969C`): if the reply has speech, the game sets `0x00A3E704` and calls the voice player, and the click acts when the voice ends. `SPEECHS.RES` was never shipped, so no voice starts (`0x00A3E7A8` stays −1) and the main loop acts on its next pass (`0x004228C0`). The port acts at once. Then: run the reply's actions; next `0xFFFF` → back to the stored previous node; `0xFFFE` → close (`0x00A3E740` = 0, redraw `0x004292E4`); else that node. Advance; on 0 close, else redraw. `Talk.Choose`.
 
 ## Window 1: the dialogue (`0x0042DC50`)
 
@@ -151,5 +151,4 @@ Unused by the data: 285, 292 (a jewel into the bag), 293, 295, 306, 323, 327, 35
 
 ## Open questions
 
-* `SPEECHS.RES` (not installed) and the deferred reply action while a voice plays.
-* Entity `+0xF8` (portrait variant written by 291) only selects a face in `FACES<width>.RES`, which is not installed ([interface](konung_interface_res.md#hired-faces-faceswidthres-missing-file)).
+* None. (`SPEECHS.RES` and `FACES<width>.RES`, which entity `+0xF8` would select a face from, were never shipped with the game; see [sound](konung_sound.md#files) and [interface](konung_interface_res.md#hired-faces-faceswidthres-never-shipped).)
