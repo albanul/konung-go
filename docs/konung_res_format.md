@@ -84,7 +84,7 @@ Content names are visual descriptions.
 | Sounds | `internal/resfmt/sound.go` |
 | `GRAPH.RES` leading Type 5 sprites | `internal/game/cursor.go` |
 | `GRAPH.RES` terrain tiles, `KONUNG.N` terrain | `internal/mapdata/` |
-| Bulk extraction (all OBJECTS frames, Type 0 blocks) | `cmd/sprite-catalog` (has its own Type 0 walker) |
+| Bulk extraction (all OBJECTS frames, Type 0 blocks) | `cmd/sprite-catalog` (Type 0 via `resfmt.Type0Blocks` + `resfmt.DecodeType0Block`) |
 
 There is no single CLI that extracts every mixed `GRAPH.RES` block yet.
 

@@ -46,12 +46,9 @@ type Type0Block struct {
 func Type0Blocks(graph []byte) ([]Type0Block, error) {
 	var out []Type0Block
 	for off := Type0BlockStart; off < len(graph); {
-		if off+8 > len(graph) || binary.BigEndian.Uint32(graph[off:]) != 0 {
-			return nil, fmt.Errorf("GRAPH.RES Type 0 block %d has invalid header at %#x", len(out), off)
-		}
-		size := int(binary.LittleEndian.Uint32(graph[off+4:]))
-		if size < type0MetaBytes || off+size > len(graph) {
-			return nil, fmt.Errorf("GRAPH.RES Type 0 block %d has invalid size %#x at %#x", len(out), size, off)
+		size, err := type0BlockSize(graph, off, len(out))
+		if err != nil {
+			return nil, err
 		}
 		out = append(out, Type0Block{Offset: off, Data: graph[off : off+size]})
 		off += size
@@ -66,18 +63,31 @@ func type0Block(graph []byte, n int) ([]byte, error) {
 	}
 	off := Type0BlockStart
 	for i := 0; ; i++ {
-		if off+8 > len(graph) || binary.BigEndian.Uint32(graph[off:]) != 0 {
+		if off >= len(graph) {
 			return nil, fmt.Errorf("GRAPH.RES Type 0 block %d not found", n)
 		}
-		size := int(binary.LittleEndian.Uint32(graph[off+4:]))
-		if size < type0MetaBytes || off+size > len(graph) {
-			return nil, fmt.Errorf("GRAPH.RES Type 0 block %d has invalid size", i)
+		size, err := type0BlockSize(graph, off, i)
+		if err != nil {
+			return nil, err
 		}
 		if i == n {
 			return graph[off : off+size], nil
 		}
 		off += size
 	}
+}
+
+// type0BlockSize checks the header of Type 0 block i at off and returns the
+// block size, header included.
+func type0BlockSize(graph []byte, off, i int) (int, error) {
+	if off+8 > len(graph) || binary.BigEndian.Uint32(graph[off:]) != 0 {
+		return 0, fmt.Errorf("GRAPH.RES Type 0 block %d has invalid header at %#x", i, off)
+	}
+	size := int(binary.LittleEndian.Uint32(graph[off+4:]))
+	if size < type0MetaBytes || off+size > len(graph) {
+		return 0, fmt.Errorf("GRAPH.RES Type 0 block %d has invalid size %#x at %#x", i, size, off)
+	}
+	return size, nil
 }
 
 // FrameRange is one image frame's byte range within a block's image data.
@@ -109,8 +119,10 @@ func FrameRanges(table []byte, dataLen int) []FrameRange {
 const (
 	Type2PairsOffset = 0x728 // 512 pairs
 	Type2DataOffset  = type2MetaBytes
-	Type0PairsOffset = 0x1728 // 768 pairs
+	Type0PairsOffset = 0x1728 // type0Pairs pairs
 	Type0DataOffset  = type0MetaBytes
+
+	type0Pairs = 768 // (shadow, image) offset pairs per Type 0 block
 )
 
 // Palettes decodes all 256 GRAPH.RES palettes.

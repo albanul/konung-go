@@ -31,7 +31,7 @@ Use the existing findings as a starting point. Before reverse engineering anythi
 | Character creation «Выбор героя» (`NEWH*R.RES`): hero, class, skills, stat trade, game start with the chosen hero | [New game](docs/konung_new_game.md) | `gamestate/newhero.go`, `game/newhero.go`, `sceneAssets.newGame` |
 | Main menu, buttons, cursor | [Menu implementation](docs/konung_menu.md), [Menu RES catalog](docs/konung_menu_res.md) | `internal/game/menu.go`, `cursor.go` |
 | In-game HUD: portrait grid, HP bars, panel buttons and click hotspots (`INTR*R.RES`), NPC names / hover status line, game fonts | [Interface resources and HUD](docs/konung_interface_res.md) | `resfmt.ParseInterface`, `resfmt/exetext.go`, `resfmt/hotspot.go`, `gamestate/portrait.go`, `gamestate/names.go`, `internal/game/hud.go`, `text.go` |
-| `GRAPH.RES` (palettes, cursors, terrain tiles, Type 0 character models) | [GRAPH.RES layout and sprites](docs/konung_graph_sprites.md) | `mapdata.LoadTerrainTiles`, `resfmt.DecodeType0Frames`, `game/cursor.go` |
+| `GRAPH.RES` (palettes, cursors, terrain tiles, Type 0 character models) | [GRAPH.RES layout and sprites](docs/konung_graph_sprites.md) | `mapdata.LoadTerrainTiles`, `resfmt.DecodeType0Block`, `resfmt.DecodeType0Frames`, `game/cursor.go` |
 | `OBJECTS.RES` (buildings, animated objects) | [RES formats: OBJECTS](docs/konung_res_format.md#objectsres), [Start location: OBJECTS path](docs/konung_start_location.md#objectsres-image-path-and-object-lookup), [Sprite index](docs/konung_sprite_index.md) | `resfmt.DecodeStaticObject` |
 | Characters, NPCs, monsters, player start (`GAME.N`) | [GAME.N format](docs/konung_game_format.md) | `internal/gamestate/`, `resfmt.LoadEntitySprite` |
 | Combat: melee, bows and arrows, creature AI (alarm, territory/leash, return home), village anger and surrender, loot, experience and levels, poison and respawn, hero death | [Combat](docs/konung_combat.md) | `gamestate/combat.go`, `game/combat.go` |
@@ -92,7 +92,7 @@ One line per file family. Details live in the linked documents; "verified" means
 | `cmd/res-parser` | Extract Type 5 frames from a RES file to PNG |
 | `cmd/video-convert` | `Video/*.flm` → `.ivf` (AV1) + `.ogg` via ffmpeg, once ([films](docs/konung_films.md#port)) |
 
-Each tool is its own binary under `cmd/`, but tools must not carry private copies of format logic. Shared block access lives in `internal/resfmt/blocks.go` (`ObjectBlock`, `Type0Blocks`, `FrameRanges`, `Palettes`). Package names carry no `konung` prefix (`resfmt`, `mapdata`, `gamestate`, `game`).
+Each tool is its own binary under `cmd/`, but tools must not carry private copies of format logic. Shared block access lives in `internal/resfmt/blocks.go` (`ObjectBlock`, `Type0Blocks`, `FrameRanges`, `Palettes`); Type 0 frames decode with `resfmt.DecodeType0Block` (every frame, per-frame errors) or `DecodeType0Frames`. Package names carry no `konung` prefix (`resfmt`, `mapdata`, `gamestate`, `game`).
 
 Put new format decoders in an engine-independent package (`internal/resfmt` or a sibling such as `internal/mapdata`) with a test against the installed assets, and keep Ebitengine code a thin consumer. This keeps tools and tests runnable without a display.
 
@@ -152,4 +152,3 @@ Highest-value unknowns, roughly in priority order. The full list of missing feat
 4. Ground items: see [ground items](docs/konung_ground_items.md#open-questions).
 5. Sound: dialogue greetings and `SPEECHS.RES` (not installed) are not ported ([sound](docs/konung_sound.md#not-ported)). All settings are honoured. See [settings](docs/konung_settings.md#open-questions).
 6. Misc items with no use case (Сын Луны, Медная лампа, …): presumably dialogue-only, see [misc items](docs/konung_misc_items.md#open-questions). The rest of `LIGHTS.RES`.
-7. `cmd/sprite-catalog` has its own Type 0 walker that duplicates `resfmt.DecodeType0Frames`; consolidate when touching it.

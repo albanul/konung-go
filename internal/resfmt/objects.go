@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
+	"image/color"
 )
 
 // DecodeStaticObject decodes a static OBJECTS.RES entry. objectIndex is
@@ -41,6 +42,43 @@ func DecodeStaticObject(objects, graph []byte, objectIndex int) (*image.RGBA, er
 	return img, nil
 }
 
+// Type0Frame is one image frame of a Type 0 block as decoded by
+// DecodeType0Block.
+type Type0Frame struct {
+	Start, End int         // byte range within the block, header included
+	Image      *image.RGBA // nil when Err is set
+	Err        error
+}
+
+// DecodeType0Block decodes the image frames of a GRAPH.RES Type 0 block
+// (header included, as returned by Type0Blocks) in stored order with palette.
+// It decodes at most limit frames (all when limit < 0). A frame that fails
+// keeps its Err and the walk goes on.
+func DecodeType0Block(block []byte, palette *[256]color.RGBA, limit int) []Type0Frame {
+	if len(block) < Type0DataOffset {
+		return nil
+	}
+	data := block[Type0DataOffset:]
+	ranges := FrameRanges(block[Type0PairsOffset:Type0PairsOffset+type0Pairs*8], len(data))
+	if limit >= 0 && limit < len(ranges) {
+		ranges = ranges[:limit]
+	}
+	out := make([]Type0Frame, len(ranges))
+	for i, r := range ranges {
+		f := &out[i]
+		f.Start, f.End = Type0DataOffset+int(r.Start), Type0DataOffset+int(r.End)
+		if r.End <= r.Start || int(r.End) > len(data) {
+			f.Err = fmt.Errorf("invalid range %d..%d", r.Start, r.End)
+			continue
+		}
+		f.Image, f.Err = DecodeIndexedRLEFrame(data[r.Start:r.End], palette)
+		if f.Err != nil {
+			f.Image, f.Err = DecodeIndexedRLELegacyFrame(data[r.Start:r.End], palette)
+		}
+	}
+	return out
+}
+
 // DecodeType0Frames decodes the first count image frames of GRAPH.RES Type 0
 // block n (0-based) in stored order, using palette paletteID. For drawing
 // characters use LoadEntitySprite, which selects frames like the game.
@@ -56,24 +94,16 @@ func DecodeType0Frames(graph []byte, n, count, paletteID int) ([]*image.RGBA, er
 	if err != nil {
 		return nil, err
 	}
-	data := block[Type0DataOffset:]
-	ranges := FrameRanges(block[Type0PairsOffset:Type0PairsOffset+768*8], len(data))
-	if len(ranges) < count {
-		return nil, fmt.Errorf("GRAPH.RES Type 0 block %d has %d frames, want %d", n, len(ranges), count)
+	decoded := DecodeType0Block(block, &palette, count)
+	if len(decoded) < count {
+		return nil, fmt.Errorf("GRAPH.RES Type 0 block %d has %d frames, want %d", n, len(decoded), count)
 	}
 	frames := make([]*image.RGBA, 0, count)
-	for i, r := range ranges[:count] {
-		if r.End <= r.Start || int(r.End) > len(data) {
-			return nil, fmt.Errorf("GRAPH.RES Type 0 block %d frame %d has invalid range", n, i)
+	for i, f := range decoded {
+		if f.Err != nil {
+			return nil, fmt.Errorf("decode GRAPH.RES Type 0 block %d frame %d: %w", n, i, f.Err)
 		}
-		img, err := DecodeIndexedRLEFrame(data[r.Start:r.End], &palette)
-		if err != nil {
-			img, err = DecodeIndexedRLELegacyFrame(data[r.Start:r.End], &palette)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("decode GRAPH.RES Type 0 block %d frame %d: %w", n, i, err)
-		}
-		frames = append(frames, img)
+		frames = append(frames, f.Image)
 	}
 	return frames, nil
 }

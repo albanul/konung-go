@@ -344,12 +344,10 @@ func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA, tab
 	for id, blk := range blocks {
 		off, size, end := blk.Offset, uint64(len(blk.Data)), blk.Offset+len(blk.Data)
 		payloadBytes := int(size) - 8
-		// CTPAX-X's source describes a 1,536-entry uint32 offset table at
-		// byte 5,920 in the payload. Count nonzero slots as a sanity signal,
-		// while keeping the format hypothesis explicit in the inventory.
+		// Nonzero words of the 768 (shadow, image) offset pairs, a sanity signal.
 		nonzeroOffsets := 0
-		for i := 0; i < 1536; i++ {
-			if binary.LittleEndian.Uint32(graph[off+8+5920+i*4:]) != 0 {
+		for i := 0; i < 768*2; i++ {
+			if binary.LittleEndian.Uint32(blk.Data[resfmt.Type0PairsOffset+i*4:]) != 0 {
 				nonzeroOffsets++
 			}
 		}
@@ -357,27 +355,16 @@ func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA, tab
 		if err := os.WriteFile(filepath.Join(dir, name), graph[off:end], 0644); err != nil {
 			return nil, nil, err
 		}
-		dataStart := off + resfmt.Type0DataOffset
 		dataBytes := payloadBytes - type0MetadataBytes
 		decodedFrames, decodeFailures := 0, 0
 		pal, palLabel := type0Palette(id, tables)
-		for frameIndex, fr := range resfmt.FrameRanges(blk.Data[resfmt.Type0PairsOffset:resfmt.Type0DataOffset], dataBytes) {
-			frameStart, frameEnd := fr.Start, fr.End
-			if frameEnd <= frameStart || frameEnd > uint32(dataBytes) {
-				failures = append(failures, fmt.Sprintf("GRAPH.T0\t%d\tframe %d has invalid range %d..%d", id, frameIndex, frameStart, frameEnd))
+		for frameIndex, fr := range resfmt.DecodeType0Block(blk.Data, &palettes[pal], -1) {
+			if fr.Err != nil {
+				failures = append(failures, fmt.Sprintf("GRAPH.T0\t%d\tframe %d: %v", id, frameIndex, fr.Err))
 				decodeFailures++
 				continue
 			}
-			frameData := graph[dataStart+int(frameStart) : dataStart+int(frameEnd)]
-			img, err := resfmt.DecodeIndexedRLEFrame(frameData, &palettes[pal])
-			if err != nil {
-				img, err = resfmt.DecodeIndexedRLELegacyFrame(frameData, &palettes[pal])
-			}
-			if err != nil {
-				failures = append(failures, fmt.Sprintf("GRAPH.T0\t%d\tframe %d: %v", id, frameIndex, err))
-				decodeFailures++
-				continue
-			}
+			img := fr.Image
 			imageName := fmt.Sprintf("images/GRAPH.T0/%03d/frame_%03d.png", id, frameIndex)
 			fullImagePath := filepath.Join(out, filepath.FromSlash(imageName))
 			if err := os.MkdirAll(filepath.Dir(fullImagePath), 0755); err != nil {
@@ -397,8 +384,8 @@ func extractGraphType0(graph []byte, out string, palettes [][256]color.RGBA, tab
 			}
 			items = append(items, catalogItem{
 				Namespace: "GRAPH.T0", Resource: "GRAPH.RES", ID: strconv.Itoa(id), Kind: "Type 0 animation", Frame: frameIndex,
-				Image: imageName, EntryOffset: hexOffset(uint64(off)), FrameOffset: hexOffset(uint64(dataStart + int(frameStart))),
-				IndexedBytes: size, PayloadBytes: uint64(frameEnd - frameStart), Width: img.Bounds().Dx(), Height: img.Bounds().Dy(),
+				Image: imageName, EntryOffset: hexOffset(uint64(off)), FrameOffset: hexOffset(uint64(off + fr.Start)),
+				IndexedBytes: size, PayloadBytes: uint64(fr.End - fr.Start), Width: img.Bounds().Dx(), Height: img.Bounds().Dy(),
 				Palette: palLabel, Note: "Type 0 indexed-RLE frame",
 			})
 			decodedFrames++
