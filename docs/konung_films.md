@@ -1,6 +1,6 @@
 # Films (`Video/*.flm`)
 
-The game plays full-screen-window films at start-up, on the hero's death, on a village surrender and on the win pile. Status: triggers and the player interface **verified** against `konung.exe`. The file format was checked against the bytes, and the conversion against ffmpeg's decode of the originals. Port: start-up and game over are wired up; surrender and win are not yet (see [Not ported](#not-ported--open)).
+The game plays full-screen-window films at start-up, on the hero's death, on a village surrender and on the win pile. Status: triggers and the player interface **verified** against `konung.exe`. The file format was checked against the bytes, and the conversion against ffmpeg's decode of the originals. Port: all four triggers are wired up.
 
 ## Files
 
@@ -36,7 +36,7 @@ While `0x00A3E724` is set the message loop (`0x0042BD26`) waits in `GetMessage` 
 
 **End** `0x0042B774`: `FreeAviWnd`, state = `0x00A3E7F0`, `0x00A3E724` = 0, music volume from the setting (`0x0042A420([0x00A3E73C])`). On state 0, redraw (`0x0042DBBC(-1)`, `0x004292E4`). It is called from the window procedure `0x0042BDE8`:
 * message `0x501` (sent by `MP.DLL`) with lParam 2: the film has ended (`0x0042BE6D`);
-* `WM_KEYDOWN` (`0x0042BE7D`): the key is queued for the game as usual, and a playing film stops. Mouse buttons do not stop it.
+* `WM_KEYDOWN` (`0x0042BE7D`): the key goes into the game's key queue (`0x0083D27C`, 16 entries, `0x00A3E79C`) first, then a playing film stops. The main loop handles the key afterwards, in the state that follows the film: Enter after the poster activates the selected menu item, Escape after `GAMEOVER.FLM` reaches the menu's Escape handler, a key after `DEFEAT<map>.FLM` reaches the game. Mouse buttons do not stop it.
 
 ## Triggers
 
@@ -45,7 +45,7 @@ While `0x00A3E724` is set the message loop (`0x0042BD26`) waits in `GetMessage` 
 | `POSTER.FLM` | state 9, `0x0043914B` (set by `0x0042B9A9` at start-up) | `0x00A3E728` = 0 | 7: the menu, no game running |
 | `GAMEOVER.FLM` | state 0, `0x004376A3`: hero `+4` bit `0x80` | `0x00A3E728` = 0 | 7: the menu, no game running |
 | `DEFEAT<map>.FLM` | village surrender, `0x0041D781` ([combat](konung_combat.md)); `<map>` = decimal `0x00A3E7FC` | message `0x0045D37C` | 0: back to the game |
-| `WIN.FLM` | pick-up `0x004110EC`: the pile on the cell has record index (`+0x0E`) 0; checked before the gold and items are taken | — | 7: the menu. `0x00A3E728` is **not** cleared, so «Вернуться в игру» stays |
+| `WIN.FLM` | pick-up `0x004110EC` (`0x00411154`): the pile on the cell has record index (`+0x0E`) 0; checked before the gold and items are taken, and nothing is taken. Record 0 is the same in `GAME.0`–`GAME.2`: map 46, cell (52, 21), one «Браслет» (category 7, type 4). Piles dropped at runtime have `+0x0E` = `0xFFFF` (`0x004139A5`) | — | 7: the menu. `0x00A3E728` is **not** cleared, so «Вернуться в игру» stays |
 
 State 7 (`0x00438D3C`) sets state 1 and draws the main menu.
 
@@ -55,15 +55,13 @@ No pure-Go WMV3 decoder exists, and macOS and browsers have no system WMV decode
 
 * `cmd/video-convert <Video dir>` runs ffmpeg (needs the WMV3 decoder, `libsvtav1` and `libvorbis`; Fedora's `ffmpeg-free` lacks WMV3, use RPM Fusion's `ffmpeg` or Homebrew's). For each `X.flm` it writes `x.ivf` (AV1, SVT-AV1 preset 6, CRF 35, key frame every 120 frames) and `x.ogg` (Vorbis q3). All 19 films: 62 MB → 23 MB. ffmpeg turns interior drop frames into duplicates, so the frame counts match the source chunk counts less trailing empty chunks.
 * `resfmt.ParseIVF`, `resfmt.FilmDecoder` (AV1 via `github.com/gen2brain/gav1d`, BSD-2, pure Go), `resfmt.YUVToRGBA` (BT.601 limited range unless the stream signals BT.709 or full range), `resfmt.FilmPaths`, `resfmt.DefeatFilm`, `resfmt.FilmRect`.
-* `game.filmPlayer` (`internal/game/film.go`) follows the audio clock, decodes up to 3 frames per update and ends when the frames and the sound are done, or on any key. `Menu.playFilm`/`Menu.endFilm` mirror `0x0042B690`/`0x0042B774`: music muted, the game loop frozen, the frame it started on kept around the film (black for the poster), then the next state.
+* `game.filmPlayer` (`internal/game/film.go`) follows the audio clock, decodes up to 3 frames per update and ends when the frames and the sound are done, or on any key. `Menu.Update` then goes on with the same frame's input in the new state, so the key that stopped the film is handled as in the original. `Menu.playFilm`/`Menu.endFilm` mirror `0x0042B690`/`0x0042B774`: music muted, the game loop frozen, the frame it started on kept around the film (black for the poster), then the next state.
+* The scene asks for the in-game films through `startScene.film` / `filmToMenu`, which the menu plays after the scene's update: `DEFEAT<map>` from `settlementTick` after the surrender message (the message stays on the frozen frame around the film; then back to the game), `WIN` from `startScene.arrive` on pile record 0 (`Pile.Index` 0; then the menu with the game still running). `GAMEOVER` comes from `startScene.gameOver`.
 * Missing converted files behave like a failed `CreateAviWnd`: the next state follows at once.
 
-Validation: `resfmt.TestFilmsMatchSources` (frame counts per film; `FILM_ALL=1` decodes all of them, ~1 min) and `resfmt.TestFilmDefeat1`. Frame 50 of `defeat1` matches ffmpeg's WMV3 decode of the original at 36 dB PSNR. Decode speed of `defeat1` (101 frames) on the container: 0.7 s with SIMD and 2.9 s with `-tags noasm`, against 8.4 s of film. WASM speed has not been measured.
+Validation: `game.TestSurrenderFilm` and `game.TestWinPile` (the triggers), `resfmt.TestFilmsMatchSources` (frame counts per film; `FILM_ALL=1` decodes all of them, ~1 min) and `resfmt.TestFilmDefeat1`. Frame 50 of `defeat1` matches ffmpeg's WMV3 decode of the original at 36 dB PSNR. Decode speed of `defeat1` (101 frames) on the container: 0.7 s with SIMD and 2.9 s with `-tags noasm`, against 8.4 s of film. WASM speed has not been measured.
 
 ## Not ported / open
 
-* `DEFEAT<map>.FLM` on a surrender, and `WIN.FLM` on the index-0 pile: the hooks belong in `startScene` (`upkeep.go`, `piles.go`) and are not wired yet.
-* Hero death: the port still waits `gameOverDelay` (2 s) after the death flag before the film. The original plays it on the first main-loop pass that sees the flag.
-* The key that skips a film is also queued for the game in the original (e.g. Escape after `GAMEOVER.FLM` reaches the menu's Escape handler). The port swallows it.
 * What the 1999 CD films were (codec, size). Only the GOG files are known.
 * `credits.flm` has no caller in the exe.

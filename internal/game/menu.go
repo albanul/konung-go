@@ -223,10 +223,14 @@ func (m *Menu) Update() error {
 	}
 	// While a film plays the game loop waits (0x0042BD26).
 	if m.film != nil {
-		if m.film.update() {
-			m.endFilm()
+		if !m.film.update() {
+			return nil
 		}
-		return nil
+		// 0x0042BE7D: the key that stops a film is queued for the game
+		// first, so the state after the film handles it (Escape after
+		// GAMEOVER.FLM reaches the menu's Escape). Go on with this
+		// frame's input.
+		m.endFilm()
 	}
 	// Escape is switched on the screen state 0x00A3E6D8 (0x00437430, jump
 	// table 0x0043756C).
@@ -269,6 +273,16 @@ func (m *Menu) Update() error {
 			m.writeConfig()
 		}
 		m.world.Update()
+		if f := m.world.film; f != "" {
+			toMenu := m.world.filmToMenu
+			m.world.film = ""
+			m.playFilm(f, false, func() {
+				if toMenu {
+					m.inWorld = false // state 7; m.running stays set
+				}
+			})
+			return nil
+		}
 		if m.world.gameOver() {
 			// 0x004376A8: the hero died; no game is running any more
 			// ([0x00A3E728] = 0), GAMEOVER.FLM plays, then the menu (state 7).

@@ -2,6 +2,9 @@ package mapdata
 
 import (
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -189,4 +192,37 @@ func TestRenderSceneNoClip(t *testing.T) {
 		}
 	}
 	t.Fatal("the top sprite's first row is empty")
+}
+
+// TestWalkGridValues: section 1 of every installed KONUNG.N holds only
+// 0x00 (open), 0x0F (wall), 0x40 (open, stops arrows) and 0x4F (wall that
+// stops arrows). The word bits 0x1000 (map exit) and 0x2000 (pile) are set
+// at run time; 0x8000 and the low-nibble values 1–14 never occur.
+func TestWalkGridValues(t *testing.T) {
+	paths, _ := filepath.Glob("../../assets/Konung/KONUNG.*")
+	n := 0
+	for _, p := range paths {
+		if _, err := strconv.Atoi(strings.TrimPrefix(filepath.Ext(p), ".")); err != nil {
+			continue
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := ParseWalkGrid(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n++
+		for r := range g {
+			for c, b := range g[r] {
+				if b != 0x00 && b != 0x0F && b != 0x40 && b != 0x4F {
+					t.Fatalf("%s cell (%d,%d) = %#x", filepath.Base(p), r, c, b)
+				}
+			}
+		}
+	}
+	if n == 0 {
+		t.Skip("no KONUNG.N installed")
+	}
 }

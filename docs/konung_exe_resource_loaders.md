@@ -120,7 +120,6 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x004376F4`, `0x0042A9C4`, `0x00A4E368` | code, routine, data | Ambient sound roll; `SPEECHS.RES` voice player; the three wave formats (22050/19050/25050 Hz) | [sound](konung_sound.md) |
 | `0x00A3E6BC` | global | Pointer to the T1 image data | GRAPH loader |
 | `0x00627FD8` | buffer | `KONUNG.N` terrain section (`0x6400`) | [map format](konung_map_format.md) |
-| `0x00505C70` | buffer | Expanded 320 × 160 word grid from `KONUNG.N` section 1 | [map format](konung_map_format.md) |
 | `0x00828378` | buffer | `KONUNG.N` section 2: flat decorations (16-byte records); count at `0x00A3E7F8` | [map format](konung_map_format.md) |
 | `0x0082CE78` | buffer | `KONUNG.N` section 3: static object placements (36-byte records); count at `0x00A3E800` | [map format](konung_map_format.md) |
 | `0x00780DDC` | buffer | Static `OBJECTS.RES` headers, `0x100` bytes per map object ID (slot − 30) | [map format](konung_map_format.md) |
@@ -150,7 +149,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0079EFDC`, `0x007A6CDC`, `0x00A3E804`, `0x00A3E7E0` | buffers | Ground piles (`GAME.N` section 3) and their active list on the current map; counts | [ground items](konung_ground_items.md) |
 | `0x00439DF0`, `0x00410E10`, `0x004110EC`, `0x0041093C`, `0x004399AC`, `0x00434C90` | routines | Pile image; pile at cell; pick-up; remove/respawn; allocate item record; bag has misc item | [ground items](konung_ground_items.md) |
 | `0x00A3E770` | global | Game time, +1 per main-loop tick | [ground items](konung_ground_items.md#map-load-0x0043cf1a) |
-| `0x00505C70` | buffer | Fine-grid word map, 0x140 bytes per row: occupant bits `0xFFF`, `0x1000` exit, `0x2000` pile | [ground items](konung_ground_items.md) |
+| `0x00505C70` | buffer | Fine-grid word map from `KONUNG.N` section 1, `0x140` bytes per row: wall / occupant `0xFFF`, `0x1000` exit, `0x2000` pile, `0x4000` arrow obstacle | [map format](konung_map_format.md#flag-grid-section-1-verified) |
 | `0x00421E8C`, `0x0041ED8C`, `0x0041E384`, `0x00411758`, `0x0041F258`, `0x004143DC`, `0x00413DE4`, `0x004391BC` | routines | Melee swing case; intent planner; keep target cell; target in cell; keep attacking; start action; advance step; turn one octant | [combat](konung_combat.md) |
 | `0x0041B100`, `0x0041B4CC`, `0x0041C480`, `0x0041B70C`, `0x0041079C`, `0x00450E14`, `0x00A3E828` | routines, data, global | Hit roll; hit chance; damage and wear; kill experience; gain free experience; facing dodge table; attacker's poison | [combat](konung_combat.md#formulas-verified) |
 | `0x0041ED8C`, `0x0041130C`, `0x0041BFF8`, `0x00421170`, `0x0041ACE0`, `0x0041C29C`, `0x00410E84`, `0x004105A0`, `0x0082C1F8`, `0x0045AD30`, `0x00458100` | routines, buffer, data | Bow planner; line of fire; shoot (spawn arrow); arrow flight; arrow attack; arrow damage; bow target pick; re-equip; projectile list; launch offsets; arrow sprite offsets | [combat: bows](konung_combat.md#bows-verified) |
@@ -221,7 +220,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x00422EA8`, `0x00423D02`, `0x004239EE`, `0x00424131` | code | Portrait left click; portrait right click; right click on a party member; portrait hover status line | [party](konung_party.md#selection-0x0083b93c-verified), [interface](konung_interface_res.md#hover-status-line-verified) |
 | `0x004364F0` | routine | Opens the clicked entity's dialogue (entity `+0xD0`, `0xFF` = none; callers `0x00423A41`, `0x00423B6E`, `0x00423D93`) | [dialogues](konung_dialogue.md#opening-0x004364f0) |
 | `0x00722D2C`, `0x007145B4` | buffers | Animated `OBJECTS.RES` metadata (`0x3228` per slot); Type 0 model metadata (`0x4D28` per block) | [GAME.N](konung_game_format.md) |
-| `0x00671440`, `0x00664C40` | buffers | `LIGHTS.N` data: `0x3200` bytes then `0xC800` bytes; both zero-filled if the file is missing | map loader `0x0043C23C`–`0x0043C2BC` |
+| `0x00671440`, `0x00664C40` | buffers | `LIGHTS.N` data: `0x3200` bytes then `0xC800` bytes; both zero-filled if the file is missing. `0x00664C40` is only tested for zero ([day and night](konung_daylight.md#lightsn-lit-cells)) | map loader `0x0043C23C`–`0x0043C2BC` |
 | `0x00A3E6F8`, `0x00A3E6FC` | globals | Screen origin X/Y used by the terrain pass | terrain draw pass |
 | `0x007145B4` | buffer | Type 0 model table, stride `0x4D28` | this doc |
 

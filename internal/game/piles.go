@@ -105,6 +105,13 @@ func (s *startScene) arrive(m *member) {
 	if !on || !s.game.CanPickUp(s.game.Piles[i], *e) {
 		return
 	}
+	if s.game.Piles[i].Index == 0 {
+		// 0x00411154: record 0 (map 46) is the end of the game. Next
+		// state 7 (the menu; the game stays running, so «Вернуться в
+		// игру» returns to it), then WIN.FLM. Nothing is taken.
+		s.film, s.filmToMenu = resfmt.FilmWin, true
+		return
+	}
 	msg, removed := s.game.PickUp(e, s.tables, i, s.gameTime())
 	if removed {
 		delete(s.pileAt, m.cell) // 0x0041096C clears the cell's pile flag

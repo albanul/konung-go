@@ -590,17 +590,9 @@ func (s *startScene) stationarySwing(n *npc) {
 	}
 }
 
-// gameOverDelay is how long the dead hero stays on screen before the menu
-// returns (the game plays GAMEOVER.FLM instead, 0x004376CD).
-const gameOverDelay = 120
-
-// gameOver reports that the hero has been dead for gameOverDelay updates.
+// gameOver is the main loop's check 0x004376A3: the hero's +4 bit 0x80,
+// which its death animation sets on its second-to-last frame (0x0042248F),
+// ends the game at once with GAMEOVER.FLM.
 func (s *startScene) gameOver() bool {
-	if len(s.party) == 0 || !s.party[0].Dead() {
-		return false
-	}
-	if s.deadAt == 0 {
-		s.deadAt = s.frame
-	}
-	return s.frame-s.deadAt >= gameOverDelay
+	return len(s.party) > 0 && s.party[0].Dead()
 }

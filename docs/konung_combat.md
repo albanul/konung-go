@@ -29,7 +29,7 @@ Entity `+0x00` is the action type, relative to the animation set: 0–5 in the c
   4. Advance the step; after the last step the blow lands: `0x0041B100` then `0x0041C480`.
   5. Kill (1): attacker `+6` = 0; victim HP = 0, `+2` = 0, death animation; experience (below); `0x00418510` (loot); attacker idle. Damage ≥ `0x30` (0): the victim flinches (type 2, or 8 outside the stance). Otherwise (−1 light hit, −2 dodge) nothing. A heavy hit starts the hit reaction whatever the victim does, a walk included ([party](konung_party.md#hit-reaction-and-the-portrait-verified)). A hit on a party member redraws its portrait, red while the reaction plays (`0x0042D574`). The swing restarts.
 * **Retaliation** `0x0041EC0C`: an idle party member without an intent (`+2 & 9` = 0) scans its 8 neighbours. A neighbour of another group with `+2` bit `0x01` and target = it becomes its target; the member sets `+2 |= 2` and the stance, and swings back. Port: `startScene.retaliate`, for every member. Stationary creatures swing with `+2` = `0x02`, so they are not struck back automatically.
-* **Hero death** (`0x004376A8`): the main loop sees the hero's `+4` bit `0x80`, sets `0xA3E7F0` = 7, plays `GAMEOVER.FLM` (`0x0042B690(0x00450650)`) and leaves the game loop. The film is not among the installed files. The port returns to the main menu 2 s after the death (`startScene.gameOver`), and "New Game" starts again.
+* **Hero death** (`0x004376A8`): the main loop sees the hero's `+4` bit `0x80`, sets `0xA3E7F0` = 7, plays `GAMEOVER.FLM` (`0x0042B690(0x00450650)`) and leaves the game loop. The bit is set on the second-to-last frame of the death animation (`0x0042248F`: frame `+0x10` = frame count `+0xD7` − 2), so the film starts as the hero falls; its frozen frame is the fallen hero. Port: `startScene.gameOver` on the same update, then the main menu, and "New Game" starts again ([films](konung_films.md)).
 
 ## Attack order (verified)
 
@@ -207,7 +207,7 @@ Settlement byte `+0x4B2` (`Settlement.Flags`):
   * Men first re-equip and enter the stance (`0x004105A0`). Then they shoot (`0x00410E84`) or go for the nearest party member (`0x004202A8`) in melee.
 * **Surrender** (the settlement tick, while alarmed and not yet surrendered):
   * P = Σ `0x0041B70C` over the party, V = Σ over the living men (model < 3).
-  * P / V ≥ 2.0 → alarm 0; living members idle, targets cleared; flags `|= 0x80`, `&= 0xEA`; message `0x0045D37C` «Довольно крови, князь. Деревня сдается на твою милость!»; film `DEFEAT<map>.FLM`; the party's targets are cleared.
+  * P / V ≥ 2.0 → alarm 0; living members idle, targets cleared; flags `|= 0x80`, `&= 0xEA`; message `0x0045D37C` «Довольно крови, князь. Деревня сдается на твою милость!»; film `DEFEAT<map>.FLM`, then back to the game ([films](konung_films.md#triggers); port: `startScene.film`); the party's targets are cleared.
   * A village without men: alarm 0, flags `&= 0xEA`.
 * Tribute, buildings (records from settlement `+0x18`, 8 bytes; `+0x40`/`+0x41` = building 5's type/state, the map-exit gate) and the economy are not part of combat; see [buildings](konung_buildings.md) and [trade: production](konung_trade.md#shop-stock-production).
 
@@ -267,7 +267,6 @@ Approximations:
 * A respawned member's untouched fields start empty instead of stale.
 
 Not ported:
-* the films `GAMEOVER.FLM` (hero death) and `DEFEAT<map>.FLM` (village surrender), played by `0x0042B690`: the files are not installed. The port returns to the menu after 2 s and shows nothing on a surrender;
 * the walk extras (`+0x11` throttle, the `0x4D`/`0x4F` pauses), see [creature AI](#creature-ai-verified).
 
 HP is regained through [potions](konung_potions.md) and the healer's dialogue scripts 334/335 ([dialogues](konung_dialogue.md)); the raise buttons are in the [character window](konung_character_window.md#raise-column-verified). See [not ported](konung_not_ported.md) for the whole list.
@@ -284,6 +283,4 @@ Port: `Game.GodMode`, set every frame from the session switch `game.godMode`, wh
 
 ## Open questions
 
-* Grid bits `0xC000` (obstacle kinds). (`0x00418364`, usable, is `Game.CanUse`, [character window](konung_character_window.md).)
 * Field `+0x11` (walk throttle), `+0x14`.
-* Films `GAMEOVER.FLM`, `DEFEAT<n>.FLM` (`0x0042B690`), not in the installed files.

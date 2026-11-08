@@ -122,3 +122,62 @@ func TestApprenticeWalksToPost(t *testing.T) {
 		t.Errorf("next to the post: facing %d, want %d", n.dir, p.Facing&7)
 	}
 }
+
+// TestSurrenderFilm: a village that surrenders asks for DEFEAT<map>.FLM,
+// after which the game goes on (0x0041D777).
+func TestSurrenderFilm(t *testing.T) {
+	s := newVolkScene(t)
+	st := s.game.SettlementOnMap(s.mapNumber)
+	if st == nil {
+		t.Skip("no settlement on the start map")
+	}
+	s.game.Groups[st.Group].Alarm = gamestate.AlarmAttack
+	// One man left alive and a strong hero: more than twice his strength.
+	s.party[0].BaseStats = [4]int{250, 250, 250, 250}
+	s.party[0].Stats = s.party[0].BaseStats
+	gr, men := s.game.Groups[st.Group], 0
+	for k := range gr.Count {
+		if e := &s.game.Entities[gr.First+k]; e.Model < 3 && !e.Dead() {
+			if men++; men > 1 {
+				e.Flags4 |= 0x80
+			}
+		}
+	}
+	s.settlementTick()
+	if s.film != "defeat1" || s.filmToMenu {
+		t.Fatalf("film %q, to menu %v", s.film, s.filmToMenu)
+	}
+}
+
+// TestWinPile: arriving on pile record 0 (map 46) asks for WIN.FLM and the
+// menu, and takes nothing (0x00411154).
+func TestWinPile(t *testing.T) {
+	s := newVolkScene(t)
+	p := s.game.Piles[0]
+	if p.Index != 0 || p.Map != 46 {
+		t.Skip("pile 0 is not the map-46 pile")
+	}
+	m := s.lead()
+	s.pileAt[m.cell] = 0 // as if the hero stood on it
+	bag := s.party[0].Bag
+	s.arrive(m)
+	if s.film != "win" || !s.filmToMenu {
+		t.Fatalf("film %q, to menu %v", s.film, s.filmToMenu)
+	}
+	if s.party[0].Bag != bag || s.game.Piles[0].Items != p.Items {
+		t.Error("the win pile was picked up")
+	}
+}
+
+// TestGameOverAtOnce: the main loop ends the game as soon as the hero's
+// dead bit is set (0x004376A3), with no delay.
+func TestGameOverAtOnce(t *testing.T) {
+	s := newVolkScene(t)
+	if s.gameOver() {
+		t.Fatal("game over with a living hero")
+	}
+	s.party[0].Flags4 |= 0x80
+	if !s.gameOver() {
+		t.Fatal("no game over on the frame the hero died")
+	}
+}

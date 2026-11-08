@@ -124,9 +124,13 @@ type startScene struct {
 
 	byEntity  map[int]*npc       // non-party characters on this map by entity index
 	jump      *gamestate.MapExit // a map change asked by a misc item (sceneWorld.Jump)
-	deadAt    int                // frame the hero was first seen dead (gameOver)
 	aiBudget  int                // combat AI path searches left this game tick
 	fightNext int                // round-robin start of the combat AI's path budget
+	// film is a film the scene asks the menu to play (0x0042B690): the
+	// village surrender's DEFEAT<map>.FLM, then back to the game, or
+	// WIN.FLM, then the menu (filmToMenu).
+	film       string
+	filmToMenu bool
 	// hoveredBuilding is placement + 1 of the front-most settlement
 	// building under the cursor (0x00A3E6A4, set by the object draw
 	// pass), 0 = none.

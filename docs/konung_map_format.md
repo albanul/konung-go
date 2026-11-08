@@ -11,11 +11,37 @@ Every installed `KONUNG.N` is 128,800 bytes (`0x1F720`). The map loader at VA `0
 | File offset | Size | Loaded to | Role |
 |---|---:|---|---|
 | `0x00000` | `0x6400` | `0x00627FD8` | **Terrain**: 160 rows × 80 cells × 2 layer bytes (verified, below) |
-| `0x06400` | `0xC800` | `0x00512470` | 320 × 160 byte grid, expanded to 16-bit words at `0x00505C70` (below). Values in `KONUNG.1`: `0x00`, `0x0F`, `0x4F`, `0x40`. Hypothesis: walkability/obstacle grid at half-cell resolution. **Not terrain.** |
+| `0x06400` | `0xC800` | `0x00512470` | **Flag grid**: 320 × 160 bytes on the fine grid, expanded to 16-bit words at `0x00505C70` (verified, below). **Not terrain.** |
 | `0x12C00` | `0x3E80` | `0x00828378` | **Flat decorations**: up to 999 × 16-byte records (verified, below) |
 | `0x16A80` | `0x8CA0` | `0x0082CE78` | **Static object placements**: up to 999 × 36-byte records (verified, below) |
 
-Expansion of section 1 (loop at `0x0043C498`): byte `0xFF` → word `0x0FFF`; if `(b & 0x0F) == 0x0F` → `(b << 8) | 0x0FFF`; otherwise → `b << 8`. Arrows stop at word bits `0xC000`, i.e. byte bits `0xC0` (`0x0041130C`, `0x00421170`; `WalkGrid.ArrowBlocked`), while plain walls (`0xFFF` only) let them pass ([bows](konung_combat.md#bows-verified)).
+## Flag grid (section 1, verified)
+
+Expansion (loop at `0x0043C498`): byte `0xFF` → word `0x0FFF`; if `(b & 0x0F) == 0x0F` → `(b << 8) | 0x0FFF`; otherwise → `b << 8`. Row r, column c is the word at `0x00505C70 + r·0x140 + c·2`.
+
+**File bytes.** All 43 installed maps hold only four values (`mapdata.TestWalkGridValues`):
+
+| Byte | Word | Meaning | Cells, all maps |
+|---|---|---|---:|
+| `0x00` | `0x0000` | open | 1 920 082 |
+| `0x0F` | `0x0FFF` | wall | 244 805 |
+| `0x40` | `0x4000` | open, stops arrows (walls test only `0xFFF`) | 2 482 |
+| `0x4F` | `0x4FFF` | wall that stops arrows | 34 231 |
+
+**Word bits** (every access to `0x00505C70`/`0x00505C71` in the exe, 100 sites):
+
+| Bits | Set by | Read by |
+|---|---|---|
+| `0x0FFF` | the file (`0xFFF` = wall); otherwise the index of the entity standing on the cell, written with `& 0xF000 \| index` by the walkers (e.g. `0x00411989`/`0x00411ABC`) and the dismiss placement (`0x00432B93`) | free-cell tests `& 0xFFF` (`0x00410261`, `0x0043F0A3`, …), `== 0xFFF` for walls (`0x00412FBF`, `0x0043EDE3`) |
+| `0x1000` | map load `0x0043D11B`: the map-exit rectangles of the current map | walk end `0x00422368` → `0x00421BB8` ([map exits](konung_game_format.md#map-exits-verified)) |
+| `0x2000` | an active pile on the cell: map load (`0x0043CFBE`), a dropped item (`0x004139B9`), loot (`0x004186B1`), `0x00424DDF`; cleared on removal (`0x0041096C`, `0x00418E3F`) | pick-up `0x004222EF`, the cursor `0x00428D25`, clicks `0x00424009`, pile drawing `0x0042650B` ([ground items](konung_ground_items.md)) |
+| `0x4000` | the file (byte bit `0x40`) | arrows stop at `& 0xC000` (`0x004115BC`, `0x0042133F`; [bows](konung_combat.md#bows-verified)) |
+| `0x8000` | nothing (no file byte has `0x80`) | only as part of the arrow test `0xC000` |
+| `0x0100`–`0x0E00` from a byte | nothing: no file byte has a low nibble other than 0 or `0xF` | — |
+
+The character-creation preview (`0x004303B2`) clears the buffer and uses it as a scratch image while no map is loaded ([new game](konung_new_game.md)). The next map load rebuilds it.
+
+Port: `mapdata.WalkGrid` keeps the bytes: `Blocked` (wall), `ArrowBlocked` (`0xC0`). Occupants, exits and piles live in the scene (`walker` cell reservations, `Game.ExitAt`, `startScene.pileAt`).
 
 ## Terrain cells (verified)
 
@@ -137,5 +163,3 @@ So `KONUNG.1` (Volk's start) is «Родники», and «Старый лаге�
 * Characters/NPCs/monsters come from `GAME.N`, not from the map; see [the GAME.N notes](konung_game_format.md).
 * Animated static objects (header `+0x18` > 0, frame cycling) and random variants: the port always draws variant 0 (`mapdata/objects.go`).
 * Whether the game's camera ever shows the parts of objects that reach past the terrain (up to 391 px above it on `KONUNG.30`). Not traced; `map-render` draws them in full.
-* Section 1 semantics beyond walls (`0xFFF`) and arrow obstacles (bits `0xC0`): the other bits.
-* The fine-grid `LIGHTS.N` values beyond zero / non-zero ([day and night](konung_daylight.md#open-questions)); the terrain part and the lit terrain path are decoded and ported.

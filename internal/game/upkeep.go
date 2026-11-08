@@ -3,6 +3,7 @@ package game
 import (
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
+	"konung1.5/internal/resfmt"
 )
 
 // The 16-tick passes (docs/konung_combat.md#upkeep-poison-and-respawn-verified,
@@ -77,6 +78,8 @@ func (s *startScene) settlementTick() {
 		}
 		s.endAllFights()
 		s.showMessage(s.tables.CString(gamestate.MsgVillageSurrenders))
+		// 0x0041D777: next state 0 (the game), then DEFEAT<map>.FLM.
+		s.film, s.filmToMenu = resfmt.DefeatFilm(s.mapNumber), false
 	}
 	s.game.VillageAlarm(st, party)
 }

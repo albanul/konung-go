@@ -41,7 +41,7 @@ The pile draw is part of the terrain pass, after the terrain and decorations and
 * **Pick-up** (`0x004110EC`), skipped while the member's character window is open:
   * The pile's gold goes to the hero, and the pile's gold becomes 0.
   * Then each item goes to the front of the picker's bag (`0x00424918` logic), until the bag is full («Мешок у тебя не резиновый!») or the weight would exceed the maximum («Превышен вес»). In those cases the game opens the pile window (`0x004170A0`, [trade](konung_trade.md#entry-points), ported), where bag items and the pile's items can be swapped.
-  * A record with index 0 is special: it runs a script (`0x0042B690(0x00450004)`, not ported).
+  * A record with index 0 is special: before anything is taken, the game ends with `WIN.FLM` (`0x0042B690(0x00450004)`, next state the menu; [films](konung_films.md#triggers)). Record 0 is on map 46. Port: `startScene.arrive`.
 * **Removal and respawn** (`0x0041093C`): the cell flag is cleared and the copy dropped from the active list.
   * If the record held exactly one item of category 9, type 1 «Земляной орех» or type 2 «Белый корень», the game allocates a free item record (`0x004399AC`: first index ≥ 1 with a negative category), copies the item into it, stores it as the record's item and sets `+0 = +4 = −time`. The herb is back on the next map load at least 5400 ticks later.
   * Any other record gets item 0.

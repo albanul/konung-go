@@ -61,7 +61,7 @@ Who draws through it (tinted) and who doesn't (raw):
 `LIGHTS.<map>` is 64000 bytes, two parts; a missing file means zeros.
 
 * `0x0000`, `0x3200` bytes → `0x00671440`: one byte per terrain cell, 160 rows × 80 columns, indexed `row·0x50 + col` (`mapdata.TerrainLights`). 0 = unlit; otherwise 1 + the `LIGHTS.RES` light mask the lit path uses (`KONUNG.1`: 163 cells, values up to 18).
-* `0x3200`, `0xC800` bytes → `0x00664C40`: one byte per fine cell, 320 × 160, indexed `row·0xA0 + col` (`mapdata.LitCells`). Any non-zero byte marks a lit cell (`KONUNG.1`: about 450, around the fires); characters there are drawn untinted. The values are not used by the traced code.
+* `0x3200`, `0xC800` bytes → `0x00664C40`: one byte per fine cell, 320 × 160, indexed `row·0xA0 + col` (`mapdata.LitCells`). Any non-zero byte marks a lit cell (`KONUNG.1`: about 450, around the fires); characters and corpses there are drawn untinted. **Only zero / non-zero matters** (verified): the exe references the buffer 10 times, the loader's clear and read (`0x0043C275`, `0x0043C2A1`) and eight `cmp byte, 0` that pick the raw or the tinted palette: corpses in the terrain pass (`0x00425DFC`, `0x00425EBD`, `0x00425FD6`, `0x00426097`) and characters in the sprite pass (`0x00427285`, `0x0042735C`, `0x004277CC`, `0x004278A3`), each for an animated body (pool `0x00722D30`) or a Type 0 body (`0x007145B8`). No code takes the buffer's address. The values are 1–19 (`0x13`) in the 40 installed files, 18 344 lit cells: the same range as the terrain part's 1 + light mask. Hypothesis: the editor's light number, unused by the game (a cell and its terrain cell at row/2, col/2 hold the same value in 12 526 cases, a different one in 2 878 and an unlit one in 2 940; the two grids are staggered differently, so borders disagree).
 
 ## Lit terrain path (`0x004257A9`)
 
@@ -93,5 +93,4 @@ Pitfalls:
 
 ## Open questions
 
-* The values in the fine-grid part of `LIGHTS.N` (only zero / non-zero is used by the traced code).
 * The in-game start time of a new game (the port starts at 0, i.e. day).

@@ -71,4 +71,4 @@ State `0x00A3E6D8` = 6. Opening it (`0x00437DDD`) copies the current values to a
 
 ## Open questions
 
-* None specific to the screen; see [day and night](konung_daylight.md#open-questions) for the lit terrain path.
+* None specific to the screen; the lit terrain path is in [day and night](konung_daylight.md#lit-terrain-path-0x004257a9).

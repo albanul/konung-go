@@ -16,15 +16,14 @@ Ported: every case of `0x00414E64` ([misc items](konung_misc_items.md)). Left ov
 
 **Not traced.** The game's walk code (speed, path rules, direction choice) is reimplemented: A* on the fine grid (`mapdata/finegrid.go`), 10 animation steps/s. Also missing: the per-entity walk throttle `+0x11` (ticks where `time & m == m`) and the random pauses of creature kinds `0x4D`/`0x4F` ([combat: creature AI](konung_combat.md#creature-ai-verified)).
 
-### Films and voices (missing files)
+### Films
 
-* `GAMEOVER.FLM` (hero death, `0x004376A8`), `DEFEAT<map>.FLM` (village surrender), `WIN.FLM` (the index-0 script pile, below), all through `0x0042B690`. No `.FLM` file is installed, and the format is unknown. The port returns to the menu 2 s after the hero's death and shows nothing else.
+All four films play, with the original's triggers, timing and skip key ([films](konung_films.md)).
+
+### Voices and faces (missing files)
+
 * `FACES800.RES` (hired companions' faces, chosen by `+0xF8`; [interface](konung_interface_res.md#hired-faces-faceswidthres-missing-file)): with no file the game draws the INTR faces, as the port does.
 * `SPEECHS.RES` voices for dialogue lines and the deferred reply action while a voice plays ([dialogues](konung_dialogue.md#open-questions), [sound](konung_sound.md#not-ported)).
-
-### Ground items
-
-The pile record with index 0 runs `0x0042B690(0x00450004)` = `WIN.FLM` when picked up ([ground items](konung_ground_items.md)). Hypothesis: the end-of-game pile. Not ported (missing film).
 
 ### Map drawing
 
@@ -53,8 +52,6 @@ Ported, but not bit-exact.
 
 ## Format unknowns
 
-* `KONUNG.N` section 1: flag bits other than walls (`0xFFF`) and arrow obstacles (`0xC0`); grid bits `0xC000` ([map format](konung_map_format.md#open-questions)).
-* `LIGHTS.N` fine-grid values beyond zero / non-zero ([day and night](konung_daylight.md#open-questions)).
 * `GRAPH.RES`: the 64 KiB gap at `0x1ED8B6`; the Type 0 palette/dye choice for NPCs and the model ID → character mapping ([GRAPH](konung_graph_sprites.md)).
 * `GAME.N`: item fields other than category and type; the gear table's remaining fields; which jewellery box is which; group `+0x1E` bits other than `0x20`/`0x40`/`0x80` and kind `0x53`; map exit bytes `+0`/`+1`; settlement bytes outside the traced ones ([GAME.N](konung_game_format.md#open-questions)).
 * Saves: later use of the hero copy `0x00A3E584` after a load ([saves](konung_save_format.md#open-questions)).
