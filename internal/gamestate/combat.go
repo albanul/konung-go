@@ -85,8 +85,13 @@ func (g *Game) Strike(attacker, target *Entity, t *resfmt.ExeTables, rng func(in
 //     attack/Armour), and the attacker's melee weapon loses one poison charge
 //     (+0xC) and attack·0.00025 condition. Worn-out items are destroyed.
 //
-// The god-mode check (0x00A3E768 with the hero as target) is not ported.
+// In god mode (Game.GodMode) a blow on the hero (group 0's first entity,
+// 0x00A3E694) is a dodge with no other effect (0x0041C48C). Arrows use
+// 0x0041C29C, which has no such check.
 func (g *Game) Damage(target, attacker *Entity, t *resfmt.ExeTables, attack int, rng func(int) int) (result, damage int) {
+	if g.GodMode && len(g.Groups) > 0 && target.Index == g.Groups[0].First {
+		return StrikeDodged, 0
+	}
 	tr := g.Recompute(*target, t)
 	if t.FacingDodge(target.Variant, attacker.Variant) {
 		if rng(101) <= int(float64(tr.Stats[2])*0.5) {

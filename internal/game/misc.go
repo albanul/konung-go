@@ -1,6 +1,9 @@
 package game
 
 import (
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
+
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 )
@@ -100,4 +103,14 @@ func (s *startScene) miscRequests() bool {
 		return true
 	}
 	return false
+}
+
+// godMode is 0x00A3E768. The startup init (0x0043A3F2) clears it once per
+// run; new games and loads keep it, and saves do not store it.
+var godMode bool
+
+// godModeKey is L with Ctrl and Shift held (0x004372F2 → 0x00436E7F, which
+// tests 0x00A3E754 and 0x00A3E714).
+func godModeKey() bool {
+	return inpututil.IsKeyJustPressed(ebiten.KeyL) && ebiten.IsKeyPressed(ebiten.KeyControl) && ebiten.IsKeyPressed(ebiten.KeyShift)
 }

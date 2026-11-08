@@ -1084,6 +1084,10 @@ func (s *startScene) escape() bool {
 
 func (s *startScene) Update() {
 	s.game.World = sceneWorld{s}
+	if s.hero != nil && godModeKey() {
+		godMode = !godMode
+	}
+	s.game.GodMode = godMode
 	s.frame++
 	if f := s.frame * 5 / 18; f != s.soundFrame { // one game frame per 60 ms
 		s.soundFrame = f

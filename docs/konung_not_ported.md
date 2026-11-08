@@ -26,7 +26,6 @@ Party play is ported ([party](konung_party.md)): every member walks, follows, fi
 
 See [combat: port](konung_combat.md#port).
 
-* God mode `0x00A3E768`, toggled by `0x00436E93` (key not identified): damage to the hero −2.
 * Equipping the best bag gear on re-equip (`0x004104D4`, not traced; `ReEquip` takes the quiver only).
 
 ### Films and voices (missing files)

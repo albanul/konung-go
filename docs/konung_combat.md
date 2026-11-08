@@ -83,7 +83,7 @@ All conversions truncate (`0x0043FE4C`); `rand()%101` is the roll. Stats: Лов
 |---|---|---|
 | `0x0041B100(target, attacker)` | `Game.Strike` | miss when roll > hit chance; else the attack value `0x0041AF48(attacker, target +4)` (`Game.Attack`) |
 | `0x0041B4CC(e, distance)` | `Game.HitChance` | creatures `100 − (100 − Лов·0.5)·0.5`. Characters in melee: `100 − (100 − Лов·0.5) / (Фехт·0.00015 + 1.5)`. Bow drawn and distance > 0 (character window only; arrows have no hit roll, see [bows](#bows-verified)): `100 − (distance/range + 1)·0.7·(100 − Лов·0.5) / (Метк·0.00015 + 1.5)`, range = bow gear `+0x34`. Then `+0xCA` while `+0xCE` ≠ 0, then the stat-9 bonus `+0xC8` (stack or replace by `+0xD1` bit 2). |
-| `0x0041C480(target, attacker, attack)` | `Game.Damage` | −2 if god mode `0x00A3E768` and the target is the hero (not ported). Dodge −2: facing table `0x00450E14[target dir][attacker dir]` ≠ 0 (they roughly face each other) and roll ≤ `trunc(Лов·0.5)`. `x = max(0, attack·0.7 − Armour)` (float), `dmg = trunc(((attack·0.3 + x) / Вын + 1)·16)`. HP ≤ dmg → 1; else HP −= dmg, result 0 if dmg ≥ `0x30`, else −1. Then: target poison `+0x50` += `0x00A3E828`; armour/helmet/shield condition (item float `+4`) −= gear `+0x2C`·0.001·min(1, attack/Armour); attacker's axe or blade loses one charge (item `+0xC`) and attack·0.00025 condition. Condition ≤ 0 destroys the item (category `0xFF`, slot cleared). |
+| `0x0041C480(target, attacker, attack)` | `Game.Damage` | In [god mode](#god-mode-0x00a3e768) a blow on the hero returns −2 (a dodge) at once: no damage, poison or wear. Dodge −2: facing table `0x00450E14[target dir][attacker dir]` ≠ 0 (they roughly face each other) and roll ≤ `trunc(Лов·0.5)`. `x = max(0, attack·0.7 − Armour)` (float), `dmg = trunc(((attack·0.3 + x) / Вын + 1)·16)`. HP ≤ dmg → 1; else HP −= dmg, result 0 if dmg ≥ `0x30`, else −1. Then: target poison `+0x50` += `0x00A3E828`; armour/helmet/shield condition (item float `+4`) −= gear `+0x2C`·0.001·min(1, attack/Armour); attacker's axe or blade loses one charge (item `+0xC`) and attack·0.00025 condition. Condition ≤ 0 destroys the item (category `0xFF`, slot cleared). |
 | `0x0041AF48` side effect | `Game.poisonOf` | `0x00A3E828` = creature `+0x52`, the melee weapon's item `+0xC`, or 0 |
 | `0x0041B70C(victim)` | `Game.KillExperience` | creatures `trunc(Armour·0.1 + Лов·0.2 + Сил·0.3 + Вын·0.3)`; characters add `Фехт·0.002 + Метк·0.003`, then with a melee weapon `trunc(xp + gear·0.2)` |
 | kill path `0x00422082`, `0x0041079C` | `Game.Kill` | killer «Свободный опыт» `+0x38` += xp/4 and Фехтование `+0x40` += xp. With `+3` bit `0x02` (the auto-level toggle) `0x0041079C` also spends free experience on levels and stats (`0x00410B08`; `Game.GainExperience`, below). |
@@ -269,14 +269,23 @@ Approximations:
 
 Not ported:
 * the films `GAMEOVER.FLM` (hero death) and `DEFEAT<map>.FLM` (village surrender), played by `0x0042B690`: the files are not installed. The port returns to the menu after 2 s and shows nothing on a surrender;
-* god mode (`0x00A3E768`, toggled by `0x00436E93`): damage to the hero is not reduced by 2;
 * the walk extras (`+0x11` throttle, the `0x4D`/`0x4F` pauses), see [creature AI](#creature-ai-verified);
 * picking the best bag gear on re-equip (`0x004104D4`, not traced).
 
 HP is regained through [potions](konung_potions.md) and the healer's dialogue scripts 334/335 ([dialogues](konung_dialogue.md)); the raise buttons are in the [character window](konung_character_window.md#raise-column-verified). See [not ported](konung_not_ported.md) for the whole list.
 
+## God mode (`0x00A3E768`)
+
+A cheat switch, verified against code:
+
+* **Toggle**: **Ctrl+Shift+L**. In the key switch, VK `0x4C` (`0x004372F2`) goes to `0x00436E7F`, which flips the flag only while Shift (`0x00A3E754`) and Ctrl (`0x00A3E714`) are held.
+* **Reset**: once per run, in the startup init `0x0043A3DC` (`0x0043A3F2`). New games and loads keep the flag, and saves don't store it.
+* **Effects**: in `0x0041C480` (`0x0041C48C`), a blow on the hero (`0x00A3E694`) returns −2, a dodge, before anything else. Arrows go through `0x0041C29C`, which has no check, so they still hurt. `0x00418364` (`0x00418370`) returns 1, so every item can be used.
+
+Port: `Game.GodMode`, set every frame from the session switch `game.godMode`, which `godModeKey` toggles; `Game.Damage`, `Game.CanUse`. Test: `gamestate.TestGodMode`.
+
 ## Open questions
 
 * Grid bits `0xC000` (obstacle kinds); `0x004104D4` (equip best). (`0x00418364`, usable, is `Game.CanUse`, [character window](konung_character_window.md).)
-* The god-mode toggle `0x00436E93`; field `+0x11` (walk throttle), `+0x14`.
+* Field `+0x11` (walk throttle), `+0x14`.
 * Films `GAMEOVER.FLM`, `DEFEAT<n>.FLM` (`0x0042B690`), not in the installed files.

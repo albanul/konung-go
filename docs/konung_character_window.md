@@ -133,7 +133,7 @@ Port: `startScene.statusText` (a click message still wins for its short lifetime
 | `0x0041AC1C` | `Game.Armour` | `+0x4E` + gear `+0x2C` of slots 3–5; bonus `+0xC4` added if `+0xD1` bit 0, else replaces |
 | `0x0041AF48(e, kind)` | `Game.Attack` | creatures: trunc(Сил·0.04·HP·0.0625). Axe or blade active: gear `+0x2C` (or the special property's value, record `0x0046238C` `+0x2C`, when item `+2` ≥ 0 and its kind matches) + trunc(Сил·0.04·HP·0.0625). Otherwise trunc(Сил·0.02·HP·0.0625). Bonus `+0xC6` by `+0xD1` bit 1. |
 | `0x0041ADE4` | `Game.SheetDamage` | window only, with ammunition, bow mode and a bow: bow `+0x2C` × arrow `+0x2C`, same bonus rule |
-| `0x00418364` | `Game.CanUse` | gear (categories ≤5, 12) and jewellery (6–8): the enchantment's requirement; gear also its type's (`+0x30` stat id, `+0x32` minimum). Others usable. Returns 1 when `0x00A3E768` ≠ 0 (not traced; the port assumes 0). |
+| `0x00418364` | `Game.CanUse` | gear (categories ≤5, 12) and jewellery (6–8): the enchantment's requirement; gear also its type's (`+0x30` stat id, `+0x32` minimum). Others usable. Returns 1 in god mode (`0x00A3E768` ≠ 0, [combat](konung_combat.md#god-mode-0x00a3e768)). |
 
 `GAME.0` check (`gamestate.TestCharSheetGame0`): Volk weight 2.8, armour 10, attack 120 (knife 60 + 60); villager 355 weight 6.8, armour 52 (12 + 24 + 4 + 12), attack 120 (club 80 + 40). No start item is enchanted, so `Recompute` changes nothing in `GAME.0`.
 
@@ -143,5 +143,4 @@ Port: `startScene.statusText` (a click message still wins for its short lifetime
 
 ## Open questions
 
-* `0x00A3E768` (god mode, see [combat](konung_combat.md#open-questions)).
 Background tiling (**T**) is traced and ported: [settings](konung_settings.md#background-tiling-t).

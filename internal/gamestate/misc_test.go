@@ -404,3 +404,38 @@ func TestFleeOffset(t *testing.T) {
 		t.Errorf("down: %d %d %v", dr, dc, ok)
 	}
 }
+
+// TestGodMode: 0x00A3E768 turns every blow on the hero into a dodge
+// (0x0041C48C) and makes every item usable (0x00418370).
+func TestGodMode(t *testing.T) {
+	tb := exeTables(t)
+	g, hero, _, item := miscGame(t)
+	foe := &g.Entities[g.Groups[0].First+1]
+	hero.HP = HPFull
+	g.GodMode = true
+	if r, d := g.Damage(hero, foe, tb, 5000, func(int) int { return 100 }); r != StrikeDodged || d != 0 || hero.HP != HPFull {
+		t.Errorf("god mode: result %d damage %d HP %d", r, d, hero.HP)
+	}
+	other := &g.Entities[500]
+	other.HP = HPFull
+	if r, _ := g.Damage(other, foe, tb, 5000, func(int) int { return 100 }); r == StrikeDodged {
+		t.Error("god mode protected someone else")
+	}
+	heavy := 0
+	for typ := range 64 {
+		if stat, min := tb.GearRequirement(typ); min > 0 && stat > 0 {
+			heavy = typ
+			break
+		}
+	}
+	it, _ := g.Item(item(CatBlade, heavy))
+	weak := *hero
+	weak.BaseStats, weak.Stats = [4]int{1, 1, 1, 1}, [4]int{1, 1, 1, 1}
+	if !g.CanUse(weak, tb, it) {
+		t.Error("god mode refused an item")
+	}
+	g.GodMode = false
+	if g.CanUse(weak, tb, it) {
+		t.Skip("the test item has no requirement a weak hero misses")
+	}
+}

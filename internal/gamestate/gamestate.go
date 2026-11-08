@@ -105,6 +105,9 @@ type Game struct {
 	// is used on it: the scene sets it to Revive with its occupancy and the
 	// hero's cell, and takes the cell. nil = no revival.
 	Reviver func(e *Entity) bool
+	// GodMode is 0x00A3E768: blows on the hero are dodged (Damage) and every
+	// item is usable (CanUse). The scene copies its session switch here.
+	GodMode bool
 	// CloseWindow asks the scene to close the open window (0x00A3E740 = 0,
 	// the shovel, UseMisc); the scene clears it.
 	CloseWindow bool

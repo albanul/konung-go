@@ -200,10 +200,14 @@ func (g *Game) SheetDamage(e Entity, t *resfmt.ExeTables) int {
 	return g.Attack(e, t, 0)
 }
 
-// CanUse is 0x00418364 (global 0x00A3E768 assumed 0): gear and jewellery
-// must meet their enchantment's requirement, gear also its own (stat id and
-// minimum from the type record). Everything else is usable.
+// CanUse is 0x00418364: in god mode (Game.GodMode) everything is usable.
+// Otherwise gear and jewellery must meet their enchantment's requirement,
+// gear also its own (stat id and minimum from the type record). Everything
+// else is usable.
 func (g *Game) CanUse(e Entity, t *resfmt.ExeTables, it Item) bool {
+	if g.GodMode {
+		return true
+	}
 	e = g.Recompute(e, t)
 	tab := it.Table()
 	if tab != resfmt.ItemTableGear && tab != resfmt.ItemTableJewel {
