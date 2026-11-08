@@ -220,8 +220,38 @@ func (s *startScene) swing(aw *walker, a *gamestate.Entity, target int, targetCe
 	if a.Group == 0 {
 		aw.look = lookOf(*a) // a worn-out weapon or armour disappears
 	}
+	if s.retreat(a) {
+		return true
+	}
 	aw.startAct(gamestate.ActAttack)
 	return false
+}
+
+// kindRetreat is the creature kind (entity +4) that runs off after a blow.
+const kindRetreat = 0x49
+
+// retreat is 0x004126A1 in the creature swing: after a blow that did not
+// kill, a creature of kind 0x49 picks a cell far off (0x004101E4,
+// gamestate.FleeOffset) and walks there with +2 = 8 (0x004142D4) instead of
+// swinging again. It reports whether the walk started.
+func (s *startScene) retreat(a *gamestate.Entity) bool {
+	n, ok := s.byEntity[a.Index]
+	if !ok || n.mode != npcCreature || a.Flags4 != kindRetreat {
+		return false
+	}
+	dr, dc, ok := gamestate.FleeOffset(s.rng.IntN, n.cell.Row, n.cell.Col,
+		gamestate.VillageRowRange, gamestate.VillageColRange, func(r, c int) bool {
+			return s.blocked(mapdata.Cell{Row: r, Col: c})
+		})
+	if !ok {
+		return false
+	}
+	n.walkTo(mapdata.Cell{Row: n.cell.Row + dr, Col: n.cell.Col + dc})
+	if len(n.path) == 0 {
+		return false
+	}
+	n.intent = intentWalk
+	return true
 }
 
 // actTick plays hit reactions and deaths (n is nil for party members).

@@ -27,7 +27,6 @@ Party play is ported ([party](konung_party.md)): every member walks, follows, fi
 See [combat: port](konung_combat.md#port).
 
 * God mode `0x00A3E768`, toggled by `0x00436E93` (key not identified): damage to the hero −2.
-* Kind `0x49` runs off after a swing that did not kill (`0x004126BD`: `0x004101E4`, ported as `gamestate.FleeOffset` for the whistle, then a walk with `+2` = 8); the creature AI does not use it yet.
 * Equipping the best bag gear on re-equip (`0x004104D4`, not traced; `ReEquip` takes the quiver only).
 
 ### Films and voices (missing files)

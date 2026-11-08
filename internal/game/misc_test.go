@@ -53,3 +53,36 @@ func TestShovelClosesWindow(t *testing.T) {
 		t.Errorf("window %v, strip %v, digging %v", s.inv.open, s.inv.quick, s.hand.Digging())
 	}
 }
+
+// TestKind49Retreat: after a blow that did not kill, a kind 0x49 creature
+// walks off (0x004126A1 → 0x004101E4) with the walk intent; other kinds
+// swing on.
+func TestKind49Retreat(t *testing.T) {
+	s := newVolkScene(t)
+	var n *npc
+	for _, c := range s.npcs {
+		if c.mode == npcCreature {
+			n = c
+			break
+		}
+	}
+	if n == nil {
+		t.Skip("no creature on the start map")
+	}
+	e := &s.game.Entities[n.entity]
+	e.Flags4 = 0x41
+	if s.retreat(e) {
+		t.Fatal("kind 0x41 retreated")
+	}
+	e.Flags4 = kindRetreat
+	from := n.cell
+	if !s.retreat(e) {
+		t.Fatal("kind 0x49 did not retreat")
+	}
+	goal := n.path[len(n.path)-1]
+	dr, dc := goal.Row-from.Row, goal.Col-from.Col
+	far := max(dr, -dr) >= gamestate.VillageRowRange || max(dc, -dc) >= gamestate.VillageColRange
+	if n.intent != intentWalk || !far {
+		t.Errorf("intent %#x, walk from %v to %v", n.intent, from, goal)
+	}
+}

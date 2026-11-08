@@ -69,7 +69,7 @@ Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent).
     Distance `0x00439944` (`gamestate.Dist`): the larger axis difference, plus 1 if the smaller one exceeds 1.
   * `0x20` return: a member with the melee intent keeps fighting while a party member is inside the leash (`0x0041FD74`). Kinds `0x41`/`0x4D`/`0x4F` and `0x43`/`0x45` use their selector without the nearest fallback; stationary ones stop; others find nothing. Otherwise the intent ends. A member outside the territory walks to a free cell picked like `0x0041F5D8` (`gamestate.WanderTarget`) with `+2` = 8.
 * **Chase** `0x00411FD0` (walking with the melee intent): a dead target ends it. A target still on `+0x0C/+0x0E` keeps it going. A target outside the leash drops it (leash). A target that moved one cell patches the path's last step; otherwise the member goes idle and re-decides.
-* **Swing** `0x0041248D`: as the party's, without the step-2 alarm. A kill also adds xp to the creature's `+0x40`. After a swing that did not kill, kind `0x49` runs off (`0x004126BD`: `0x004101E4` picks a cell two view heights or widths away, [misc items](konung_misc_items.md#enemy-group-0x0041fd74-and-flight-0x004101e4); then a walk with `+2` = 8, else the swing restarts). Not ported.
+* **Swing** `0x0041248D`: as the party's, without the step-2 alarm. A kill also adds xp to the creature's `+0x40`. After a swing that did not kill, kind `0x49` runs off (`0x004126BD`: `0x004101E4` picks a cell two view heights or widths away, [misc items](konung_misc_items.md#enemy-group-0x0041fd74-and-flight-0x004101e4); then a walk with `+2` = 8, else the swing restarts). Port: `startScene.retreat`, called from `swing` for creatures; once the walk ends the creature decides again (hit and run). `GAME.0`/`1`/`2` have 45/40/58 such creatures (OBJECTS models 8 and 23).
 * **Revival:** a dying kind-`0x4C` creature with `+0x12` > 0 gets HP 1600, `+0x12` − 1 and action 4 (dormant) instead of dying (`gamestate.Revives`).
 * **Walk extras** (not ported): `+0x11` slows walking (ticks where `time & m == m`); kinds `0x4D`/`0x4F` pause a random number of ticks between steps.
 
@@ -270,7 +270,6 @@ Approximations:
 Not ported:
 * the films `GAMEOVER.FLM` (hero death) and `DEFEAT<map>.FLM` (village surrender), played by `0x0042B690`: the files are not installed. The port returns to the menu after 2 s and shows nothing on a surrender;
 * god mode (`0x00A3E768`, toggled by `0x00436E93`): damage to the hero is not reduced by 2;
-* kind `0x49` running off after its blow (`0x004101E4` is traced and ported as `gamestate.FleeOffset`, but the creature AI does not call it);
 * the walk extras (`+0x11` throttle, the `0x4D`/`0x4F` pauses), see [creature AI](#creature-ai-verified);
 * picking the best bag gear on re-equip (`0x004104D4`, not traced).
 

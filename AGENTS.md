@@ -143,7 +143,7 @@ $C sed -n '53935,54260p' /tmp/kn/text.asm | awk -F'\t' '{print $1, $3}'   # addr
 
 Highest-value unknowns, roughly in priority order. The full list of missing features and approximations, with VAs, is in [not ported](docs/konung_not_ported.md).
 
-1. The game's own movement code (speed, path rules); party leftovers (the trade window's portrait clicks, see [party](docs/konung_party.md#open-questions)); combat leftovers (god mode, kind `0x49` retreat; see [combat](docs/konung_combat.md#open-questions)); spawn positions of non-creature groups without coordinates. See [GAME.N](docs/konung_game_format.md#open-questions).
+1. The game's own movement code (speed, path rules); party leftovers (the trade window's portrait clicks, see [party](docs/konung_party.md#open-questions)); combat leftovers (god mode; see [combat](docs/konung_combat.md#open-questions)); spawn positions of non-creature groups without coordinates. See [GAME.N](docs/konung_game_format.md#open-questions).
 2. Type 0 model palette/dye selection for NPCs (the heroes' palettes are [known](docs/konung_new_game.md#the-hero-template)) and the model ID → character mapping. See [exe notes](docs/konung_exe_resource_loaders.md).
 3. `KONUNG.N` section 1 (320×160 flag grid): walls and arrow obstacles (bits `0xC0`) are known; the other bits are not.
 4. The fine-grid `LIGHTS.N` values. See [day and night](docs/konung_daylight.md#open-questions).

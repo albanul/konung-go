@@ -95,7 +95,7 @@ The target must be category 11. Two parts, in either order, turn the **target** 
 * 0 / 1: dr = −2W / +2W. dc scans from −C up to C − 1 and stops at the first cell (row + dr, col + dc) whose fine-grid word `0x00505C70[row·0x140 + col·2] & 0xFFF` is 0.
 * 2 / 3: dc = −2C / +2C. dr scans from −W up to W − 1 in the same way.
 
-A negative row or column counts as blocked (the bounds helper `0x00447CAA` skips the test). The return value is 1 unless the scan ran out (dr = W or dc = C). Port: `gamestate.FleeOffset`. The same routine is the kind-`0x49` retreat after a creature's swing that did not kill (`0x004126BD`, [combat](konung_combat.md#creature-ai-verified)), which the port does not use yet.
+A negative row or column counts as blocked (the bounds helper `0x00447CAA` skips the test). The return value is 1 unless the scan ran out (dr = W or dc = C). Port: `gamestate.FleeOffset`. The same routine is the kind-`0x49` retreat after a creature's swing that did not kill (`0x004126BD`, [combat](konung_combat.md#creature-ai-verified)), ported as `startScene.retreat`.
 
 ## Port notes
 
