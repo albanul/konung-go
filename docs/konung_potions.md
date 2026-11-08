@@ -70,9 +70,9 @@ So the skill sets the starting strength: a jar plus a root gives a balm of *s* (
 * **In-hand box** (window hotspot 19, item `0x00A3E7A0`, drawn centred at `0x00465864`, `0x0042E5C0`): the box only *points at* an item that stays where it is. Every draw skips the boxed item: the bag strip leaves a plain, untinted empty cell (`0x0042F72F`, `0x0042F7FA`), and the equipment, ammunition and jewellery icons are not drawn (`0x0042E29F`, `0x0042E3EF`, `0x0042E4B7`). It is described only over the box (bag hover `0x00424294`, hand `0x004243C6`, ammunition `0x00424403`). So it looks as if it had moved into the box. A bag cell holding it can't be lifted (`0x004234A0`). The box is cleared when the window opens (`0x004246D1`) or the quick strip is shown (`0x00437253`), but not when the window closes. The item then shows in its cell again; it never left it. Click handler `0x00422D50`:
   * box empty or hand empty → `0x0041E96C`: an empty hand lifts the boxed item from its place (ammunition, equipment, jewellery, else the bag) and empties the box. A held item is put back from its backup (a bag item at the **end** of the bag) and the box points at it.
   * holding a herb (cursor 8) → `0x0041DB64(e, box, held)`: mixing, or poison/oil on a boxed weapon or arrows; the hand empties.
-  * holding a misc item (cursor 9) → `0x00414E64(e, box, held)` (not ported).
+  * holding a misc item (cursor 9) → `0x00414E64(e, box, held)` ([misc items](konung_misc_items.md)).
   * otherwise, or refused → «Предмет не доступен для использования» (`0x0045C17C`) and the item returns.
-* **Portrait** (hotspots 30–39, `0x00422E21`) while holding an item: on a dead member or the holder itself → `0x0042054C(member)`: a herb is used on the member (`0x0041DB64(m, 0, held)`), and the jar returns to the bag front (`0x00429194`). A misc item goes to `0x00414E64` (not ported). Anything else shows the message and returns the item. On another living member → `0x004246F8(member)` (give: weight and bag-full checks).
+* **Portrait** (hotspots 30–39, `0x00422E21`) while holding an item: on a dead member or the holder itself → `0x0042054C(member)`: a herb is used on the member (`0x0041DB64(m, 0, held)`), and the jar returns to the bag front (`0x00429194`). A misc item goes to `0x00414E64` ([misc items](konung_misc_items.md)). Anything else shows the message and returns the item. On another living member → `0x004246F8(member)` (give: weight and bag-full checks).
 * **Right click on a bag herb** (`0x00423E26` case 9): `0x0041DB64(e, 0, item)` on the window's character; the jar stays in its cell; a refusal is silent.
 
 Port: `gamestate.Game.Mix`, `UseHerb`, `UseMisc` (torch), `ClickBox`, `ClickPortrait`, `UseBagItem`; `Hand.Box`. UI: `startScene.windowClick` (hotspot 19), `startScene.click` (portraits), `charWindow.draw` (box icon), `statusText` (box hover).
@@ -90,4 +90,4 @@ Status: traced and ported (`Game.Lit`, `resfmt.LightsGlow`, `startScene.drawPile
 
 ## Open questions
 
-* Misc items other than the torch and the shovel (`0x00414E64`, cursor 9); see [not ported](konung_not_ported.md#other-misc-items).
+None left for potions. Misc items, which share the in-hand box and the portrait, are documented in [misc items](konung_misc_items.md).

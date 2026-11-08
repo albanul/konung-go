@@ -329,18 +329,24 @@ func (g *Game) give(h *Hand, holder, to *Entity, t *resfmt.ExeTables) int {
 // ClickBox is the in-hand box click (hotspot 19, 0x00422D50). With an empty
 // box or an empty hand it is boxSwap (0x0041E96C). Holding a herb, the herb
 // is used on the boxed item (UseHerb: mixing, or poison/oil on a weapon or
-// arrows) and the hand empties; a held misc item goes to 0x00414E64 (UseMisc:
-// the torch only). Anything else (and a refusal) shows «Предмет не доступен
-// для использования» and returns the held item.
+// arrows) and the hand empties; a held misc item goes to 0x00414E64
+// (UseMisc, on the boxed item), and the cursor becomes the pointer even
+// after the shovel (0x00422DF5). Anything else (and a refusal) shows
+// «Предмет не доступен для использования» and returns the held item.
 func (g *Game) ClickBox(h *Hand, e *Entity, t *resfmt.ExeTables) int {
 	if h.Box == 0 || !h.Holding() {
 		g.boxSwap(h, e)
 		return 0
 	}
-	if h.Cursor == CursorHerb && g.UseHerb(e, t, h.Box, h.Item) ||
-		h.Cursor == cursorMisc && g.UseMisc(e, h.Box, h.Item) {
+	if h.Cursor == CursorHerb && g.UseHerb(e, t, h.Box, h.Item) {
 		h.Cursor = CursorPointer
 		return 0
+	}
+	if h.Cursor == cursorMisc {
+		if ok, msg := g.UseMisc(e, t, h.Box, h.Item); ok {
+			h.Cursor = CursorPointer
+			return msg
+		}
 	}
 	h.Return(e)
 	return MsgUnusable
@@ -409,17 +415,21 @@ func (g *Game) ClickPortrait(h *Hand, holder, m *Entity, t *resfmt.ExeTables) in
 }
 
 // useOn is 0x0042054C(e): a held herb is used on character e (UseHerb with
-// no target), a misc item through UseMisc (the torch); what is left (the
-// empty jar, the torch) returns to the holder's bag front. A refusal, or
-// any other item, shows «Предмет не доступен для использования» and returns
-// the item.
+// no target), a misc item through UseMisc (no target); what is left (the
+// empty jar, a kept misc item) returns to the holder's bag front. A
+// refusal, or any other item, shows «Предмет не доступен для использования»
+// and returns the item.
 func (g *Game) useOn(h *Hand, holder, e *Entity, t *resfmt.ExeTables) int {
-	if h.Cursor == CursorHerb && g.UseHerb(e, t, 0, h.Item) || h.Cursor == cursorMisc && g.UseMisc(e, 0, h.Item) {
+	used, msg := h.Cursor == CursorHerb && g.UseHerb(e, t, 0, h.Item), 0
+	if !used && h.Cursor == cursorMisc {
+		used, msg = g.UseMisc(e, t, 0, h.Item)
+	}
+	if used {
 		if it, ok := g.Item(h.Item); ok && int8(it.Category) != -1 {
 			h.Return(holder)
 		}
 		h.Cursor = CursorPointer
-		return 0
+		return msg
 	}
 	h.Return(holder)
 	return MsgUnusable
@@ -431,10 +441,10 @@ func (g *Game) useOn(h *Hand, holder, e *Entity, t *resfmt.ExeTables) int {
 // to jewellery box 0; the shovel (misc type 0x18, 0x00415504) switches the
 // hand to CursorDig and the caller closes the window. A herb or potion (9)
 // is used on e at once (UseHerb, 0x0041DB64(e, 0, item)): it stays in the
-// bag as «Пустая банка»; a refusal is silent. The torch lights the piles
-// (UseMisc), the jump orb opens the map window, «Потерянная карта»
-// reveals a location and «Слова Воскрешения» revives the map's dead (UseMisc). Other misc items (0x00414E64) are not ported; bracelets, rings
-// and category 10 do nothing. It returns a message VA or 0.
+// bag as «Пустая банка»; a refusal is silent. A misc item (11) is used with
+// no target (UseMisc, 0x00414E64(e, 0, item)); the shovel then switches the
+// hand to CursorDig. Bracelets, rings and category 10 do nothing. It
+// returns a message VA or 0.
 func (g *Game) UseBagItem(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 	item := e.Bag[i&31]
 	it, ok := g.Item(item)
@@ -450,11 +460,12 @@ func (g *Game) UseBagItem(h *Hand, e *Entity, t *resfmt.ExeTables, i int) int {
 		return g.ClickJewellery(h, e, t, 0)
 	case c == CatHerb:
 		g.UseHerb(e, t, 0, item)
-	case c == 11 && (it.Type == torchType || it.Type == jumpOrbType || it.Type == lostMapType || it.Type == wordsType):
-		g.UseMisc(e, 0, item)
-	case c == 11 && it.Type == shovelType:
-		h.Cursor = CursorDig
-		g.sound(SoundUse) // 0x00415520
+	case c == CatQuest:
+		ok, msg := g.UseMisc(e, t, 0, item)
+		if ok && it.Type == MiscShovel {
+			h.Cursor = CursorDig
+		}
+		return msg
 	}
 	return 0
 }

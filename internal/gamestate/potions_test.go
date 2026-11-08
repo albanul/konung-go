@@ -160,7 +160,7 @@ func TestLightGame0(t *testing.T) {
 	// The torch (misc type 31) does the same from the bag and stays there.
 	g.Lit = false
 	torch := g.newItem()
-	g.setItem(torch, 11, torchType)
+	g.setItem(torch, 11, MiscTorch)
 	BagInsert(&volk, torch)
 	h := NewHand()
 	g.UseBagItem(&h, &volk, tb, 0)

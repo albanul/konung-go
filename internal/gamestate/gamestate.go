@@ -105,6 +105,13 @@ type Game struct {
 	// is used on it: the scene sets it to Revive with its occupancy and the
 	// hero's cell, and takes the cell. nil = no revival.
 	Reviver func(e *Entity) bool
+	// CloseWindow asks the scene to close the open window (0x00A3E740 = 0,
+	// the shovel, UseMisc); the scene clears it.
+	CloseWindow bool
+	// World is the scene's side of the misc items that reach other
+	// characters, positions or the map (UseMisc). nil = those items are
+	// refused.
+	World World
 	// ReviveAll asks the scene to revive every dead character on the
 	// current map («Слова Воскрешения», 0x00414FFB); the scene clears it.
 	ReviveAll bool

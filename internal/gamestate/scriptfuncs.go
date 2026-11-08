@@ -239,19 +239,23 @@ func (t *Talk) hasUnidentified() int {
 	return 0
 }
 
-// identifyAll is 331 (0x00435100 → 0x0041BABC): every unidentified item
-// the hero carries is identified, each adding 1 to the hero's curios skill
-// (+0x4A), capped at 100.
+// identifyAll is 331 (0x00435100 → 0x0041BABC on the hero).
 func (t *Talk) identifyAll() int {
-	h := t.hero()
-	for _, p := range heroItems(h) {
-		if it, ok := t.G.Item(*p); ok && *p != 0 && it.Flagged {
-			t.G.items[*p*itemStride+0xE] ^= 1
-			h.Skills[4]++
+	t.G.identifyAll(t.hero(), t.hero())
+	return 1
+}
+
+// identifyAll is 0x0041BABC(e): every unidentified item e carries
+// (equipment, ammunition, bag, jewellery) is identified, each adding 1 to
+// the hero's curios skill (+0x4A); the skill is then capped at 100.
+func (g *Game) identifyAll(e, hero *Entity) {
+	for _, p := range heroItems(e) {
+		if it, ok := g.Item(*p); ok && *p != 0 && it.Flagged {
+			g.items[*p*itemStride+0xE] ^= 1
+			hero.Skills[4] = int(uint16(hero.Skills[4] + 1))
 		}
 	}
-	h.Skills[4] = min(h.Skills[4], 100)
-	return 1
+	hero.Skills[4] = min(hero.Skills[4], 100)
 }
 
 // healGain is the healer's skill gain for healing e: trunc((1600 − HP)·0.015).

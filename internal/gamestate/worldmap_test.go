@@ -98,7 +98,7 @@ func TestUseLostMap(t *testing.T) {
 	g.Rand = func(int) int { return 9 }
 	hero := &g.Entities[g.Groups[0].First]
 	hero.Bag = [32]int{5, scroll, 6}
-	if !g.UseMisc(hero, 0, scroll) {
+	if ok, _ := g.UseMisc(hero, nil, 0, scroll); !ok {
 		t.Fatal("UseMisc refused the lost map")
 	}
 	if !g.MapKnown(10) {

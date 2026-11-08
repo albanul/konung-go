@@ -46,7 +46,7 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 | 9 | hand (axe or blade) | `0x0041E500(slot)`, slot from `0x00422CB4` (`gamestate.HandSlot`): holding, category 0 → 0 else 2; empty hand, no axe → 2, axe mode → 0, blade present → 2, else 0 |
 | 13 | ammunition (`+0xCC`) | `0x0041E500(12)` |
 | 14–18 | jewellery `+0xB2`[0–4] | `0x0041E778(id)` |
-| 19 | in-hand box | `0x00422D50`: `0x0041E96C` (put in / take out) or herb use on the boxed item (`0x0041DB64`); misc use `0x00414E64` for the torch only ([potions](konung_potions.md#controls)) |
+| 19 | in-hand box | `0x00422D50`: `0x0041E96C` (put in / take out) or herb use on the boxed item (`0x0041DB64`); misc use `0x00414E64` on the boxed item ([misc items](konung_misc_items.md)) |
 | 40–44, 45 | raise buttons, auto-level toggle | [raise column](#raise-column-verified) |
 | bag cell | `+0x72`[(cell + scroll) & 31] | `0x0042342A` |
 
@@ -94,7 +94,7 @@ Port: `gamestate.Game.RaiseCosts`, `Raise`, `ToggleAutoLevel` (`levels.go`, test
 | 6 | lift, then jewellery box 0 (`0x0041E778(14)`) |
 | 7, 8, 10 | nothing |
 | 9 | use the herb on the character, `0x0041DB64(e, 0, item)` ([potions](konung_potions.md)) |
-| 11 | use the misc item, `0x00414E64(e, 0, item)` (jump table `0x00415ADC` by type; ported: the shovel, type 24, [dig mode](konung_ground_items.md#hover-and-pick-up); the torch, type 31, [loot highlight](konung_potions.md#loot-highlight-0x00a3e758)) |
+| 11 | use the misc item, `0x00414E64(e, 0, item)` (jump table `0x00415ADC` by type, every case ported: [misc items](konung_misc_items.md)) |
 
 **Quick bag (`` ` ``/`~`, VK 0xC0, `0x004371D2`).** Only with no window open (`0x00A3E740` = 0). It toggles the bag strip (`0x0042F50C`) for the first selected member: if the strip already shows that member (`0x00A3E730`) it is hidden, otherwise the scroll resets and the strip is drawn. The strip covers the bottom of the game view, just above the status bar. Its cells and arrows work as in the window (hotspot routine `0x004395E6` tests `0x00A3E730`, not the window). The window toggle saves and restores the strip state (`0x00A3E760`), and the shovel leaves the strip open. While an item is held, a left click on the map drops it ([ground items](konung_ground_items.md#hover-and-pick-up)). Port: `charWindow.quick`.
 
@@ -144,4 +144,4 @@ Port: `startScene.statusText` (a click message still wins for its short lifetime
 ## Open questions
 
 * `0x00A3E768` (god mode, see [combat](konung_combat.md#open-questions)).
-* Misc items on the in-hand box or a portrait (cursor mode 9, `0x00414E64`), see [not ported](konung_not_ported.md#other-misc-items). (Background tiling, **T**, is traced and ported: [settings](konung_settings.md#background-tiling-t).)
+Background tiling (**T**) is traced and ported: [settings](konung_settings.md#background-tiling-t).

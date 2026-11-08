@@ -122,10 +122,11 @@ type startScene struct {
 	pileAt    map[mapdata.Cell]int // active piles by cell (index into game.Piles)
 	hovered   int                  // entity under the cursor in the last frame, -1 = none
 
-	byEntity  map[int]*npc // non-party characters on this map by entity index
-	deadAt    int          // frame the hero was first seen dead (gameOver)
-	aiBudget  int          // combat AI path searches left this game tick
-	fightNext int          // round-robin start of the combat AI's path budget
+	byEntity  map[int]*npc       // non-party characters on this map by entity index
+	jump      *gamestate.MapExit // a map change asked by a misc item (sceneWorld.Jump)
+	deadAt    int                // frame the hero was first seen dead (gameOver)
+	aiBudget  int                // combat AI path searches left this game tick
+	fightNext int                // round-robin start of the combat AI's path budget
 	// hoveredBuilding is placement + 1 of the front-most settlement
 	// building under the cursor (0x00A3E6A4, set by the object draw
 	// pass), 0 = none.
@@ -764,10 +765,6 @@ func (s *startScene) click(cur *gamestate.Entity, mx, my, spot int, right bool) 
 		i := (mx-s.inv.strip.x0)/s.inv.strip.cellW + s.inv.scroll
 		if right {
 			msg = s.game.UseBagItem(&s.hand, cur, s.tables, i)
-			if s.hand.Digging() && s.inv.open {
-				s.inv.open = false // 0x00415504 closes the window; the strip stays
-				s.inv.quick = true
-			}
 		} else {
 			msg = s.game.ClickBag(&s.hand, cur, s.tables, i)
 		}
@@ -1086,6 +1083,7 @@ func (s *startScene) escape() bool {
 }
 
 func (s *startScene) Update() {
+	s.game.World = sceneWorld{s}
 	s.frame++
 	if f := s.frame * 5 / 18; f != s.soundFrame { // one game frame per 60 ms
 		s.soundFrame = f
@@ -1102,6 +1100,9 @@ func (s *startScene) Update() {
 		}
 		s.updateSpeed()
 		s.updateControls(mx, my)
+	}
+	if s.miscRequests() {
+		return
 	}
 	if s.game.ReviveAll {
 		s.game.ReviveAll = false

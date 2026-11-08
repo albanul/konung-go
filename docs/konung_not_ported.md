@@ -6,22 +6,11 @@ Reasons used below: **not traced** (the exe code has not been read), **missing f
 
 ## Features
 
-### Other misc items
+### Misc items
 
-Status: dispatcher traced, most cases **not traced**. Misc items (category ≥ 10, table `0x0046053C`) are used by `0x00414E64(e, target, item)` from the bag (right click), the in-hand box (hotspot 19) and a portrait (hotspots 30–39, cursor mode 9). Its jump table `0x00415ADC` has one case per type; the common tail `0x00415BD3` plays sound 10.
+Ported: every case of `0x00414E64` ([misc items](konung_misc_items.md)). Left over:
 
-| Types | Case | Status |
-|---|---|---|
-| 24 Лопата | `0x00415504` | ported: [dig mode](konung_ground_items.md#hover-and-pick-up) |
-| 31 Факел | `0x004156E6` | ported: [loot highlight](konung_potions.md#loot-highlight-0x00a3e758) |
-| 20 Шар магического прыжка | `0x004153B0` | ported: opens the [map window](konung_world_map.md#opening-and-closing) |
-| 0 Потерянная карта | `0x00414E95` | ported: marks a random location known ([world map](konung_world_map.md#known-maps-0x00a3e0a8)) |
-| 14–19, 21 Магический шар … (волхв Бережков … Подземного города) | `0x00415329` … `0x004153D9` | not traced. Type 21 calls `0x004106E0(0x2B, 0x12, 0x18, 2)` with constants; hypothesis: a jump to a fixed place |
-| 6 Слова Воскрешения | `0x00414FFB` | ported: revives every dead character on the map ([party](konung_party.md#revival-0x00414b3c-verified)) |
-| 1–5, 7–10, 12, 13, 22, 23, 25–28, 30, 33, 35–39 | own cases | not traced (books, quest items, amulet parts 25–27 share `0x0041552D`, 35/37 share `0x004157D2`) |
-| 11, 29, 32, 34 | `0x00415ACD` (default) | no use (32 «Неразменный пятак» counts as money, [trade](konung_trade.md)) |
-
-Names from `resfmt.ExeTables.ItemName(resfmt.ItemTableMisc, t)`. Porting means tracing each case; the dialogue scripts already handle quest items given or taken by NPCs.
+* An orb jump to the map the party is already on rebuilds the scene like a map exit; the original only re-places the party (`0x004118DC`).
 
 ### Party leftovers
 
@@ -38,7 +27,7 @@ Party play is ported ([party](konung_party.md)): every member walks, follows, fi
 See [combat: port](konung_combat.md#port).
 
 * God mode `0x00A3E768`, toggled by `0x00436E93` (key not identified): damage to the hero −2.
-* Kind `0x49` steps back after its blow (`0x004101E4`, not traced).
+* Kind `0x49` runs off after a swing that did not kill (`0x004126BD`: `0x004101E4`, ported as `gamestate.FleeOffset` for the whistle, then a walk with `+2` = 8); the creature AI does not use it yet.
 * Equipping the best bag gear on re-equip (`0x004104D4`, not traced; `ReEquip` takes the quiver only).
 
 ### Films and voices (missing files)
