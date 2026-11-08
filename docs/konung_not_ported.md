@@ -19,15 +19,12 @@ Ported: every case of `0x00414E64` ([misc items](konung_misc_items.md)). Left ov
 ### Films and voices (missing files)
 
 * `GAMEOVER.FLM` (hero death, `0x004376A8`), `DEFEAT<map>.FLM` (village surrender), `WIN.FLM` (the index-0 script pile, below), all through `0x0042B690`. No `.FLM` file is installed, and the format is unknown. The port returns to the menu 2 s after the hero's death and shows nothing else.
+* `FACES800.RES` (hired companions' faces, chosen by `+0xF8`; [interface](konung_interface_res.md#hired-faces-faceswidthres-missing-file)): with no file the game draws the INTR faces, as the port does.
 * `SPEECHS.RES` voices for dialogue lines and the deferred reply action while a voice plays ([dialogues](konung_dialogue.md#open-questions), [sound](konung_sound.md#not-ported)).
 
 ### Ground items
 
 The pile record with index 0 runs `0x0042B690(0x00450004)` = `WIN.FLM` when picked up ([ground items](konung_ground_items.md)). Hypothesis: the end-of-game pile. Not ported (missing film).
-
-### HUD
-
-* The alternate portrait table (`0x0062F3E0` set → `0x0062F3D8`, images `0x0083E090`, index `+0xF6`) and the portrait variant `+0xF8` written by hire (script 291). See [interface](konung_interface_res.md#open-questions).
 
 ### Village AI
 
@@ -66,7 +63,7 @@ Ported, but not bit-exact.
 * `GRAPH.RES`: the 64 KiB gap at `0x1ED8B6`; the Type 0 palette/dye choice for NPCs and the model ID → character mapping ([GRAPH](konung_graph_sprites.md)).
 * `GAME.N`: item fields other than category and type; the gear table's remaining fields; which jewellery box is which; group `+0x1E` bits other than `0x20`/`0x40`/`0x80` and kind `0x53`; map exit bytes `+0`/`+1`; settlement bytes outside the traced ones ([GAME.N](konung_game_format.md#open-questions)).
 * Saves: later use of the hero copy `0x00A3E584` after a load ([saves](konung_save_format.md#open-questions)).
-* `SPEECHS.RES` and `.FLM` files: not installed.
+* `SPEECHS.RES` and `FACES<width>.RES`: not installed.
 
 ## Tooling
 

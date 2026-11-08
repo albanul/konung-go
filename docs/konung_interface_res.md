@@ -34,7 +34,7 @@ Decoder: `resfmt.ParseInterface`, `InterfaceRes.Slot`, `InterfaceRes.Image`. Tes
 
 **Damage state.** Dead (entity `+4` bit `0x80`) → 4. Otherwise from HP (`int16` at `+0x5C`): ≤ 400 → 3, ≤ 800 → 2, ≤ 1200 → 1, else 0. The thresholds are absolute; full health is 1600 (`0x640`).
 
-**Portrait slot.** Animated `OBJECTS.RES` models (`+4` bit `0x40`) get none. The slot depends on the Type 0 body model m (`+0xD6`). Hero: `0xD7 + m·25 + state`, i.e. face 4. Companion: `0xC3 + (+4 & 7)·5 + m·25 + state`, i.e. faces 1, 2, 3, 5, the values `GAME.0` villagers carry in `+4`. When `0x0062F3E0` is set, another table is used instead (`0x0062F3D8`, images at `0x0083E090`, index from `+0xF6`); this is not ported. Entity types 2 and 8 (the hit reaction) are drawn with the palette tinted red: `0x0043FD18(0x18, 0, 0)`, then `0x0043F763` builds the palette (`gamestate.HitTint`, `resfmt.TintPalette`).
+**Portrait slot.** Animated `OBJECTS.RES` models (`+4` bit `0x40`) get none. The slot depends on the Type 0 body model m (`+0xD6`). Hero: `0xD7 + m·25 + state`, i.e. face 4. Companion: `0xC3 + (+4 & 7)·5 + m·25 + state`, i.e. faces 1, 2, 3, 5, the values `GAME.0` villagers carry in `+4`. When `FACES<width>.RES` was loaded, companions use [hired faces](#hired-faces-faceswidthres-missing-file) instead. Entity types 2 and 8 (the hit reaction) are drawn with the palette tinted red: `0x0043FD18(0x18, 0, 0)`, then `0x0043F763` builds the palette (`gamestate.HitTint`, `resfmt.TintPalette`).
 
 **Selection.** Members in the selection list `0x0083B93C` (10 entries, `0x00411708`) get slot 173 drawn over the portrait. Selecting is in [party](konung_party.md#selection-0x0083b93c-verified).
 
@@ -98,6 +98,17 @@ Code: `resfmt.ExeTables.HUDHotspot800`, `game.buttonAt`. Validation: `resfmt.Tes
 * `internal/game`: `text.go` (glyph drawing) and `startScene.hitTest` (opaque-pixel test on the drawn character frames, last drawn wins).
 * Tests: `resfmt.TestExeTextAndFonts`, `gamestate.TestStatusLines`.
 
+## Hired faces (`FACES<width>.RES`, missing file)
+
+Traced against code. The file is not installed, so nothing below is ported or checked against bytes.
+
+* **Load** (`0x0043A5AA`, at startup): the file is the game directory + `FACES` + the screen width `0x00A3E83C` (640 or 800) + `.RES`, so `FACES800.RES`. If it opens: 8 bytes go to `0x00A53994` (the second dword, `0x00A53998`, is the image block's size); `0x10E0` bytes to the table `0x0062F3D8` (540 × (image offset, palette offset)); then the image block to `0x0083E090`. With no file the table stays zero.
+* **Switch**: `0x0062F3E0` is the table's entry 1 (`0x0062F3D8 + 8`), so it is non-zero exactly when the file loaded. There is no separate flag.
+* **Draw** (`0x0042D72D`, companions only; the hero keeps the INTR face): slot = the state offset + entity word `+0xF8` − 1. The draw reads `dword [+0xF6] >> 16`; an earlier note said "`+0xF6`" by mistake. The image is at `0x0083E090` + entry `+0`, the palette at the INTR palette base `0x0051ECB4` + entry `+4`, with the same draw routine `0x00427A0C` and the same red hit tint as the INTR portraits. The palettes therefore come from `INTR*R.RES`, and the images are presumably the same indexed RLE (not verified).
+* **Variant `+0xF8`**: written once by hire (script 291, `0x00432D30`, only while 0): (model·36 + (f − 1)·9 + r)·5 + 1. Here f = `+4 & 7` (5 → 4), and r is a free `rand() % 9` among the party members of the same model. The port writes it (`gamestate` `pickFace`) and saves it.
+
+The installed game draws companions from `INTR*R.RES`, which is what the port does. Porting the hired faces needs the file.
+
 ## Open questions
 
-* The alternate portrait table (`0x0062F3E0` / `0x0062F3D8`).
+* `FACES800.RES` / `FACES640.RES`: not in the installed game (GOG); whether any release shipped them.

@@ -152,4 +152,4 @@ Unused by the data: 285, 292 (a jewel into the bag), 293, 295, 306, 323, 327, 35
 ## Open questions
 
 * `SPEECHS.RES` (not installed) and the deferred reply action while a voice plays.
-* Entity `+0xF8` (portrait variant written by 291) is not used by the port's HUD.
+* Entity `+0xF8` (portrait variant written by 291) only selects a face in `FACES<width>.RES`, which is not installed ([interface](konung_interface_res.md#hired-faces-faceswidthres-missing-file)).
