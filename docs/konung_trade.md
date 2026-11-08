@@ -38,6 +38,7 @@ A strip is drawn like the bag strip: the left arrow (slot `0x12`, `0x13` pressed
 * **Arrows** (`0x0042358C`, `0x00423612`): scroll by one; left stops at 0, right only while the slot after the last visible cell holds an item (`0x0041EB9C`); the arrow is drawn pressed once.
 * **«Закрыть»** (`0x004236D9`): `0x00420634(0)`; on success the window closes.
 * **«Ok»** (`0x004236FB`): `0x00420634(1)`; on success the window reopens with the new state. The pile window reopens while the pile has items (`0x004170A0`); a trade reopens through script 275.
+* **Portrait** of a living party member: it becomes the trading character ([party](konung_party.md#selection-0x0083b93c-verified), `0x00422F03`; `Game.SwitchShown`).
 * A right click does nothing (`0x00423E26`). Escape closes the window without applying (`0x00437447`): the lists are copies, so nothing has changed. Hovering a cell shows the item's description (`0x004241A1`).
 
 ## Prices

@@ -12,12 +12,6 @@ Ported: every case of `0x00414E64` ([misc items](konung_misc_items.md)). Left ov
 
 * An orb jump to the map the party is already on rebuilds the scene like a map exit; the original only re-places the party (`0x004118DC`).
 
-### Party leftovers
-
-Party play is ported ([party](konung_party.md)): every member walks, follows, fights, is selected and revived. Not ported:
-
-* the portrait clicks in window 7 (switch the trading character).
-
 ### Movement
 
 **Not traced.** The game's walk code (speed, path rules, direction choice) is reimplemented: A* on the fine grid (`mapdata/finegrid.go`), 10 animation steps/s. Also missing: the per-entity walk throttle `+0x11` (ticks where `time & m == m`) and the random pauses of creature kinds `0x4D`/`0x4F` ([combat: creature AI](konung_combat.md#creature-ai-verified)).

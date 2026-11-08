@@ -21,7 +21,7 @@ The list holds 10 entity pointers and ends at the first null. Shift is `0x00A3E7
 * `0x00439230(e)` **deselect**: removes `e` and moves the later entries up. If `e` owned the bag strip, the strip hides.
 * `0x00411708(e)` tests membership.
 * **Left click on portrait k with an empty hand** (`0x00422EA8`). A dead member is ignored, and so is any click in windows 1, 2 and 5.
-  * Window 7 switches the trading character (not ported).
+  * Window 7 (`0x00422F03`) switches the trading character: nothing when the member is already shown. Otherwise the offered items (list 1) are removed from the old character's real bag (`0x00421D24` each) and stay offered. The member becomes the shown character `0x00A3E688`, list 0 becomes a copy of its bag, the bag scroll `0x0083DD4C` goes to 0, and the window is redrawn. So a cancel then puts the old character's offer into the new character's bag. Port: `Game.SwitchShown`, `startScene.tradePortrait`.
   * Window 3 makes the member the window's character and selects it.
   * Window 0:
     * An unselected member is selected. If the strip shows, the member becomes its owner.
@@ -121,7 +121,6 @@ Port choices and approximations:
 
 * A dead member leaves the selection.
 * The planner's enemy search (`0x0041FD74`) is centred on the member asking, not on the leader.
-* The portrait clicks in window 7 (switching the trader) are not ported.
 * A walk interrupted by a hit reaction snaps back to the cell it was leaving.
 
 ## Open questions

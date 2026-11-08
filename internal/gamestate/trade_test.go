@@ -150,3 +150,32 @@ func TestSellToShop(t *testing.T) {
 		t.Errorf("gold %d, balm category %d", h.Gold, it.Category)
 	}
 }
+
+// TestSwitchShown: a portrait click in window 7 (0x00422F03) takes the
+// offered items out of the old character's bag, keeps them offered and
+// shows the new character's bag.
+func TestSwitchShown(t *testing.T) {
+	tk := talkSetup(t)
+	g := tk.G
+	h := &g.Entities[tk.Hero]
+	m := &g.Entities[tk.Hero+1]
+	h.Bag, m.Bag = [32]int{}, [32]int{}
+	a, b, c := g.newItem(), g.newItem(), g.newItem()
+	h.Bag[0], h.Bag[1], m.Bag[0] = a, b, c
+	pile, _ := g.DropItem(-1, 1, 50, 30, g.newItem())
+	tr := g.OpenPileTrade(tk.Hero, tk.Hero, pile)
+	tr.Move(TradeBag, 0) // offer a
+	tr.Scroll[TradeBag] = 1
+	if g.SwitchShown(tr, tk.Hero) {
+		t.Error("switched to the shown character")
+	}
+	if !g.SwitchShown(tr, m.Index) {
+		t.Fatal("switch refused")
+	}
+	if h.Bag[0] != b || h.Bag[1] != 0 {
+		t.Errorf("old bag %v, want the offer removed", h.Bag[:2])
+	}
+	if tr.Shown != m.Index || tr.Lists[TradeBag][0] != c || tr.Lists[TradeOffer][0] != a || tr.Scroll[TradeBag] != 0 {
+		t.Errorf("shown %d bag %v offer %v scroll %d", tr.Shown, tr.Lists[TradeBag][:2], tr.Lists[TradeOffer][:2], tr.Scroll[TradeBag])
+	}
+}

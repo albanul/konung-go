@@ -193,7 +193,30 @@ func (s *startScene) tradeClick(mx, my int) {
 		w.arrow, w.until = k+1, s.frame+pressTicks
 	case tradeHitClose, tradeHitOk:
 		s.applyTrade(kind == tradeHitOk)
+	default:
+		// The hit test also offers the portraits (0x004392F4).
+		if k := s.tables.HUDHotspot800(mx, my) - hotspotPortrait; k >= 0 && k < len(portraitCells) && k < len(s.party) {
+			s.tradePortrait(k)
+		}
 	}
+}
+
+// tradePortrait is a left click on portrait k in window 7 (0x00422F03): a
+// living member other than the shown one becomes the trading character
+// (gamestate.Game.SwitchShown) and the character window's character.
+func (s *startScene) tradePortrait(k int) {
+	m, e := s.partyMember(s.party[k].Index)
+	if e == nil {
+		e = &s.party[k]
+	}
+	if e.Dead() || (m != nil && m.act == gamestate.ActDeath) {
+		return // 0x00422EA8
+	}
+	s.storeWorld()
+	if s.game.SwitchShown(s.trade.tr, e.Index) {
+		s.cur = k
+	}
+	s.syncParty()
 }
 
 // applyTrade is the button action (0x004236D9, 0x004236FB): Apply; on

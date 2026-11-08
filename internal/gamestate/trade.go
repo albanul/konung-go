@@ -130,6 +130,27 @@ func (g *Game) OpenPileTrade(hero, shown, pile int) *Trade {
 	return tr
 }
 
+// SwitchShown is window 7's left click on the portrait of party member i
+// (0x00422F03): nothing when i is already shown. Otherwise the offered
+// items leave the old character's real bag (0x00421D24 each) and stay in
+// the offer; i becomes the shown character, its bag the bag list, with the
+// scroll at 0 (0x00422F5E). The caller checks that i can act.
+func (g *Game) SwitchShown(tr *Trade, i int) bool {
+	if i == tr.Shown || i < 0 || i >= len(g.Entities) {
+		return false
+	}
+	old := &g.Entities[tr.Shown]
+	for _, it := range tr.Lists[TradeOffer] {
+		if it != 0 {
+			bagRemove(old, it)
+		}
+	}
+	tr.Shown = i
+	tr.Lists[TradeBag] = g.Entities[i].Bag
+	tr.Scroll[TradeBag] = 0
+	return true
+}
+
 // Move is a click on slot s of list k (0x004232C0): a non-empty slot's item
 // moves to the first free slot of the paired list (0 ↔ 1, 2 ↔ 3) and the
 // list closes up. False when nothing moved.
