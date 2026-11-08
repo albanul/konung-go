@@ -63,4 +63,3 @@ Ported, but not bit-exact.
 ## Tooling
 
 * `cmd/sprite-catalog` has its own Type 0 walker that duplicates `resfmt.DecodeType0Frames`.
-* `map-render` clips objects anchored above y = 0.

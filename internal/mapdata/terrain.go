@@ -141,6 +141,12 @@ func Tile(tiles []*image.RGBA, b byte) *image.RGBA {
 func Render(m *Map, tiles []*image.RGBA) *image.RGBA {
 	w, h := m.WorldSize()
 	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	drawTerrain(dst, m, tiles)
+	return dst
+}
+
+// drawTerrain draws the terrain into dst at world coordinates.
+func drawTerrain(dst *image.RGBA, m *Map, tiles []*image.RGBA) {
 	for r := 0; r < Rows; r++ {
 		for c := 0; c < Cols; c++ {
 			x, y := CellOrigin(r, c)
@@ -152,7 +158,6 @@ func Render(m *Map, tiles []*image.RGBA) *image.RGBA {
 			}
 		}
 	}
-	return dst
 }
 
 const (

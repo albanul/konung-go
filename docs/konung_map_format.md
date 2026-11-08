@@ -34,7 +34,7 @@ y = originY + row * 0x20                          // 32 px
 
 Rows are drawn top to bottom and columns left to right. Layer 0 is drawn, then layer 1, both at the same position. The blit routine at `0x0043E242` treats `(x, y)` as the image's top-left corner (no hotspot) and clips against the viewport.
 
-Validation: `go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png` produces a 3886 × 3712 image (use `-terrain` for the terrain layer alone); its terrain is seamless: coast and sea along the top, a branching river, and a road on the right. `go test ./internal/mapdata` checks the extents and that every referenced tile decodes.
+Validation: `go run ./cmd/map-render assets/Konung/KONUNG.1 output/maps/konung1.png` produces a 3966 × 3712 image: the 3886 × 3712 terrain plus 80 px on the left for objects that reach past it (`mapdata.SceneBounds`; `-terrain` renders the terrain layer alone, at the terrain size); its terrain is seamless: coast and sea along the top, a branching river, and a road on the right. `go test ./internal/mapdata` checks the extents and that every referenced tile decodes.
 
 `go run ./cmd/map-render -all output/site/maps` renders all 43 installed maps (terrain, decorations, shadows, objects) to `konung_NN.png` plus a browsable `index.html`. All of them parse and render without missing tiles or object decode errors. Extents range from 10 × 23 cells (`KONUNG.6`) to 80 × 67 (`KONUNG.36`, the full 80-column width).
 
@@ -136,6 +136,6 @@ So `KONUNG.1` (Volk's start) is «Родники», and «Старый лаге�
 
 * Characters/NPCs/monsters come from `GAME.N`, not from the map; see [the GAME.N notes](konung_game_format.md).
 * Animated static objects (header `+0x18` > 0, frame cycling) and random variants: the port always draws variant 0 (`mapdata/objects.go`).
-* Objects anchored above y = 0 are clipped in `map-render` PNGs; the game scrolls past them.
+* Whether the game's camera ever shows the parts of objects that reach past the terrain (up to 391 px above it on `KONUNG.30`). Not traced; `map-render` draws them in full.
 * Section 1 semantics beyond walls (`0xFFF`) and arrow obstacles (bits `0xC0`): the other bits.
 * The fine-grid `LIGHTS.N` values beyond zero / non-zero ([day and night](konung_daylight.md#open-questions)); the terrain part and the lit terrain path are decoded and ported.

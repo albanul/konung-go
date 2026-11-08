@@ -142,3 +142,51 @@ func TestFindPathKonung1(t *testing.T) {
 		prev = c
 	}
 }
+
+// TestRenderSceneNoClip: objects reaching past the terrain are drawn, not
+// clipped. KONUNG.21 (1450×1280 px of terrain) has objects up to 327 px
+// above the top, 138 px left and 200 px right of it.
+func TestRenderSceneNoClip(t *testing.T) {
+	var data [3][]byte
+	for i, f := range []string{"KONUNG.21", "GRAPH.RES", "OBJECTS.RES"} {
+		b, err := os.ReadFile("../../assets/Konung/" + f)
+		if err != nil {
+			t.Skip(f, " not available:", err)
+		}
+		data[i] = b
+	}
+	m, err := Parse(data[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	tiles, err := LoadTerrainTiles(data[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	decorations, _ := ParseDecorations(data[0])
+	placements, _ := ParsePlacements(data[0])
+	objs, _ := LoadPlacedObjects(placements, data[2], data[1])
+	sprites := ObjectSprites(DrawOrder(placements, objs))
+	img := RenderScene(m, tiles, decorations, sprites)
+	w, h := m.WorldSize()
+	if b := img.Bounds(); b.Min.X > -138 || b.Min.Y > -327 || b.Max.X < w+200 || b.Max.Y < h {
+		t.Fatalf("bounds %v, terrain %dx%d", b, w, h)
+	}
+	// The highest sprite's top row shows (nothing else is drawn above y = 0).
+	top := sprites[0]
+	for _, s := range sprites {
+		if s.Y < top.Y {
+			top = s
+		}
+	}
+	ib := top.Image.Bounds()
+	for x := ib.Min.X; x < ib.Max.X; x++ {
+		if top.Image.RGBAAt(x, ib.Min.Y).A != 0 {
+			if img.RGBAAt(top.X+x, top.Y+ib.Min.Y).A == 0 {
+				t.Fatalf("pixel (%d,%d) of the top sprite was clipped", top.X+x, top.Y+ib.Min.Y)
+			}
+			return
+		}
+	}
+	t.Fatal("the top sprite's first row is empty")
+}

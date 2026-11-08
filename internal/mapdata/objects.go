@@ -200,9 +200,12 @@ func SortSprites(s []Sprite) {
 }
 
 // RenderScene composes terrain, decorations, shadows and sprites into one
-// image in the game's order. sprites must already be depth-sorted.
+// image in the game's order. sprites must already be depth-sorted. The image
+// keeps world coordinates; its bounds are SceneBounds, so objects reaching
+// past the terrain (tall ones on the top row, for example) are not clipped.
 func RenderScene(m *Map, tiles []*image.RGBA, decorations []Decoration, sprites []Sprite) *image.RGBA {
-	dst := Render(m, tiles)
+	dst := image.NewRGBA(SceneBounds(m, tiles, decorations, sprites))
+	drawTerrain(dst, m, tiles)
 	for _, d := range decorations {
 		if d.Tile < len(tiles) && tiles[d.Tile] != nil {
 			t := tiles[d.Tile]
@@ -217,9 +220,26 @@ func RenderScene(m *Map, tiles []*image.RGBA, decorations []Decoration, sprites 
 			draw.DrawMask(mask, r, image.Opaque, image.Point{}, s.Shadow, s.Shadow.Bounds().Min, draw.Over)
 		}
 	}
-	draw.DrawMask(dst, dst.Bounds(), image.NewUniform(color.RGBA{0, 0, 0, 0x80}), image.Point{}, mask, image.Point{}, draw.Over)
+	draw.DrawMask(dst, dst.Bounds(), image.NewUniform(color.RGBA{0, 0, 0, 0x80}), image.Point{}, mask, dst.Bounds().Min, draw.Over)
 	for _, s := range sprites {
 		draw.Draw(dst, s.Image.Bounds().Add(image.Pt(s.X, s.Y)), s.Image, s.Image.Bounds().Min, draw.Over)
 	}
 	return dst
+}
+
+// SceneBounds is the world rectangle RenderScene draws: the terrain
+// (0, 0)–WorldSize joined with every decoration and sprite image. Shadows do
+// not widen it: past the terrain they would only darken empty pixels.
+func SceneBounds(m *Map, tiles []*image.RGBA, decorations []Decoration, sprites []Sprite) image.Rectangle {
+	w, h := m.WorldSize()
+	b := image.Rect(0, 0, w, h)
+	for _, d := range decorations {
+		if d.Tile < len(tiles) && tiles[d.Tile] != nil {
+			b = b.Union(tiles[d.Tile].Bounds().Add(image.Pt(d.X, d.Y)))
+		}
+	}
+	for _, s := range sprites {
+		b = b.Union(s.Image.Bounds().Add(image.Pt(s.X, s.Y)))
+	}
+	return b
 }
