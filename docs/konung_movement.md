@@ -1,6 +1,6 @@
 # Movement: walking and path search
 
-How characters walk in `konung.exe`: the game tick, the path search, a walk step, orders and stops. Status: **traced** against the code (VAs below); the step layout (`0x0047FD2C`) is checked against `mapdata.Neighbors`. **Ported**: the 60 ms tick, the path search, turning and the walk step, the party's re-search, the creature extras and the pixel-to-cell rule; the remaining differences are listed at the end.
+How characters walk in `konung.exe`: the game tick, the path search, a walk step, orders and stops. Status: **traced** against the code (VAs below; the chase patch partly); the step layout (`0x0047FD2C`) is checked against `mapdata.Neighbors`. **Ported**: the 60 ms tick, the path search, turning and the walk step, the party's re-search, the creature extras and the pixel-to-cell rule. The [port choices](#port-choices) list what is deliberately kept different.
 
 ## Timing
 
@@ -63,13 +63,16 @@ Walk case, once per tick (party `0x0042218D`; creatures `0x00412717`):
 * **Party:** a member whose walk stops short of its goal with the walk bit searches again (`startScene.step`, the planner's search); the pick-up and map exits happen only at the goal.
 * **Creatures:** the throttle `+0x11` (`startScene.updateNPCs`) and the `0x4D`/`0x4F` pauses (`npc.pauseHold` as `walker.hold`). The pause counter `+0x12` is kept on the scene's `npc`, not in the entity, so a save does not keep it.
 
-## Remaining differences
+## Port choices
 
-| | Original | Port |
-|---|---|---|
-| Goal blocked (player's order) | no walk | nearest free cell within 6 (`mapdata.NearestFree`), kept as a convenience |
-| The party's re-search | within the shared AI budget (below) | at once, outside the budget |
-| A blocked step | stop; the planner (party) or the AI (creatures) decides on a later tick | the same, but the party searches again in the same tick |
+Deliberate differences, not planned for porting. The search budget and the chase patch exist to save searches on 1999 hardware; a search now takes well under a millisecond.
+
+| | Original | Port | Why |
+|---|---|---|---|
+| Goal blocked (player's order) | no walk | nearest free cell within 6 (`mapdata.NearestFree`) | convenience |
+| Search budget | one budget of 3 searches per tick for everyone, in entity order (below) | 3 per tick for the combat AI and 3 for the calm village AI (round-robin, so large groups still start a little staggered); none for the party | hardware limit |
+| The party's re-search after a blocked step or a 31-step path | on a later tick, within the budget | in the same tick | follows from the budget |
+| Chase patch (below) | a target that moved one cell bends the path's last step; one that moved further ends the chase and the creature decides again | a new path whenever the target moves | hardware limit; both end next to the target, only the route's end differs |
 
 **Search budget (`0x004116CC`, traced).** One budget for everyone: the dispatcher `0x00421DA4` resets the count `0x00A3E720` and remembers the last entity served (`0x00A3E690`, saved to `0x00A3E698`). A search is allowed while the count is below 3 and the entity's record lies after the last one served (an address comparison, so entity order). Callers: the party walk case and planner (`0x004221A3`, `0x004223DD`, `0x00422425`), the creatures (`0x0041243A`), the village AI (`0x004160E3`); each stores itself in `0x00A3E690` before searching. A tick that served nobody starts the order over (`0x004226A1`: `0x00A3E690` = 0). The port has separate budgets of 3 for the combat AI and the calm village AI and none for the party.
 
@@ -83,8 +86,8 @@ Walk case, once per tick (party `0x0042218D`; creatures `0x00412717`):
 
 Port: `mapdata.CellAt` (the scene's clicks and hover, the pile cursor, the arrows' `gamestate` aim). The port used the nearest cell centre before, which picked another cell for 17 % of the pixels, mostly near the diamonds' side corners. Test: `mapdata.TestCellAtDiamonds` (every sampled pixel lies in its cell's diamond).
 
-## Chase patch (`0x00411FD0`, partly traced)
+## Chase patch (`0x00411FD0`, partly traced, port choice)
 
-A creature walking with the melee intent, whose target left the goal cell: if the target's new cell neighbours the old goal (`0x0041165C`), the creature finds the last direction of its path, steps back from the goal to the cell before it, and if the target's cell neighbours that cell, it replaces the last direction with the step there and sets the goal to the target's cell (`0x004122EC`). Otherwise a table `0x004622FC` (indexed by the last direction and the target's move) gives a correction; this branch is not traced further. A target that moved further, or left the leash, ends the chase (idle, decide again). The port searches a whole new path whenever the target moves.
+A creature walking with the melee intent, whose target left the goal cell: if the target's new cell neighbours the old goal (`0x0041165C`), the creature finds the last direction of its path, steps back from the goal to the cell before it, and if the target's cell neighbours that cell, it replaces the last direction with the step there and sets the goal to the target's cell (`0x004122EC`). Otherwise a table `0x004622FC` (indexed by the last direction and the target's move) gives a correction; this branch is not traced further, as the port keeps its own chase ([port choices](#port-choices)). A target that moved further, or left the leash, ends the chase (idle, decide again). The port searches a whole new path whenever the target moves.
 
 Before the port, the port's A* (Euclidean pixel costs) found the same step counts but zigzagged: on `KONUNG.1`, `.4`, `.30`, `.36` (300 random pairs each) only 2–4 % of its routes matched the game's, with about 26 octants of turning per path against 2.

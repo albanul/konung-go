@@ -147,9 +147,10 @@ $C sed -n '53935,54260p' /tmp/kn/text.asm | awk -F'\t' '{print $1, $3}'   # addr
 
 Highest-value unknowns, roughly in priority order. The full list of missing features and approximations, with VAs, is in [not ported](docs/konung_not_ported.md).
 
-1. Movement leftovers ([movement](docs/konung_movement.md#remaining-differences)); spawn positions of non-creature groups without coordinates ([GAME.N](docs/konung_game_format.md#open-questions)).
-2. Saves: the hero copy `0x00A3E584` after a load ([saves](docs/konung_save_format.md#open-questions)).
-3. Ground items: see [ground items](docs/konung_ground_items.md#open-questions).
-4. Misc items with no use case (Сын Луны, Медная лампа, …): presumably dialogue-only, see [misc items](docs/konung_misc_items.md#open-questions). The rest of `LIGHTS.RES`.
+1. Saves: the hero copy `0x00A3E584` after a load ([saves](docs/konung_save_format.md#open-questions)).
+2. Ground items: see [ground items](docs/konung_ground_items.md#open-questions).
+3. Misc items with no use case (Сын Луны, Медная лампа, …): presumably dialogue-only, see [misc items](docs/konung_misc_items.md#open-questions). The rest of `LIGHTS.RES`.
+
+Deliberate port choices (800×600 only, walk orders to blocked cells, the path search budget, the creature chase) are listed in [not ported: port choices](docs/konung_not_ported.md#port-choices).
 
 `SPEECHS.RES` (voices) and `FACES800.RES` (hired faces) were never shipped with the game: the exe has code for them that the original never uses, so there is nothing to port ([sound](docs/konung_sound.md#files), [interface](docs/konung_interface_res.md#hired-faces-faceswidthres-never-shipped)).
