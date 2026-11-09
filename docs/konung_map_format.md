@@ -170,5 +170,4 @@ So `KONUNG.1` (Volk's start) is «Родники», and «Старый лаге�
 
 ## Open questions
 
-* Characters/NPCs/monsters come from `GAME.N`, not from the map; see [the GAME.N notes](konung_game_format.md).
-* Whether the game's camera ever shows the parts of objects that reach past the terrain (up to 391 px above it on `KONUNG.30`). Not traced; `map-render` draws them in full.
+* None. The camera never shows the parts of objects past the terrain: `0x00428F90` centres it on the hero (world position − half the screen size) and clamps the view's world left to ≥ 58 and top to ≥ 32, and its right and bottom to the terrain's extent, which the map loader sets from the last non-empty terrain column and row (`0x0043C3BE`: rows · 32; `0x0043C430`: (columns − 1) · 116; `0x00A3E878`, `0x00A3E894`). `map-render` still draws the objects in full. The port's camera also stays inside the terrain (`startScene.clampCamera`); its margins are not compared with the game's 58/32 px ([not ported](konung_not_ported.md#approximations)).

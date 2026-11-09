@@ -210,6 +210,8 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0043ECBA`, `0x0047FD2C`, `0x0047FD6C` | routine, tables | Next cell in a direction; step offsets by row parity; reverse steps for the path | [movement](konung_movement.md) |
 | `0x0042218D`, `0x00412717` | code | Walk case: party, creatures (turn, frame, step end, next step) | [movement](konung_movement.md#a-walk-step) |
 | `0x00A3E754`, `0x00A3E714` | globals | Shift / Ctrl held (key down `0x004375A3` / `0x0043741A`, key up `0x004373DA` / `0x004373CE`) | [GAME.N](konung_game_format.md#open-questions) |
+| `0x00428F90`, `0x00A3E868`, `0x00A3E884`, `0x00A3E878`, `0x00A3E894` | routine, globals | Camera on the hero, clamped (left ≥ 58, top ≥ 32, right/bottom ≤ the terrain extent set by the map loader `0x0043C3BE`/`0x0043C430`) | [map format](konung_map_format.md#open-questions) |
+| `0x00439230`, `0x0083B93C` | routine, buffer | Remove an entity from the selection (on a member's death, `0x004224D3`); the selection list | [party](konung_party.md#open-questions) |
 | `0x00412E4F` | code | Creature decision: entity `+4` = `0x51`/`0x52`/`0x53` does nothing | [combat](konung_combat.md#creature-ai-verified) |
 | `0x00439BDC` | routine | World pixel → fine cell (diamond test); used by clicks, hover and arrows | [movement](konung_movement.md#pixel-to-cell-0x00439bdc-verified) |
 | `0x0043FDE5`, `0x0043FE08`, `0x0043D270` | routines | `rand()` (LCG `0x41C64E6D`, `0x3039`, 15 bits), `srand`, the start-up seed from the clock | [not ported](konung_not_ported.md#approximations) |

@@ -41,7 +41,8 @@ Ported, but not bit-exact.
 |---|---|---|
 | Random numbers | Go's RNG | `rand()` `0x0043FDE5`: state · `0x41C64E6D` + `0x3039`, result (state >> 16) & `0x7FFF`, seeded from the clock at start-up (`0x0043D270`); its sequences differ per run, so only the 15-bit rounding could be copied |
 | Spawn of non-creature groups without coordinates | nearest free fine cells around the group | does not occur: no living entity of such a group lacks coordinates in `GAME.0`–`GAME.2` |
+| Camera limits | the view stays inside the terrain (`startScene.clampCamera`) | the same, with the view's world left ≥ 58 and top ≥ 32 (`0x00428F90`); the exact margins are not compared |
 
 ## Format unknowns
 
-* `GAME.N`: settlement bytes outside the traced fields; item record byte `+0x0F` and `+0x0E` bits 1–7 ([GAME.N](konung_game_format.md#open-questions)).
+* None: every byte of `GAME.N`, the saves and the resource files is placed or known to be unused ([GAME.N](konung_game_format.md#open-questions)).

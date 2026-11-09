@@ -121,10 +121,8 @@ The creature and village AIs target the whole party:
 
 Port choices and approximations:
 
-* A dead member leaves the selection.
 * The planner's enemy search (`0x0041FD74`) is centred on the member asking, not on the leader.
 
 ## Open questions
 
-* What `+0x14 = 0xFF` does besides ending a walk after its step.
-* Whether the game removes dead members from the selection.
+* None. `+0x14 = 0xFF` cuts the path (`+0x13`–`+0x32`) after the step in progress ([movement](konung_movement.md#setting-a-destination)). The game removes a member from the selection when it dies: at death step count − 2 the party's death case (`0x00422447`) sets the dead bit, frees the cell and calls `0x00439230` for members of the hero's group, which removes the entity from the selection `0x0083B93C` (the rest shifts up) and closes the bag strip if the member owned it (`0x00A3E730`). The port does the same.

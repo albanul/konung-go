@@ -126,7 +126,7 @@ Q or HUD button 5 «Информация к размышлению (Q)» (hotspo
 | 333 | S loan outstanding (bit `0x20`) |
 | 334, 335 | heal H / every living party member to 1600; N's healing += trunc((1600 − HP)·0.015) |
 | 336 | S has an apprentice candidate (human model < 3, no role bits, alive, no post); an independent S also needs gold ≥ 100 |
-| 344 | curse H (`+0xD2` = 19, Сил −5) unless H carries quest item 34 «Заячий хвост»; then returns 0 |
+| 344 | curse H (`+0xD2` = 19, Сил −5) unless H carries quest item 34 «Заячий хвост»; then returns 0. Used where the hero offends a wizard: dialogue 186 (threatening the cave wizard: «Сейчас я скормлю твою жесткую старую шкуру…»), 184 (the price of a hint about the Amulet) and 164 (once, flag 154) |
 | 345–348 | install the party's voevoda / healer / smith / merchant at the free post (`0x00432654(k)`): dismiss, role bits cleared, post dialogue `+0x3D1 + 8k`, stance off, post entity set |
 | 349 | party full: group 0 `+0x18` = `0x00411078(H)` (`MaxParty`), count ≥ it |
 | 350, 352, 353 | N is in the party; N's level ≥ 4; N has role bits |
@@ -134,7 +134,7 @@ Q or HUD button 5 «Информация к размышлению (Q)» (hotspo
 | 355–361 | start building the healer's hut / barracks / well / smithy / shop / bridge / every fence piece: record timer `+6` = build time (`0x00458A66 + type·64`); no cost |
 | 362 | smith repairs the party's gear (equipment, bag items of category ≤ 5): max condition `+8` above L = smithing·10 drops to L + (max − L)·0.7, condition `+4` = max |
 | 363 | N vanishes: its post is cleared (later posts −1 only then), items freed, group closes up |
-| 364 | lift the curse (`+0xD2` = −1) |
+| 364 | lift the curse (`+0xD2` = −1). With 276 the wizards' paid service (100 coins, nodes 187–201) and their reward after a quest (dialogues 184, 186) |
 | 365 | S becomes the hero's vassal: `+0x4B2 &= 0xEA`, `+0x10` = `+0x14` = 0 |
 | 366 | H's Хар `+0x58` > 60 |
 

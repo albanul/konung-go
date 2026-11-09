@@ -93,4 +93,4 @@ Pitfalls:
 
 ## Open questions
 
-* The in-game start time of a new game (the port starts at 0, i.e. day).
+* None. A new game starts at game time 0 (`0x00438F05`–`0x00438F15`), as in the port.
