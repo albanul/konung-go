@@ -41,7 +41,7 @@ Ported, but not bit-exact.
 |---|---|---|
 | Random numbers | Go's RNG | `rand()` `0x0043FDE5`: state · `0x41C64E6D` + `0x3039`, result (state >> 16) & `0x7FFF`, seeded from the clock at start-up (`0x0043D270`); its sequences differ per run, so only the 15-bit rounding could be copied |
 | Spawn of non-creature groups without coordinates | nearest free fine cells around the group | does not occur: no living entity of such a group lacks coordinates in `GAME.0`–`GAME.2` |
-| Camera limits | the view stays inside the terrain (`startScene.clampCamera`) | the same, with the view's world left ≥ 58 and top ≥ 32 (`0x00428F90`); the exact margins are not compared |
+| Camera | follow on (C), the hero always centred; edge zone 8 px and arrow keys, 720 px/s; limits = the terrain image (ragged edges visible) | follow off until Ctrl+S, then the camera moves only when the hero comes within 60/50 px of the view's edge; edge pixel only, 267 px/s; limits trimmed to whole tiles plus 58/32 px ([map format](konung_map_format.md#camera-traced-not-ported)) |
 
 ## Format unknowns
 

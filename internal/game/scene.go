@@ -1124,7 +1124,7 @@ func (s *startScene) Update() {
 	s.hud.now = s.frame
 	mx, my := ebiten.CursorPosition()
 	if s.hero != nil {
-		if inpututil.IsKeyJustPressed(ebiten.KeyC) { // port key; the game has none
+		if inpututil.IsKeyJustPressed(ebiten.KeyC) { // port key; the game toggles with Ctrl+S (0x00436F2B)
 			s.follow = !s.follow
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyF1) {

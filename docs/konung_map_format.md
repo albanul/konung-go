@@ -168,6 +168,17 @@ The exe names every map: a table of 40-byte CP866 strings at DGROUP `0x0045B3F4`
 
 So `KONUNG.1` (Volk's start) is «Родники», and «Старый лагерь» (Old Camp), Dragomir's start in the walkthrough, is `KONUNG.4` (model 1 → map 4). Michail's start `KONUNG.7` is «Византийский Лагерь».
 
+## Camera (traced, not ported)
+
+The camera `0x00A3E868`/`0x00A3E884` is the world position of the view's top-left; the view is screen x 140–799, y 0–555 at 800×600 (`0x00427C42`), so screen x = world x − camera x + 140 (`0x0042297F`, `0x00425C4C`).
+
+* **Limits** (both camera routines): left ≥ 58, top ≥ 32; right edge ≤ `0x00A3E878` = (c − 1)·116 and bottom ≤ `0x00A3E894` = r·32, with r and c the last terrain row and column holding a tile (`0x0043C35A`–`0x0043C430`). The view never shows the ragged tile edges or the parts of objects past the terrain.
+* **Centring** `0x00428F90`, after a map change, a load and a new game (`0x00437832`, `0x00424DFE`, `0x00439123`): the hero's sprite anchor (`+0xE4/+0xEC`) at the screen centre (400, 300), then the limits.
+* **Each pass** `0x00436610` (from `0x00437740`): with the mouse on the screen's edge pixel (x 0 or 799, y 0 or 599) the camera moves 16 px that way (267 px/s). Then, if a character is followed (`0x00A3E68C`), the camera moves just enough to keep its sprite centre 60 px inside the view's left/right edges and 50 px inside the top/bottom; then the limits.
+* **Follow** (`0x00A3E68C`): cleared at start-up (`0x0043A89F`); **Ctrl+S** (VK `0x53` with Ctrl, `0x00436F2B`) toggles it between the hero and none. No key scrolls the map.
+
+Port (`startScene.centerOn`, `clampCamera`, `Update`): follow on by default, **C** toggles it (a port key), and following keeps the hero in the view's centre at all times; the mouse within 8 px of an edge or the arrow keys scroll 12 px per update (720 px/s); the limits are the terrain image, 0 to (c + 1)·116 + 58 and (r + 2)·32, so the ragged edges show. See [not ported](konung_not_ported.md#approximations).
+
 ## Open questions
 
-* None. The camera never shows the parts of objects past the terrain: `0x00428F90` centres it on the hero (world position − half the screen size) and clamps the view's world left to ≥ 58 and top to ≥ 32, and its right and bottom to the terrain's extent, which the map loader sets from the last non-empty terrain column and row (`0x0043C3BE`: rows · 32; `0x0043C430`: (columns − 1) · 116; `0x00A3E878`, `0x00A3E894`). `map-render` still draws the objects in full. The port's camera also stays inside the terrain (`startScene.clampCamera`); its margins are not compared with the game's 58/32 px ([not ported](konung_not_ported.md#approximations)).
+* None.
