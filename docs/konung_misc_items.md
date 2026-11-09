@@ -53,7 +53,7 @@ Entity fields: skills `+0x48` healing, `+0x4C` smithing, `+0x42` trade, `+0x46` 
 | 39 | Детские игрушки | `0x0041593C` | base Хар +5 | yes |
 | 44, 52, 53 | Ключ Воды, Луны, Огня | `0x0041594F`, `0x00415A34`, `0x00415A7F` | on the key's map with `e` exactly on its cell, a `0x004106E0` jump; anywhere else nothing (still a use: sound, item kept) | no |
 | 48 | Медное зеркало колдуна | `0x0041599A` | every pile record on the map with gold `+0x10` < 0 (buried) and every active pile with gold < 0 gets the gold negated: the buried piles come up | yes |
-| 11, 29, 32, 34, 40, 45–47, 49–51 | Сын Луны, Медная лампа, Неразменный пятак, Заячий хвост, Амулет Дракона, Перо Жар-птицы, … | `0x00415ACD` | no use (32 counts as money in [trade](konung_trade.md)) | — |
+| 11, 29, 32, 34, 40, 45–47, 49–51 | Сын Луны, Медная лампа, Неразменный пятак, Заячий хвост, Амулет Дракона, Перо Жар-птицы, … | `0x00415ACD` | no use; dialogue items, except 47 (see [below](#open-questions); 32 also counts as money in [trade](konung_trade.md)) | — |
 
 ### Jumps (`0x004106E0`)
 
@@ -107,4 +107,19 @@ Validation: `gamestate.TestMiscTablesMatchExe` reads the jump table, the types w
 
 ## Open questions
 
-* What «Сын Луны», «Медная лампа» (plain), «Заячий хвост», «Перо Жар-птицы», «Клык белого волка», «Паутина странного паука», «Волшебная вода», «Ларец колдуна», «Камень» and the assembled amulet do. They have no use case, so they are presumably for dialogues ([dialogues](konung_dialogue.md)).
+* None. The misc items with no use case are dialogue items: the dialogues check (script 220 + type), take (112 + type) or give (166 + type) them, counted over all condition and action lists of `QUESTR.RES`:
+
+  | Type | Item | Checked | Taken | Given |
+  |---|---|---|---|---|
+  | 11 | Сын Луны | 2 | – | 1 |
+  | 29 | Медная лампа | 2 | 1 | 1 |
+  | 32 | Неразменный пятак | – | – | 2 (and money in [trade](konung_trade.md)) |
+  | 34 | Заячий хвост | 8 | 2 | – (and script 344, the curse) |
+  | 40 | Амулет Дракона (assembled) | 6 | 2 | 1 |
+  | 45 | Перо Жар-птицы | 1 | 1 | 1 |
+  | 46 | Клык белого волка | 6 | 2 | – |
+  | 49 | Волшебная вода | 3 | 2 | 3 |
+  | 50 | Ларец колдуна | 1 | 1 | – |
+  | 51 | Камень | 3 | 1 | – |
+
+  The exception is type 47 «Паутина странного паука»: no dialogue and no use refers to it. One exists in each start file, buried (gold −100) on map 33 at cell (12, 5), probably left from a cut quest.

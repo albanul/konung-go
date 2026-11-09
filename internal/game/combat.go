@@ -435,6 +435,12 @@ func (s *startScene) creatureChase(n *npc, g *gamestate.Group) {
 
 // creatureDecide is 0x00412E00 for an idle creature (or a dormant one).
 func (s *startScene) creatureDecide(n *npc, e *gamestate.Entity, g *gamestate.Group) {
+	// 0x00412E4F: women, children and kind 0x53 (the lone wizards,
+	// hermits and the like of the 0x53 groups) never act in the creature
+	// AI, even when their group is alarmed.
+	if k := e.Flags4; k == 0x51 || k == 0x52 || k == 0x53 {
+		return
+	}
 	partyOK := len(s.livingMembers()) > 0
 	tactic := gamestate.TacticOf(e.Flags4)
 	switch g.Alarm {

@@ -49,7 +49,7 @@ Group 0 is the player's party: `0x0043A895` sets the party pointer `0x00A3E684` 
 | `+0x1D` | byte | creature alarm state: 0 calm, 1 attack, `0x20` return (`Group.Alarm`); `0x80` in the files, cleared on map load |
 | `+0x1B` | byte | map number (`KONUNG.N`) |
 | `+0x1C` | byte | entity count (consecutive from `+0x00`) |
-| `+0x1E` | byte | 0 = inactive. Bits `0x40`/`0x80` and the value range `0x41..0x50` select loader paths; meaning not decoded. |
+| `+0x1E` | byte | **kind**, 0 = inactive. `0x20` the party; `0x80` \| tribe (low 2 bits) a village (village AI); `0x40` \| creature kind a creature group (creature AI): `0x41`–`0x50` equal the members' entity `+4`; `0x53` (45 groups in `GAME.0`) a lone character with a dialogue (wizards, hermits, guards…; members' `+4` = `0x53`, a human kind 2/3/5, or `0x43`/`0x44`/`0x55`/`0x56`/`0x57`). The code tests only bits `0x20`/`0x40`/`0x80`, zero, and the value `0x53` (excluded from the party's enemy search `0x00420024` and from the lamp of the skeleton king `0x004155EF`). Values from the data of all three files. |
 
 ## Entities (256 bytes, fields used by the port)
 
@@ -124,7 +124,7 @@ Each entity owns its items directly: **6 equipment slots** at `+0x66`, a **32-it
 
 The slot meaning of 0–2 is verified by `0x0042192C` (mode *m* requires slot *m*); 3–5 by the item names and by the stance draw (slot 5 is drawn as a raised shield).
 
-**Item record (16 bytes, `GAME.N` section 1).** Only `+3` is confirmed by code.
+**Item record (16 bytes, `GAME.N` section 1).** Byte `+0x0F` and `+0x0E` bits 1–7 are not used by any traced code.
 
 | Offset | Type | Meaning |
 |---|---|---|
@@ -132,7 +132,8 @@ The slot meaning of 0–2 is verified by `0x0042192C` (mode *m* requires slot *m
 | `+0x01` | `int8` | enchantment index (table `0x00458590`), −1 = none |
 | `+0x02` | `int8` | special property (64-byte records at `0x0046238C`: name such as «, на червяков» at `+0`, value `+0x2C`, target kind `+0x2E`), −1 = none |
 | `+0x03` | byte | item type (index into the type table below), verified by `0x004281A4` |
-| `+0x04` | `int32` / `float32` | stack count for arrows (category 12, `0x0041B898`); other items: **hypothesis** current / maximum condition floats at `+4`/`+8` |
+| `+0x04` | `int32` / `float32` | arrows (category 12): stack count (int32, `0x0041B898`); other items: current condition (float32) |
+| `+0x08` | `float32` | maximum condition: the loot sets `+8` = `+4` = gear `+0x2E` (`0x00418843`); the smith (script 362) and weapon wear change them |
 | `+0x0C` | `int16` | poisoning (description «, отравление:»; weapons and arrows) |
 | `+0x0E` | byte | bit 0: **unidentified**: the description shows «Неведомое оружие / Неведомый лук / Неведомый предмет», the enchantment is ignored, the bag cell is tinted yellow |
 
@@ -145,7 +146,7 @@ The slot meaning of 0–2 is verified by `0x0042192C` (mode *m* requires slot *m
 | 9 | herbs, potions `0x004594B0` (14 types, [potions](konung_potions.md#herb-types)) | 128 B | `int16 +0x7C` | «Лечебный бальзам», «Белый корень» |
 | other | misc `0x0046053C` | 128 B | `int16 +0x7C` | «Левая часть амулета Дракона», «Труды Гиппократа» |
 
-Gear records also hold the damage or armour value (`uint16 +0x2C`), a required stat id and minimum (`+0x30`, `+0x32`), the weight in grams (`+0x38`; other tables `+0x7A`) and the equipment overlay `k` at `+0x3E` (−1 = invisible; `0x004281A4` reads it as `int16[0x00459BEE + type*64]` by type alone). The character window uses the gear table for equipment and the jewellery table for the `+0xB2` items regardless of category. Code: `resfmt.ItemTableOf`, `ExeTables.ItemName`, `ItemIcon`, `ItemOverlay`; `gamestate.Game.Item`.
+Gear records also hold the damage or armour value (`uint16 +0x2C`), the maximum condition (`int16 +0x2E`, the loot's new items), a required stat id and minimum (`+0x30`, `+0x32`), the bow range (`+0x34`; the arrow spawn copies its low byte to the arrow's lifetime, `0x0041C204`), the base price (`int16 +0x36`, `0x0041B36A`; other tables `+0x78`), the weight in grams (`+0x38`; other tables `+0x7A`), the icon (`+0x3A`), the ground image (`+0x3C`) and the equipment overlay `k` at `+0x3E` (−1 = invisible; `0x004281A4` reads it as `int16[0x00459BEE + type*64]` by type alone). The character window uses the gear table for equipment and the jewellery table for the `+0xB2` items regardless of category. Code: `resfmt.ItemTableOf`, `ExeTables.ItemName`, `ItemIcon`, `ItemOverlay`; `gamestate.Game.Item`.
 
 `GAME.0`: Volk has only the knife equipped (slot 2); his bag holds «Левая часть амулета Дракона» and five «Лечебный бальзам». So keys 2 and 3 do nothing for him until he gets an axe or a bow.
 
@@ -253,7 +254,7 @@ Section 4 holds 250 × `0x11`-byte records; the loader (`0x0043BCEF`) counts the
 
 | Offset | Type | Meaning |
 |---|---|---|
-| `+0x00`, `+0x01` | bytes | not traced (0 in every record of all three files) |
+| `+0x00`, `+0x01` | bytes | unused: every reader loads a dword and keeps its top byte (`dword[+0] >> 24` = map `+3`, `dword[+1] >> 24` = target `+4`); 0 in all three files |
 | `+0x02` | int8 | arrival facing: copied to party group `+0x0C`, which the placement routine `0x004118DC` writes to the hero's `+0x01` (`0x00411A1D`) |
 | `+0x03` | byte | map the exit is on (`KONUNG.N`) |
 | `+0x04` | byte | target map |
@@ -277,8 +278,7 @@ Validation: `go test ./internal/gamestate -run Exits` checks the count, the `KON
 
 ## Open questions
 
-* Exact runtime spawn positions for groups whose entities have no coordinates.
-* Group field `+0x1E` beyond bits `0x40` (creature AI), `0x80` (village AI, low 2 bits = tribe) and `0x20` (party); kind `0x53` groups.
-* Item record fields other than category and type (`+4`/`+8` condition is a hypothesis); the gear table's remaining fields; which jewellery box is which; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.
-* `GAME.N` section 4 (map exits) bytes `+0`, `+1`; travel by item (`0x00422AD8`). Settlement bytes outside the posts and the traced stock/timer fields.
-* Creature AI leftovers: see [combat](konung_combat.md#open-questions).
+* Settlement bytes outside the posts and the traced stock, timer and building fields.
+* Item record byte `+0x0F` and `+0x0E` bits 1–7 (no traced code uses them).
+
+Answered (see the tables above and the linked docs): the group kind `+0x1E`; map exit bytes `+0`/`+1` (unused); the item condition floats `+4`/`+8`; the gear fields `+0x2E`, `+0x34`, `+0x36`; the jewellery boxes (box 0 necklace, 1–2 bracelets, 3–4 rings, [character window](konung_character_window.md#moving-items)); `0x00A3E754`/`0x00A3E714` = Shift/Ctrl held (key down `0x004375A3`/`0x0043741A`, key up `0x004373DA`/`0x004373CE`); `0x00414AB4` ([party](konung_party.md)); travel by item `0x00422AD8` ([world map](konung_world_map.md#travel-by-orb-0x00422ad8)); spawn positions without coordinates (none occur in the start files); entity `+0x11`/`+0x14` ([movement](konung_movement.md)).

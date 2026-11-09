@@ -44,5 +44,4 @@ Ported, but not bit-exact.
 
 ## Format unknowns
 
-* `GAME.N`: item fields other than category and type; the gear table's remaining fields; which jewellery box is which; group `+0x1E` bits other than `0x20`/`0x40`/`0x80` and kind `0x53`; map exit bytes `+0`/`+1`; settlement bytes outside the traced ones ([GAME.N](konung_game_format.md#open-questions)).
-* Saves: later use of the hero copy `0x00A3E584` after a load ([saves](konung_save_format.md#open-questions)).
+* `GAME.N`: settlement bytes outside the traced fields; item record byte `+0x0F` and `+0x0E` bits 1–7 ([GAME.N](konung_game_format.md#open-questions)).

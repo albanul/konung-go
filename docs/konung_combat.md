@@ -54,7 +54,7 @@ Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent).
 
   A hit or a dying member also sets 1 (`0x00412A21` at the end of the hit reaction, `0x00412989` in the death), and a party attacker's swing does too (`0x004248A0`). Each check overwrites it.
 * **Members.** An idle member (`+2` bit `0x40`, type not 2/3/9) is decided by `0x00412E00` when the path budget `0x004116CC` allows (3 searches per tick, round-robin). Otherwise its action runs (table `0x00412BE0`): idle `0x0041291C`, walk `0x00412717`, hit reaction `0x00412A0E`, death `0x00412944`, type 4 `0x00412A36` (dormant pose and wake-up; the bow shot for humanoids), swing `0x0041248D`.
-* **Decision `0x00412E00` by alarm state:**
+* **Decision `0x00412E00`:** members with entity `+4` = `0x51`, `0x52` or `0x53` (women, children, the lone characters of the `0x53` groups) do nothing, even when alarmed (`0x00412E4F`; port: `creatureDecide`, test `TestKind53Stands`). The others **by alarm state:**
   * 0 calm: back to idle (type 0/6, except a dormant type 4). Calm creatures never move.
   * 1 attack: target by kind (`gamestate.TacticOf`), then path to it with `+2` = 1 (`0x0041326B` → `0x004142D4`):
 
@@ -278,4 +278,4 @@ Port: `Game.GodMode`, set every frame from the session switch `game.godMode`, wh
 
 ## Open questions
 
-* Field `+0x11` (walk throttle), `+0x14`.
+* None. Entity `+0x11` is the walk throttle and `+0x14` byte 2 of the path buffer `+0x13`–`+0x32` ([movement](konung_movement.md)).

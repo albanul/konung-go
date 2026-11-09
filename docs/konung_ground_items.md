@@ -50,5 +50,4 @@ The pile draw is part of the terrain pass, after the terrain and decorations and
 
 ## Open questions
 
-* The index-0 script pile.
-* Whether berries other than «Белый корень» exist as respawning piles on other maps. Only types 1 and 2 respawn.
+* None. The index-0 pile is the end of the game (map 46, «Браслет»; a pick-up there plays `WIN.FLM`, [films](konung_films.md)). Only herb types 1 «Земляной орех» and 2 «Белый корень» respawn, and the data has no other berries: the single-herb piles of `GAME.0`–`GAME.2` are 42 nuts, 53 white roots and the potions «Элексир Мудрости» (8–12) and «Живая Вода» (8–10), which do not respawn.

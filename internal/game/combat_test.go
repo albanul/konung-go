@@ -503,3 +503,32 @@ func setHero(s *startScene, w walker) *member {
 	s.sel = []int{s.party[0].Index}
 	return m
 }
+
+// TestKind53Stands: a kind-0x53 character (here the wizard of «Волхв у
+// Родников», group 33) does nothing in the creature AI even when its group
+// is alarmed (0x00412E4F).
+func TestKind53Stands(t *testing.T) {
+	s := newVolkScene(t)
+	var wiz gamestate.Entity
+	for _, e := range s.game.Entities {
+		if e.Flags4 == 0x53 && e.Group >= 0 && s.game.Groups[e.Group].Map == 3 {
+			wiz = e
+			break
+		}
+	}
+	s.changeMap(gamestate.MapExit{To: 3, Row: wiz.Row + 4, Col: wiz.Col, Facing: 2})
+	n := s.byEntity[wiz.Index]
+	if n == nil || s.mapNumber != 3 {
+		t.Fatal("no wizard on map 3")
+	}
+	godMode = true
+	defer func() { godMode = false }()
+	start := n.cell
+	for range 300 {
+		s.game.Groups[wiz.Group].Alarm = gamestate.AlarmAttack
+		run(s, 1)
+		if n.cell != start || n.act == gamestate.ActAttack || len(n.path) > 0 {
+			t.Fatalf("the wizard acts: at %v act %d path %d", n.cell, n.act, len(n.path))
+		}
+	}
+}

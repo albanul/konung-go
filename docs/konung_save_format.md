@@ -70,4 +70,4 @@ The slot under the mouse (hit test `0x004398C4` on the same table) is selected. 
 
 ## Open questions
 
-* The 64 dwords at `0x00A3E584` that the loader fills with the hero record: the new-game start uses the same buffer for the [hero template](konung_new_game.md#game-start-0x00438f3f) and `GAME.N` picks the model from it; any later use after a load was not traced.
+* None. The hero copy `0x00A3E584` has three users: the save loader reads the saved hero into it (`0x00424B3D`), the new-game start copies the [hero template](konung_new_game.md#game-start-0x00438f3f) from it (`0x00438F56`…), and the `GAME.N` loader takes its model byte `+0xD6` (`0x0043BBB2`) to pick `GAME.<model>` for the map exits, settlement flags and `QUESTR.RES`. Nothing else reads it after a load; the port picks the same file.
