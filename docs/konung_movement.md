@@ -1,6 +1,6 @@
 # Movement: walking and path search
 
-How characters walk in `konung.exe`: the game tick, the path search, a walk step, orders and stops. Status: **traced** against the code (VAs below); the step layout (`0x0047FD2C`) is checked against `mapdata.Neighbors`. **Ported**: the 60 ms tick, the path search, turning and the walk step, the party's re-search and the creature extras; the remaining differences are listed at the end.
+How characters walk in `konung.exe`: the game tick, the path search, a walk step, orders and stops. Status: **traced** against the code (VAs below); the step layout (`0x0047FD2C`) is checked against `mapdata.Neighbors`. **Ported**: the 60 ms tick, the path search, turning and the walk step, the party's re-search, the creature extras and the pixel-to-cell rule; the remaining differences are listed at the end.
 
 ## Timing
 
@@ -72,7 +72,7 @@ Walk case, once per tick (party `0x0042218D`; creatures `0x00412717`):
 
 **Search budget (`0x004116CC`, traced).** One budget for everyone: the dispatcher `0x00421DA4` resets the count `0x00A3E720` and remembers the last entity served (`0x00A3E690`, saved to `0x00A3E698`). A search is allowed while the count is below 3 and the entity's record lies after the last one served (an address comparison, so entity order). Callers: the party walk case and planner (`0x004221A3`, `0x004223DD`, `0x00422425`), the creatures (`0x0041243A`), the village AI (`0x004160E3`); each stores itself in `0x00A3E690` before searching. A tick that served nobody starts the order over (`0x004226A1`: `0x00A3E690` = 0). The port has separate budgets of 3 for the combat AI and the calm village AI and none for the party.
 
-## Pixel to cell (`0x00439BDC`, traced, not ported)
+## Pixel to cell (`0x00439BDC`, verified)
 
 `0x00439BDC(&row, &col, x, y)` maps a world pixel to the fine cell whose diamond holds it; the left click (`0x004229AB`), the right click (`0x00423976`, `0x00423FF3`), the hover (`0x00428D0F`, `0x0042905E`), arrows (`0x00421330`) and others (`0x00411586`, `0x004369B3`) use it:
 
@@ -80,7 +80,7 @@ Walk case, once per tick (party `0x0042218D`; creatures `0x00412717`):
 2. x = cx: done. x < cx: with left = cx − 29, if (y − top)·(x − left) < (bottom − y)·(cx − x), the point is above the diamond's upper-left edge: row − 1, and col − 1 when the new row is even. x > cx: with right = cx + 29, if (bottom − y)·(cx − x) < (y − top)·(x − right), row − 1, and col + 1 when the old row was even.
 3. Clamp row to 0–319 and col to 0–159.
 
-The port uses the nearest cell centre (`mapdata.CellAt`), which differs from the diamonds near their edges.
+Port: `mapdata.CellAt` (the scene's clicks and hover, the pile cursor, the arrows' `gamestate` aim). The port used the nearest cell centre before, which picked another cell for 17 % of the pixels, mostly near the diamonds' side corners. Test: `mapdata.TestCellAtDiamonds` (every sampled pixel lies in its cell's diamond).
 
 ## Chase patch (`0x00411FD0`, partly traced)
 

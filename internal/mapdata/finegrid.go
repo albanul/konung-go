@@ -21,30 +21,41 @@ func CellCenter(c Cell) (x, y int) {
 	return x, c.Row*FineCellHeight + FineCellHeight
 }
 
-// CellAt returns the fine cell whose centre is nearest to world pixel (x, y).
+// CellAt is the game's pixel-to-cell routine 0x00439BDC: the fine cell
+// whose diamond (58 × 32 px around CellCenter) holds world pixel (x, y).
+// row = y/16 and the column by row parity give a cell whose centre cx lies
+// on the band's lower edge; a point above that diamond's upper-left or
+// upper-right edge belongs to the cell in the row above. The result is
+// clamped to the grid. Clicks, the hover and arrows use it.
 func CellAt(x, y int) Cell {
-	best, bestD := Cell{}, math.MaxInt
-	r0 := (y - FineCellHeight + FineCellHeight/2) / FineCellHeight
-	for r := r0 - 1; r <= r0+1; r++ {
-		if r < 0 {
-			continue
-		}
-		off := FineCellWidth
-		if r&1 != 0 {
-			off = FineCellWidth / 2
-		}
-		c := int(math.Round(float64(x-off) / FineCellWidth))
-		for cc := c - 1; cc <= c+1; cc++ {
-			if cc < 0 {
-				continue
+	const w, h, half = FineCellWidth, FineCellHeight, FineCellWidth / 2
+	row := y / h
+	col, cx := (x-half)/w, 0
+	if row&1 != 0 {
+		col = x / w
+		cx = col*w + half
+	} else {
+		cx = col*w + w
+	}
+	bottom := (row + 1) * h
+	top := bottom - h
+	switch {
+	case x < cx:
+		if left := cx - half; (y-top)*(x-left) < (bottom-y)*(cx-x) {
+			row--
+			if row&1 == 0 {
+				col--
 			}
-			cx, cy := CellCenter(Cell{r, cc})
-			if d := (cx-x)*(cx-x) + (cy-y)*(cy-y); d < bestD {
-				best, bestD = Cell{r, cc}, d
+		}
+	case x > cx:
+		if right := cx + half; (bottom-y)*(cx-x) < (y-top)*(x-right) {
+			if row&1 == 0 {
+				col++
 			}
+			row--
 		}
 	}
-	return best
+	return Cell{min(max(row, 0), WalkRows-1), min(max(col, 0), WalkCols-1)}
 }
 
 // Direction is a facing as used by entity variants (byte +1): 0 W, 1 NW,

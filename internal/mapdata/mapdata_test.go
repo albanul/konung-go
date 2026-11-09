@@ -99,6 +99,36 @@ func TestKonung1Objects(t *testing.T) {
 	}
 }
 
+// TestCellAtDiamonds: 0x00439BDC picks the cell whose 58 × 32 diamond
+// around CellCenter holds the pixel.
+func TestCellAtDiamonds(t *testing.T) {
+	for y := 40; y < 400; y += 3 {
+		for x := 70; x < 700; x += 7 {
+			c := CellAt(x, y)
+			cx, cy := CellCenter(c)
+			dx, dy := x-cx, y-cy
+			if dx < 0 {
+				dx = -dx
+			}
+			if dy < 0 {
+				dy = -dy
+			}
+			if dx*FineCellHeight+dy*(FineCellWidth/2) > FineCellHeight*FineCellWidth/2 {
+				t.Fatalf("(%d,%d) -> %v centred at (%d,%d): outside its diamond", x, y, c, cx, cy)
+			}
+		}
+	}
+	// A pixel the nearest-centre rule got wrong: inside the left corner of
+	// (11, 5)'s diamond, but nearer to the centre of its NW neighbour.
+	cx, cy := CellCenter(Cell{11, 5})
+	if c := CellAt(cx-27, cy); c != (Cell{11, 5}) {
+		t.Errorf("left corner -> %v", c)
+	}
+	if c := CellAt(-50, -50); c != (Cell{0, 0}) {
+		t.Errorf("clamp -> %v", c)
+	}
+}
+
 func TestFineGrid(t *testing.T) {
 	for _, c := range []Cell{{86, 33}, {87, 33}, {0, 0}, {201, 12}} {
 		x, y := CellCenter(c)

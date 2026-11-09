@@ -209,7 +209,7 @@ Quick lookup table. Each row is described in the section or document named in th
 | `0x0043EDB7`, `0x0051ECD0`, `0x0052ECD0`, `0x00592CD0`, `0x0051EC80` | routine, buffers, globals | Path search (flood, costs 10/14, first 31 steps to `+0x13`); its queue, node table, generation stamp, found flag | [movement](konung_movement.md#path-search-0x0043edb7-hand-written-assembly) |
 | `0x0043ECBA`, `0x0047FD2C`, `0x0047FD6C` | routine, tables | Next cell in a direction; step offsets by row parity; reverse steps for the path | [movement](konung_movement.md) |
 | `0x0042218D`, `0x00412717` | code | Walk case: party, creatures (turn, frame, step end, next step) | [movement](konung_movement.md#a-walk-step) |
-| `0x00439BDC` | routine | World pixel → fine cell (diamond test); used by clicks, hover and arrows | [movement](konung_movement.md#pixel-to-cell-0x00439bdc-traced-not-ported) |
+| `0x00439BDC` | routine | World pixel → fine cell (diamond test); used by clicks, hover and arrows | [movement](konung_movement.md#pixel-to-cell-0x00439bdc-verified) |
 | `0x0043FDE5`, `0x0043FE08`, `0x0043D270` | routines | `rand()` (LCG `0x41C64E6D`, `0x3039`, 15 bits), `srand`, the start-up seed from the clock | [not ported](konung_not_ported.md#approximations) |
 | `0x00438F05` | code | New game: game time `0x00A3E770` = 0 | [movement](konung_movement.md#timing) |
 | `0x004116CC` | routine | AI budget: < 3 path searches this tick (`0x00A3E720`), round-robin after `0x00A3E690` | [GAME.N](konung_game_format.md#npc-ai-village-ai-traced) |
