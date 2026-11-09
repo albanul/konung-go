@@ -62,15 +62,17 @@ type hud struct {
 
 	// pressed buttons: 0x004290AC(k, image) stores image|0x80, drawn 2 px
 	// higher (0x0042DA9D); the next main-loop pass restores the images from
-	// the hero (0x004290D8, called from 0x0043795F). The port holds a press
-	// for pressTicks updates; the game's loop rate is not traced.
+	// the hero (0x004290D8, called from 0x0043795F), so a press shows for one
+	// 60 ms pass. The port holds it for pressTicks updates.
 	pressed [7]struct{ img, until int }
 	tinted  map[tintKey]*ebiten.Image
 	now     int
 }
 
-// pressTicks is how long a pressed button stays down (one animation step).
-const pressTicks = ticksPerStep
+// pressTicks is how long a pressed button stays down: one main-loop pass
+// of 60 ms, 3.6 updates at 60 Hz, rounded up. The port reads input on
+// every update, so "until the next pass" could last a single update.
+const pressTicks = 4
 
 // press shows button k pressed with image img, like 0x004290AC.
 // The routines that press the buttons (attack 0x00421698, stance

@@ -59,7 +59,7 @@ Clicks in the open window resolve through the hotspot routine (`0x004395E6`, `0x
 * **Jewellery** (`0x0041E778`): box 0 takes category 6, boxes 1–2 category 7, boxes 3–4 category 8; unusable or wrong items return silently; otherwise as equipment.
 * **Bag** (`0x0042342A`): empty hand → lift the clicked item, unless it is the in-hand box's item (`0x004234A0`). Holding → `0x004246F8`: if carried weight + the item's weight (`0x0041B164`, same per-category rule as the bag) > max weight, «Превышен вес» (`0x0045C57C`); if the bag is full, «Мешок у тебя не резиновый!» (`0x0045BD7C`); either way the item returns. Otherwise it goes to the front of the bag. The clicked cell doesn't matter.
 
-**Messages** (`0x0042F9B8`): small font at (view left + 10, view bottom + 5), the status-line position; counter `0x00A3E84C` = 12 main-loop passes. The port shows them for 12 animation steps. Sounds: [sound](konung_sound.md).
+**Messages** (`0x0042F9B8`): small font at (view left + 10, view bottom + 5), the status-line position; counter `0x00A3E84C` = 12 main-loop passes, 0.72 s. The port shows them for 12 game frames (`startScene.showMessage`, `messageFrames`). Sounds: [sound](konung_sound.md).
 
 ## Raise column (verified)
 

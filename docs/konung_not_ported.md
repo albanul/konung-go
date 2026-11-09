@@ -33,8 +33,6 @@ Ported, but not bit-exact.
 | Random numbers | Go's RNG | `rand()` `0x0043FDE5`: state · `0x41C64E6D` + `0x3039`, result (state >> 16) & `0x7FFF`, seeded from the clock at start-up (`0x0043D270`); its sequences differ per run, so only the 15-bit rounding could be copied |
 | Creature chase | a new path whenever the target moves | patches the last step ([movement](konung_movement.md#chase-patch-0x00411fd0-partly-traced)) |
 | Search budget | separate 3-search budgets for the combat AI and the calm village AI; none for the party | one budget for all, in entity order ([movement](konung_movement.md#remaining-differences)) |
-| Idle animation | one frame per tick, with a per-entity phase offset | one frame per tick from step 0 |
-| HUD press | held for 6 updates (100 ms) | one main-loop pass (one 60 ms frame) |
 | Spawn of non-creature groups without coordinates | nearest free fine cells around the group | does not occur: no living entity of such a group lacks coordinates in `GAME.0`–`GAME.2` |
 
 ## Format unknowns

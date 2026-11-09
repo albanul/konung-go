@@ -184,9 +184,9 @@ func (s *startScene) actionSound(w *walker, act int) {
 	}
 }
 
-// soundTick runs once per game frame (60 ms): queued rule sounds, idle
-// sounds of walkers that just stopped (0x00410450), and the map's ambient
-// sound (0x004376F4).
+// soundTick runs once per game frame (60 ms): queued rule sounds and the
+// map's ambient sound (0x004376F4). Idle sounds start with each idle loop
+// (startScene.idleLoop).
 func (s *startScene) soundTick() {
 	if sfx == nil {
 		s.game.Sounds = s.game.Sounds[:0]
@@ -196,21 +196,6 @@ func (s *startScene) soundTick() {
 		sfx.play(id, 0, 0)
 	}
 	s.game.Sounds = s.game.Sounds[:0]
-	settle := func(w *walker, dead bool) {
-		busy := w.walking || len(w.path) > 0 || w.act != 0
-		if w.busy && !busy && !dead {
-			s.actionSound(w, gamestate.ActIdle)
-		}
-		w.busy = busy
-	}
-	for _, m := range s.members {
-		if m != nil {
-			settle(&m.walker, s.party[m.k].Dead())
-		}
-	}
-	for _, n := range s.npcs {
-		settle(&n.walker, s.game.Entities[n.entity].Dead())
-	}
 	if id := gamestate.AmbientSound(s.mapNumber, sfx.rng.IntN); id >= 0 {
 		sfx.play(id, 0, 0)
 	}

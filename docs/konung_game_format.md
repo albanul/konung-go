@@ -277,7 +277,6 @@ Validation: `go test ./internal/gamestate -run Exits` checks the count, the `KON
 
 ## Open questions
 
-* The idle animation's per-entity phase offset is a port choice (the game starts each idle at step 0); the tick is 60 ms ([movement](konung_movement.md#timing)).
 * Exact runtime spawn positions for groups whose entities have no coordinates.
 * Group field `+0x1E` beyond bits `0x40` (creature AI), `0x80` (village AI, low 2 bits = tribe) and `0x20` (party); kind `0x53` groups.
 * Item record fields other than category and type (`+4`/`+8` condition is a hypothesis); the gear table's remaining fields; which jewellery box is which; `0x00A3E754` (weapon select for the whole selection); `0x00414AB4`.

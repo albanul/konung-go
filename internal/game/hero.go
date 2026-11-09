@@ -33,7 +33,9 @@ type walker struct {
 	dir     mapdata.Direction
 	walking bool
 	stepT   int // walk frame of the current cell step (one per tick)
-	phase   int // idle animation offset
+	// idle is the idle loop's frame (+0x10 while idle), −1 while busy;
+	// see startScene.idleLoop.
+	idle int
 
 	// Frames per look (stance, weapon), kind (0 idle, 1 walk) and facing,
 	// as offsets from the cell centre. load fills missing entries on first
@@ -58,10 +60,8 @@ type walker struct {
 	// keeps the walker there this tick (the pauses of creature kinds
 	// 0x4D/0x4F, 0x004127BD).
 	hold func() bool
-	// sound plays the action sound (0x004143DC); busy tracks the last
-	// game frame's walking/action state for the idle sound.
+	// sound plays the action sound (0x004143DC).
 	sound func(w *walker, act int)
-	busy  bool
 }
 
 // look is what selects an entity's frames besides kind and facing: its
@@ -211,7 +211,7 @@ func (w *walker) frame(tick int) (sceneFrame, bool) {
 	} else if frames := w.framesFor(1); w.walking && len(frames) > 0 {
 		f = frames[min(w.stepT, len(frames)-1)]
 	} else if frames := w.framesFor(0); len(frames) > 0 {
-		f = frames[(tick+w.phase)%len(frames)] // one idle frame per game tick
+		f = frames[max(w.idle, 0)%len(frames)]
 	} else {
 		return f, false
 	}

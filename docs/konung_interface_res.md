@@ -49,7 +49,7 @@ Decoder: `resfmt.ParseInterface`, `InterfaceRes.Slot`, `InterfaceRes.Image`. Tes
 * Button 0, weapon mode (hero `+0x12`): 0 → 8, 1 → 9, otherwise 16.
 * Button 1, stance: 10 if hero `+3` bit `0x04`, else 15.
 * Buttons 2–6 are fixed: 14, 11, 7, 12, 13.
-* A pressed button has bit `0x80` set and is drawn 2 px higher. `0x004290AC(k, image)` stores `image | 0x80` and flags a redraw; the next main-loop pass (`0x0043792F`) calls `0x004290D8`, which restores all images from the hero, so a press lasts one loop pass. Presses: weapon select `(0, image shown so far)`, stance toggle `(1, 10 or 15)`, character window `(6, 13)`. The port holds a press for one animation step (`hud.press`; the loop rate is not traced). The game also plays sound 4 (`0x0042A664(4, …)`); the port has no audio.
+* A pressed button has bit `0x80` set and is drawn 2 px higher. `0x004290AC(k, image)` stores `image | 0x80` and flags a redraw; the next main-loop pass (`0x0043792F`) calls `0x004290D8`, which restores all images from the hero, so a press lasts one loop pass. Presses: weapon select `(0, image shown so far)`, stance toggle `(1, 10 or 15)`, character window `(6, 13)`. So a press shows for one 60 ms pass; the port holds it for 4 updates at 60 Hz (67 ms, `hud.press`, `pressTicks`), since it reads input on every update. The game also plays sound 4 (`0x0042A664(4, …)`), as the port does.
 
 **Game view.** The frame leaves x 140–799, y 0–555 (800 mode) for the map (`0x00427C10`: `0x00A3E874`, `0x00A3E880`, `0x00A3E890`, `0x00A3E89C`).
 

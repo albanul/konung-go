@@ -72,3 +72,32 @@ func TestHeroWalksToGoal(t *testing.T) {
 		t.Fatalf("re-target dropped the current step into %v (now %v)", entering, h.cell)
 	}
 }
+
+// TestIdleLoop: the idle action starts at frame 0 when a walker becomes
+// idle, advances one frame per tick and starts over after its last frame
+// (0x004223AD, 0x0041291C).
+func TestIdleLoop(t *testing.T) {
+	s := &startScene{}
+	w := &walker{idle: -1, load: func(kind, dir int) []sceneFrame { return make([]sceneFrame, 12) }}
+	w.act = 2 // busy: a hit reaction
+	s.idleLoop(w, false)
+	if w.idle != -1 {
+		t.Fatalf("busy walker idles at %d", w.idle)
+	}
+	w.act = 0
+	var seen []int
+	for range 26 {
+		s.idleLoop(w, false)
+		seen = append(seen, w.idle)
+	}
+	want := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1}
+	for i := range want {
+		if seen[i] != want[i] {
+			t.Fatalf("idle frames %v, want %v", seen, want)
+		}
+	}
+	s.idleLoop(w, true)
+	if w.idle != -1 {
+		t.Error("a dead walker idles")
+	}
+}

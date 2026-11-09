@@ -44,7 +44,7 @@ Port: `soundSystem.play` renders the sample to 44.1 kHz stereo with the gains (`
 | 0x100 + (map − 1)·8 + 0…7 | ambient: once per main-loop pass with `rand() % 100 > 98` | `0x004376F4` | `soundTick` |
 
 * Action sounds are played by `0x004143DC`, which starts an action animation (port `walker.startAct`); actions 6–9 (outside the stance) use 0–3. Character sounds are positional.
-* Walk: `0x004142D4` (set a destination) starts action 1 once per walk order, so the hero's footstep plays once per click (port `walker.walkTo`). Idle: `0x00410450` and the AI's idle decisions start action 0 (port: a walker that has just stopped walking or acting, checked once per game frame).
+* Walk: `0x004142D4` (set a destination) starts action 1 once per walk order, so the hero's footstep plays once per click (port `walker.walkTo`). Idle: `0x00410450` and the AI's idle decisions start action 0, and the idle case restarts it after its last frame (party `0x004223C8`, creatures `0x00412933`), so every idle loop rolls the idle sound (port `startScene.idleLoop`).
 
 ## Music
 

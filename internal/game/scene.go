@@ -20,11 +20,11 @@ import (
 const (
 	scrollSpeed    = 12
 	edgeScrollZone = 8
-	// ticksPerStep is how many 60 Hz updates each animation step lasts. The
-	// game's animation tick rate is not traced; 6 gives 10 steps/s, i.e. the
-	// usual 12-step idle loop (6 frames, each held 2 steps) in 1.2 s.
-	ticksPerStep = 6
 )
+
+// gameFrame is the game's frame count: one frame (main-loop pass) every
+// 60 ms (0x00A3E6F4), i.e. updates · 5/18 at 60 updates/s.
+func (s *startScene) gameFrame() int { return s.frame * 5 / 18 }
 
 // sceneFrame is one drawable image with its shadow, in world pixels.
 type sceneFrame struct {
@@ -513,7 +513,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 			cur = func() gamestate.Entity { return s.party[k] } // stance and weapon change at runtime
 		}
 		w := walker{
-			entity: p.Index, cell: cell, dir: mapdata.Direction(p.Variant & 7), phase: p.Index * 5,
+			entity: p.Index, cell: cell, dir: mapdata.Direction(p.Variant & 7), idle: -1,
 			look:    lookOf(p.Entity),
 			load:    entityLoader(game, p, cur, objectsData, graphData, tables, uploadSprite, logErr),
 			reserve: reserve, release: release,
@@ -896,7 +896,7 @@ func (s *startScene) drawSelection(dst *ebiten.Image) {
 // line over its portrait, an item in the character window or in the bag
 // strip (0x004305E4).
 func (s *startScene) statusText() []byte {
-	if s.frame < s.msgEnd {
+	if s.gameFrame() < s.msgEnd {
 		return s.msg
 	}
 	if s.trade.open() {
@@ -998,12 +998,12 @@ func (s *startScene) windowClick(hero *gamestate.Entity, spot int) int {
 	return 0
 }
 
-// messageTicks is how long a status-line message stays: 0x0042FA0C sets the
-// counter 0x00A3E84C to 12, decremented once per main-loop pass (0x0043774E);
-// the port counts animation steps.
-const messageTicks = 12 * ticksPerStep
+// messageFrames is how long a status-line message stays: 0x0042FA0C sets
+// the counter 0x00A3E84C to 12, decremented once per main-loop pass
+// (0x0043774E), so 12 game frames = 0.72 s.
+const messageFrames = 12
 
-func (s *startScene) showMessage(m []byte) { s.msg, s.msgEnd = m, s.frame+messageTicks }
+func (s *startScene) showMessage(m []byte) { s.msg, s.msgEnd = m, s.gameFrame()+messageFrames }
 
 // cursorSprite is the GRAPH.RES Type 5 cursor to draw: the hand's sprite
 // (0x00A3E790, 0x00428AC0) over the HUD, the window and the bag strip, while
@@ -1224,6 +1224,33 @@ func (s *startScene) step() {
 	s.combatTick()
 	s.animateObjects()
 	s.updateNPCs()
+	for _, m := range s.members {
+		if m != nil {
+			s.idleLoop(&m.walker, s.party[m.k].Dead())
+		}
+	}
+	for _, n := range s.npcs {
+		s.idleLoop(&n.walker, s.game.Entities[n.entity].Dead())
+	}
+}
+
+// idleLoop is the idle case of the action tables (party 0x004223AD,
+// creatures 0x0041291C) for a walker that is not walking or acting: the
+// idle action starts at frame 0 (0x00410450 → 0x004143DC), advances one
+// frame per tick (0x00413DE4) and starts over after its last frame. Every
+// start rolls the idle sound (0x004143DC: human voice on rand() % 100 >
+// 95; animated models their own rule).
+func (s *startScene) idleLoop(w *walker, dead bool) {
+	if dead || w.walking || len(w.path) > 0 || w.act != 0 {
+		w.idle = -1
+		return
+	}
+	if w.idle >= 0 && w.idle+1 < len(w.framesFor(0)) {
+		w.idle++
+		return
+	}
+	w.idle = 0
+	s.actionSound(w, gamestate.ActIdle)
 }
 
 // Game speed 0x00A3E764: 0 normal, 1 double, 2 triple. Numpad + / −

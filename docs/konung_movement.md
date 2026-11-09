@@ -6,6 +6,7 @@ How characters walk in `konung.exe`: the game tick, the path search, a walk step
 
 * The game draws a frame every 60 ms (`0x00A3E6F4`, [menu](konung_menu.md)) and runs 1 + speed game ticks per frame, so a tick is 60 ms at normal speed (16.7 per second).
 * Every walking character runs its walk case once per tick (party `0x0042218D`, creatures `0x00412717`, village AI the same type through `0x00416058`).
+* **Idle.** The idle case (party `0x004223AD`, creatures `0x0041291C`) advances the idle action one frame per tick and restarts it (`0x004143DC`, which rolls the idle sound) after its last frame; a character that becomes idle starts at frame 0. Port: `startScene.idleLoop`, test `game.TestIdleLoop`.
 * **One walk frame per tick.** `0x00413DE4` advances `+0x10`; a step into the next cell lasts the walk animation's frame count `+0xD7` (12 for the bodies), so 12 ticks = 0.72 s per cell, whatever the direction.
 * **Turning.** At the start of each step, a character that does not face the step's direction turns one octant (`0x004391BC`, the shorter way) and does nothing else that tick. A path that bends by k octants costs k extra ticks.
 
