@@ -229,7 +229,7 @@ It is reached only from `0x0041F11C` (AI step `0x00422415`), and only when entit
 
 ## Placement of entities without coordinates
 
-Entities with row = col = 0 are positioned at runtime around their group's position. The party code at `0x00411B8C` uses random formation offsets from tables near `0x0045FF79`. The port places them deterministically on the nearest free fine cells, using the `KONUNG.N` walk grid (`mapdata.WalkGrid.Blocked`). These positions are an **approximation** for villagers and the party. Creature groups are re-placed on map entry by the traced `0x00411DE4` (random cell in the territory, `Game.PlaceInTerritory`, [combat](konung_combat.md#upkeep-poison-and-respawn-verified)), so only non-creature groups without coordinates remain approximate.
+Entities with row = col = 0 are positioned at runtime around their group's position. The party code at `0x00411B8C` uses random formation offsets from tables near `0x0045FF79`. The port places them deterministically on the nearest free fine cells, using the `KONUNG.N` walk grid (`mapdata.WalkGrid.Blocked`). These positions are an **approximation**, but in `GAME.0`–`GAME.2` no living entity of a non-creature group lacks coordinates, so it does not come up at game start; the party is placed by the traced `0x004118DC` after a map change. Creature groups are re-placed on map entry by the traced `0x00411DE4` (random cell in the territory, `Game.PlaceInTerritory`, [combat](konung_combat.md#upkeep-poison-and-respawn-verified)), so only non-creature groups without coordinates remain approximate.
 
 ## `KONUNG.1` (Volk's starting location) in `GAME.0`
 

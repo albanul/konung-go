@@ -20,13 +20,15 @@ const (
 // walker is a character that walks the fine grid like the original
 // (docs/konung_movement.md): update runs once per game tick; a step first
 // turns one octant per tick toward the next cell, then shows one walk frame
-// per tick. While stepping it stays anchored on its current cell and the
-// walk frames' anchors carry the body toward the next cell; at the end of
-// the step it snaps to that cell. The hero and the NPCs share it.
+// per tick. Like the game (0x0041492E) it enters the next cell at the start
+// of a step: cell becomes that cell and the one left (from) is freed at
+// once; the body is drawn from the centre of from and the walk frames'
+// anchors carry it across. The hero and the NPCs share it.
 type walker struct {
-	entity  int // GAME.N entity index (name, status line)
-	cell    mapdata.Cell
-	path    []mapdata.Cell // path[0] is the cell being stepped into while walking
+	entity  int            // GAME.N entity index (name, status line)
+	cell    mapdata.Cell   // the cell held; while walking, the one being entered
+	from    mapdata.Cell   // while walking: the cell being left (the drawing anchor)
+	path    []mapdata.Cell // the cells after the step in progress
 	goal    mapdata.Cell
 	dir     mapdata.Direction
 	walking bool
@@ -109,14 +111,8 @@ func (w *walker) framesFor(kind int) []sceneFrame {
 // stepping finishes the step it is on before following the new path.
 func (w *walker) walkTo(goal mapdata.Cell) {
 	goal = mapdata.NearestFree(goal, w.blocked, 6)
-	start := w.cell
-	if w.walking {
-		start = w.path[0]
-	}
+	start := w.cell // while walking, the cell being entered
 	path := mapdata.FindPath(start, goal, w.blocked)
-	if w.walking {
-		path = append([]mapdata.Cell{start}, path...)
-	}
 	if len(path) > 0 || start == goal {
 		w.path, w.goal = path, goal
 		if len(path) > 0 && w.sound != nil {
@@ -132,31 +128,37 @@ func (w *walker) walkSteps() int {
 	return defaultWalkSteps
 }
 
-// stepDir is the direction from the walker's cell to path[0].
+// stepDir is the direction of the step in progress, from w.from to w.cell.
 func (w *walker) stepDir() mapdata.Direction {
-	for _, n := range mapdata.Neighbors(w.cell) {
-		if n.Cell == w.path[0] {
+	for _, n := range mapdata.Neighbors(w.from) {
+		if n.Cell == w.cell {
 			return n.Dir
 		}
 	}
-	ax, ay := mapdata.CellCenter(w.cell)
-	bx, by := mapdata.CellCenter(w.path[0])
+	ax, ay := mapdata.CellCenter(w.from)
+	bx, by := mapdata.CellCenter(w.cell)
 	return mapdata.DirectionTo(float64(ax), float64(ay), float64(bx), float64(by))
 }
 
-// startStep claims path[0] (0x0041492E). If someone holds it the walk stops
-// and the path is dropped; the AI or the party planner decides again on a
-// later tick.
+// startStep enters path[0] (0x0041492E): the walker takes the cell and
+// frees the one it leaves at once. If someone holds the cell the walk
+// stops and the path is dropped; the AI or the party planner decides again
+// on a later tick.
 func (w *walker) startStep() bool {
-	if w.stopAt != nil && w.stopAt(w.path[0]) {
+	next := w.path[0]
+	if w.stopAt != nil && w.stopAt(next) {
 		w.path = nil
 		return false
 	}
-	if w.reserve == nil || w.reserve(w.path[0]) {
-		return true
+	if w.reserve != nil && !w.reserve(next) {
+		w.path = nil
+		return false
 	}
-	w.path = nil
-	return false
+	if w.release != nil {
+		w.release(w.cell)
+	}
+	w.from, w.cell, w.path = w.cell, next, w.path[1:]
+	return true
 }
 
 // update is one game tick of the walk case (0x0042218D, 0x00412717): a
@@ -181,11 +183,7 @@ func (w *walker) update() {
 	if w.hold != nil && w.hold() {
 		return
 	}
-	old := w.cell
-	w.cell, w.path, w.stepT = w.path[0], w.path[1:], 0
-	if w.release != nil {
-		w.release(old)
-	}
+	w.stepT = 0
 	if len(w.path) == 0 || !w.startStep() {
 		w.walking = false
 	}
@@ -194,11 +192,12 @@ func (w *walker) update() {
 // position is a smooth world position (for the camera): the current cell's
 // centre moved toward the next cell by the step's progress.
 func (w *walker) position() (float64, float64) {
-	ax, ay := mapdata.CellCenter(w.cell)
 	if !w.walking {
-		return float64(ax), float64(ay)
+		x, y := mapdata.CellCenter(w.cell)
+		return float64(x), float64(y)
 	}
-	bx, by := mapdata.CellCenter(w.path[0])
+	ax, ay := mapdata.CellCenter(w.from)
+	bx, by := mapdata.CellCenter(w.cell)
 	t := float64(w.stepT) / float64(w.walkSteps())
 	return float64(ax) + float64(bx-ax)*t, float64(ay) + float64(by-ay)*t
 }
@@ -216,7 +215,7 @@ func (w *walker) frame(tick int) (sceneFrame, bool) {
 	} else {
 		return f, false
 	}
-	x, y := mapdata.CellCenter(w.cell)
+	x, y := mapdata.CellCenter(w.anchor())
 	f.x, f.y, f.sx, f.sy = f.x+x, f.y+y, f.sx+x, f.sy+y
 	return f, true
 }
@@ -256,36 +255,31 @@ func (w *walker) turnToward(d mapdata.Direction) {
 	w.dir = mapdata.Direction(cur)
 }
 
-// halt ends a walk at once, releasing the cell being stepped into.
-func (w *walker) halt() {
-	if w.walking && w.release != nil && len(w.path) > 0 {
-		w.release(w.path[0])
+// anchor is the cell the body is drawn from: while walking the cell being
+// left (+0xE8/+0xF0 keep its centre until the step ends), else the cell.
+func (w *walker) anchor() mapdata.Cell {
+	if w.walking {
+		return w.from
 	}
+	return w.cell
+}
+
+// halt ends a walk at once. The walker stays in the cell it was entering
+// (it took it at the step's start), so the body jumps there, as when the
+// game starts another action mid-step (0x004143DC sets the position from
+// the cell).
+func (w *walker) halt() {
 	w.walking, w.stepT, w.path = false, 0, nil
 }
 
 // stopWalk ends a walk after the step in progress.
-func (w *walker) stopWalk() {
-	if w.walking {
-		w.path = w.path[:1]
-		return
-	}
-	w.path = nil
-}
+func (w *walker) stopWalk() { w.path = nil }
 
 // chase plans a path that ends on goal even though goal is occupied (the
 // target's cell); stopAt keeps the walker from entering it.
 func (w *walker) chase(goal mapdata.Cell) {
-	start := w.cell
-	if w.walking {
-		start = w.path[0]
-	}
 	blocked := func(c mapdata.Cell) bool { return c != goal && w.blocked(c) }
-	path := mapdata.FindPath(start, goal, blocked)
-	if w.walking {
-		path = append([]mapdata.Cell{start}, path...)
-	}
-	w.path, w.goal = path, goal
+	w.path, w.goal = mapdata.FindPath(w.cell, goal, blocked), goal
 }
 
 // liveEntity returns the current GAME.N record of entity i, for loaders that

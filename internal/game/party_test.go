@@ -282,3 +282,30 @@ func absInt(x int) int {
 	}
 	return x
 }
+
+// TestStepHoldsNewCell: a walker takes the next cell at the step's start
+// and frees the one it leaves (0x0041492E); a hit reaction mid-step leaves
+// it in the new cell.
+func TestStepHoldsNewCell(t *testing.T) {
+	s := newVolkScene(t)
+	hero := s.lead()
+	start := hero.cell
+	hero.walkTo(freeCellAway(s, start, 10))
+	run(s, 1)
+	if !hero.walking || hero.from != start || hero.cell == start {
+		t.Fatalf("walking %v from %v into %v", hero.walking, hero.from, hero.cell)
+	}
+	if s.occ[start] || !s.occ[hero.cell] {
+		t.Errorf("occupancy: left %v %v, entered %v %v", start, s.occ[start], hero.cell, s.occ[hero.cell])
+	}
+	entered := hero.cell
+	s.flinch(&hero.walker)
+	if hero.walking || hero.cell != entered || !s.occ[entered] {
+		t.Errorf("after the hit: walking %v at %v", hero.walking, hero.cell)
+	}
+	if x, y := hero.position(); true {
+		if cx, cy := mapdata.CellCenter(entered); x != float64(cx) || y != float64(cy) {
+			t.Errorf("drawn at %.0f,%.0f, want the entered cell %d,%d", x, y, cx, cy)
+		}
+	}
+}

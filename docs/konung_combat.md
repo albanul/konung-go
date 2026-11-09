@@ -259,11 +259,10 @@ Orders:
 
 Approximations:
 * The rolls use Go's RNG, not the game's `rand()`.
-* A walk cut by a hit reaction snaps back to the cell being left.
 * The combat AI (creatures and alarmed villagers) has its own 3-search budget per tick, separate from the calm village AI. It is served round-robin like `0x004116CC`. A chase toward a target whose 8 neighbour cells are all taken skips the search but still spends the budget, since the game's search would fail anyway.
 * Characters entering the stance move to the stance animation set (type − 6, `gamestate.EnterStance`); calmed villagers leave it (`LeaveStance`).
-* A chasing creature re-plans its whole path when the target moves (the game patches one step).
-* Arrow points use the nearest cell centre instead of `0x00439BDC`.
+* A chasing creature re-plans its whole path when the target moves (the game patches one step, [movement](konung_movement.md#chase-patch-0x00411fd0-partly-traced)).
+* Arrow points use the nearest cell centre instead of `0x00439BDC` ([movement](konung_movement.md#pixel-to-cell-0x00439bdc-traced-not-ported)).
 * A respawned member's untouched fields start empty instead of stale.
 
 HP is regained through [potions](konung_potions.md) and the healer's dialogue scripts 334/335 ([dialogues](konung_dialogue.md)); the raise buttons are in the [character window](konung_character_window.md#raise-column-verified). See [not ported](konung_not_ported.md) for the whole list.

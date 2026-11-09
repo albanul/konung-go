@@ -31,7 +31,7 @@ func TestHeroWalksToGoal(t *testing.T) {
 		at = c
 	}
 	ticks := 0
-	for ; ticks < 100000 && len(h.path) > 0; ticks++ {
+	for ; ticks < 100000 && (h.walking || len(h.path) > 0); ticks++ {
 		prev := h.cell
 		h.update()
 		if wall(h.cell) {
@@ -59,11 +59,16 @@ func TestHeroWalksToGoal(t *testing.T) {
 		}
 	}
 	// Re-targeting mid-step keeps the step in progress.
+	// The walker holds the cell it is entering from the step's start
+	// (0x0041492E) and frees the one it left.
 	h.walkTo(mapdata.Cell{Row: 88, Col: 30})
 	h.update()
-	next := h.path[0]
+	entering, left := h.cell, h.from
+	if !h.walking || entering == goal || left != goal {
+		t.Fatalf("step: walking %v from %v into %v", h.walking, left, entering)
+	}
 	h.walkTo(mapdata.Cell{Row: 70, Col: 40})
-	if h.path[0] != next {
-		t.Fatalf("re-target dropped the current step %v (now %v)", next, h.path[0])
+	if !h.walking || h.cell != entering || h.from != left {
+		t.Fatalf("re-target dropped the current step into %v (now %v)", entering, h.cell)
 	}
 }

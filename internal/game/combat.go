@@ -330,8 +330,8 @@ func (s *startScene) kill(a *gamestate.Entity, tw *walker, t *gamestate.Entity, 
 
 // flinch starts the hit reaction (type 2/8) of a character hit hard: the
 // swings (0x00422131 party, 0x00412657 creatures) and arrows start it
-// whatever the victim is doing, so a walk ends at once (the walker goes
-// back to the cell it was leaving). A party member's walk order goes on
+// whatever the victim is doing, so a walk ends at once (the walker stays
+// in the cell it was entering, walker.halt). A party member's walk order goes on
 // afterwards (+2 bit 0x08 stays; idleTick).
 func (s *startScene) flinch(tw *walker) {
 	if m, _ := s.partyMember(tw.entity); m != nil && &m.walker == tw && (tw.walking || len(tw.path) > 0) &&

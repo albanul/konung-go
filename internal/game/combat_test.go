@@ -417,7 +417,7 @@ func TestAlarmCutsWalks(t *testing.T) {
 	}
 	st := g.SettlementOnMap(1)
 	long := []mapdata.Cell{{Row: 90, Col: 40}, {Row: 92, Col: 40}, {Row: 94, Col: 40}, {Row: 96, Col: 40}}
-	walking := &npc{walker: walker{entity: 360, cell: mapdata.Cell{Row: 88, Col: 40}, walking: true,
+	walking := &npc{walker: walker{entity: 360, from: mapdata.Cell{Row: 86, Col: 40}, cell: mapdata.Cell{Row: 88, Col: 40}, walking: true,
 		path: append([]mapdata.Cell(nil), long...)}, mode: npcVillager, group: st.Group, target: -1}
 	idle := &npc{walker: walker{entity: 361, cell: mapdata.Cell{Row: 70, Col: 40}, path: long[2:]},
 		mode: npcVillager, group: st.Group, target: -1}
@@ -426,7 +426,7 @@ func TestAlarmCutsWalks(t *testing.T) {
 	if st.Flags&0x15 != 0x15 || g.Groups[st.Group].Alarm != gamestate.AlarmAttack {
 		t.Fatalf("village flags %#x alarm %#x", st.Flags, g.Groups[st.Group].Alarm)
 	}
-	if len(walking.path) != 1 || walking.path[0] != long[0] || len(idle.path) != 0 {
+	if !walking.walking || len(walking.path) != 0 || len(idle.path) != 0 {
 		t.Errorf("paths after the alarm: walking %v, not yet stepping %v", walking.path, idle.path)
 	}
 }

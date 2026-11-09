@@ -885,7 +885,7 @@ func (s *startScene) drawSelection(dst *ebiten.Image) {
 		}
 		step := min(m.stepT, m.walkSteps()-1)
 		dx, dy := gamestate.SelectionOffset(int(m.dir), step, m.walking)
-		x, y := mapdata.CellCenter(m.cell)
+		x, y := mapdata.CellCenter(m.anchor()) // +0xE8/+0xF0: the cell being left while walking
 		drawAt(dst, img, x+dx-s.camX, y+dy-s.camY)
 	}
 }

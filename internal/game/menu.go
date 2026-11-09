@@ -328,9 +328,9 @@ func (m *Menu) Update() error {
 		if mx >= r.x && mx < r.x+r.w && my >= r.y && my < r.y+r.h {
 			m.selected = i
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-				if m.running {
-					sfx.play(gamestate.SoundClick, 0, 0) // in-game menu only (0x004379E2)
-				}
+				// 0x004379E2: every click on an active item (without a game,
+				// items 0 and 1 are inactive and never reach here).
+				sfx.play(gamestate.SoundClick, 0, 0)
 				activate = i
 			}
 		}

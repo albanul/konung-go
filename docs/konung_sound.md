@@ -34,7 +34,7 @@ Port: `soundSystem.play` renders the sample to 44.1 kHz stereo with the gains (`
 | 1 / 11 | lift or put on equipment: 1 for category > 2, else 11 | `0x0041E50C`, `0x0041E5B1`, `0x0041E6E3` | `ClickEquipment` |
 | 2 / 8 | swing (action 5) with axe/club / blade (weapon mode 2) | `0x004146D3` | `startAct` |
 | 3 | bow shot (action 4, humans) | `0x004146C7` | `startAct` |
-| 4 | click: HUD buttons (attack all `0x00421698`, stance `0x0042179C`, weapon `0x0042192C`, gather `0x004226C0`, bag `0x00424610`), the in-hand box when something moves (`0x0041EB84`), a mouse click on a button of the in-game menu (`0x004379E2`; the start menu has none) | | `hud.press`, `boxSwap`, `Menu.Update` |
+| 4 | click: HUD buttons (attack all `0x00421698`, stance `0x0042179C`, weapon `0x0042192C`, gather `0x004226C0`, bag `0x00424610`), the in-hand box when something moves (`0x0041EB84`), a mouse click on an active item of the main menu, with or without a running game (`0x004379E2`; without a game items 0–1 are inactive and silent; Enter makes no sound), the world map toggle (M / HUD 2, `0x00436EB9`, `0x00422C01`) and the quest log toggle (Q / HUD 5, `0x0042459C`); the settings screen's clicks are silent | | `hud.press`, `boxSwap`, `Menu.Update` |
 | 6 | the party's blow is dodged (`0x0041C480` = −2), at the target | `0x0042204B` | `startScene.swing` |
 | 7 | the hero starts walking (action 1) | `0x004146F6` | `walkTo` |
 | 9 | a herb is used: mixed or drunk | `0x0041E195` | `UseHerb` |

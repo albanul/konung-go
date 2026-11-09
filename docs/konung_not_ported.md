@@ -14,7 +14,7 @@ Ported: every case of `0x00414E64` ([misc items](konung_misc_items.md)), includi
 
 ### Movement
 
-Ported ([movement](konung_movement.md)): the 60 ms tick, the game's path search (straight routes, 31-step paths), turning one octant per tick, the creature throttle `+0x11` and the `0x4D`/`0x4F` pauses. Left over (see [remaining differences](konung_movement.md#remaining-differences)): a blocked goal of the player's order still sends the walker to the nearest free cell; during a step both cells stay held; the party's re-search ignores the AI budget.
+Ported ([movement](konung_movement.md)): the 60 ms tick, the game's path search (straight routes, 31-step paths), turning one octant per tick, the creature throttle `+0x11` and the `0x4D`/`0x4F` pauses, and entering the next cell at the step's start. Left over (see [remaining differences](konung_movement.md#remaining-differences)): a blocked goal of the player's order still sends the walker to the nearest free cell; the shared search budget; the pixel-to-cell diamond test; the chase patch.
 
 ### Films
 
@@ -30,15 +30,13 @@ Ported, but not bit-exact.
 
 | What | Port | Original |
 |---|---|---|
-| Random numbers | Go's RNG | the C runtime's `rand()`; same distributions, different sequences |
-| Spawn of non-creature groups without coordinates | nearest free fine cells around the group ([GAME.N](konung_game_format.md#placement-of-entities-without-coordinates)) | `0x00411B8C` formation offsets, not traced for villagers |
+| Random numbers | Go's RNG | `rand()` `0x0043FDE5`: state · `0x41C64E6D` + `0x3039`, result (state >> 16) & `0x7FFF`, seeded from the clock at start-up (`0x0043D270`); its sequences differ per run, so only the 15-bit rounding could be copied |
+| Pixel to cell (clicks, hover, arrows) | nearest cell centre (`mapdata.CellAt`) | diamond test `0x00439BDC` ([movement](konung_movement.md#pixel-to-cell-0x00439bdc-traced-not-ported)) |
+| Creature chase | a new path whenever the target moves | patches the last step ([movement](konung_movement.md#chase-patch-0x00411fd0-partly-traced)) |
+| Search budget | separate 3-search budgets for the combat AI and the calm village AI; none for the party | one budget for all, in entity order ([movement](konung_movement.md#remaining-differences)) |
 | Idle animation | one frame per tick, with a per-entity phase offset | one frame per tick from step 0 |
-| Creature chase | re-plans the whole path when the target moves | patches the last step |
-| Arrow points | nearest cell centre | `0x00439BDC` |
-| Search budget | separate 3-search budgets for the combat AI and the calm village AI | one budget `0x00A3E720` |
-| HUD press | held for one animation step | one main-loop pass |
-| New game time | 0 (day) | not traced |
-| A walk cut by a hit reaction | snaps back to the cell being left | the cell semantics of a step are not traced |
+| HUD press | held for 6 updates (100 ms) | one main-loop pass (one 60 ms frame) |
+| Spawn of non-creature groups without coordinates | nearest free fine cells around the group | does not occur: no living entity of such a group lacks coordinates in `GAME.0`–`GAME.2` |
 
 ## Format unknowns
 

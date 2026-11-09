@@ -123,7 +123,6 @@ Port choices and approximations:
 
 * A dead member leaves the selection.
 * The planner's enemy search (`0x0041FD74`) is centred on the member asking, not on the leader.
-* A walk interrupted by a hit reaction snaps back to the cell it was leaving.
 
 ## Open questions
 

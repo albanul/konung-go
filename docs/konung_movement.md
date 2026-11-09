@@ -58,7 +58,7 @@ Walk case, once per tick (party `0x0042218D`; creatures `0x00412717`):
 
 * **Tick:** `startScene.Update` runs 1 + speed game ticks (`startScene.step`) whenever a 60 ms game frame has passed (updates · 5/18 at 60 Hz); the game time `0x00A3E770` is the tick count (`gameTime`).
 * **Search:** `mapdata.FindPath` is `0x0043EDB7` (order, costs, goal rules, 4096-entry ring, at most `mapdata.PathSteps` = 31 cells). Tests: `mapdata.TestFindPathRules`, `TestFindPathKonung1` (a long walk in 31-step segments).
-* **Walk step:** `walker.update`, once per tick: turn one octant toward the next cell, else the next walk frame; after the last frame the next cell and the next step. A taken next cell stops the walk (`walker.startStep`). Test: `game.TestHeroWalksToGoal` (ticks = frames per cell + octants turned).
+* **Walk step:** `walker.update`, once per tick: turn one octant toward the next cell, else the next walk frame; after the last frame the next step. `walker.startStep` enters the next cell at the step's start: `cell` becomes it and the cell left (`from`) is freed at once; a taken next cell stops the walk. The body and the selection ellipse are drawn from `from` while walking (`walker.anchor`); a hit reaction mid-step (`walker.halt`) leaves the walker in the cell it entered. Tests: `game.TestHeroWalksToGoal` (ticks = frames per cell + octants turned), `game.TestStepHoldsNewCell`.
 * **Party:** a member whose walk stops short of its goal with the walk bit searches again (`startScene.step`, the planner's search); the pick-up and map exits happen only at the goal.
 * **Creatures:** the throttle `+0x11` (`startScene.updateNPCs`) and the `0x4D`/`0x4F` pauses (`npc.pauseHold` as `walker.hold`). The pause counter `+0x12` is kept on the scene's `npc`, not in the entity, so a save does not keep it.
 
@@ -67,8 +67,23 @@ Walk case, once per tick (party `0x0042218D`; creatures `0x00412717`):
 | | Original | Port |
 |---|---|---|
 | Goal blocked (player's order) | no walk | nearest free cell within 6 (`mapdata.NearestFree`), kept as a convenience |
-| Cells held during a step | the new cell from the step's start; the old one freed at once | the next cell reserved, the old one freed at the step's end (both held) |
-| The party's re-search | within the AI budget of 3 searches per tick | at once, outside the budget |
+| The party's re-search | within the shared AI budget (below) | at once, outside the budget |
 | A blocked step | stop; the planner (party) or the AI (creatures) decides on a later tick | the same, but the party searches again in the same tick |
+
+**Search budget (`0x004116CC`, traced).** One budget for everyone: the dispatcher `0x00421DA4` resets the count `0x00A3E720` and remembers the last entity served (`0x00A3E690`, saved to `0x00A3E698`). A search is allowed while the count is below 3 and the entity's record lies after the last one served (an address comparison, so entity order). Callers: the party walk case and planner (`0x004221A3`, `0x004223DD`, `0x00422425`), the creatures (`0x0041243A`), the village AI (`0x004160E3`); each stores itself in `0x00A3E690` before searching. A tick that served nobody starts the order over (`0x004226A1`: `0x00A3E690` = 0). The port has separate budgets of 3 for the combat AI and the calm village AI and none for the party.
+
+## Pixel to cell (`0x00439BDC`, traced, not ported)
+
+`0x00439BDC(&row, &col, x, y)` maps a world pixel to the fine cell whose diamond holds it; the left click (`0x004229AB`), the right click (`0x00423976`, `0x00423FF3`), the hover (`0x00428D0F`, `0x0042905E`), arrows (`0x00421330`) and others (`0x00411586`, `0x004369B3`) use it:
+
+1. row = y / 16 (truncated); odd row: col = x / 58, centre cx = col·58 + 29; even row: col = (x − 29) / 58, cx = col·58 + 58. Let bottom = (row + 1)·16, top = bottom − 16.
+2. x = cx: done. x < cx: with left = cx − 29, if (y − top)·(x − left) < (bottom − y)·(cx − x), the point is above the diamond's upper-left edge: row − 1, and col − 1 when the new row is even. x > cx: with right = cx + 29, if (bottom − y)·(cx − x) < (y − top)·(x − right), row − 1, and col + 1 when the old row was even.
+3. Clamp row to 0–319 and col to 0–159.
+
+The port uses the nearest cell centre (`mapdata.CellAt`), which differs from the diamonds near their edges.
+
+## Chase patch (`0x00411FD0`, partly traced)
+
+A creature walking with the melee intent, whose target left the goal cell: if the target's new cell neighbours the old goal (`0x0041165C`), the creature finds the last direction of its path, steps back from the goal to the cell before it, and if the target's cell neighbours that cell, it replaces the last direction with the step there and sets the goal to the target's cell (`0x004122EC`). Otherwise a table `0x004622FC` (indexed by the last direction and the target's move) gives a correction; this branch is not traced further. A target that moved further, or left the leash, ends the chase (idle, decide again). The port searches a whole new path whenever the target moves.
 
 Before the port, the port's A* (Euclidean pixel costs) found the same step counts but zigzagged: on `KONUNG.1`, `.4`, `.30`, `.36` (300 random pairs each) only 2–4 % of its routes matched the game's, with about 26 octants of turning per path against 2.
