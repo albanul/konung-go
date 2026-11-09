@@ -639,6 +639,7 @@ func (s *startScene) placeAgain(x gamestate.MapExit) {
 		m.act, m.actStep = 0, 0
 		m.pickIntent, m.resumeSet = false, false // +2 &= 0xF0 drops the walk bit 0x08
 	}
+	s.centerHero() // 0x00437832 → 0x00428F90
 }
 
 // reviveAll is «Слова Воскрешения» (0x00414FFB): every dead character of

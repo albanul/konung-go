@@ -82,6 +82,13 @@ func (m *Map) WorldSize() (w, h int) {
 	return (m.LastCol+1)*CellWidth + CellWidth/2, (m.LastRow + 2) * CellHeight
 }
 
+// CameraLimits are the game's right and bottom limits for the view, in world
+// pixels (map loader 0x0043C3BE/0x0043C430): (LastCol − 1)·116 and
+// LastRow·32. The view never reaches the ragged tile edges beyond them.
+func (m *Map) CameraLimits() (w, h int) {
+	return (m.LastCol - 1) * CellWidth, m.LastRow * CellHeight
+}
+
 // LoadTerrainTiles decodes the GRAPH.RES Type 1 terrain images indexed by the
 // table the executable loads to VA 0x006314B8. The returned slice is indexed
 // by 0-based table slot; a map byte b refers to slot b-1. Unused or

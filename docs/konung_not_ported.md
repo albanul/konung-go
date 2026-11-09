@@ -30,6 +30,7 @@ Deliberate differences, not planned for porting:
 | A walk order to a blocked cell | walks to the nearest free cell | does not walk | convenience |
 | Path search budget | 3 searches per tick for the combat AI and 3 for the calm village AI; none for the party | one budget of 3 for everyone, in entity order (`0x004116CC`) | hardware limit of 1999 |
 | Creature chase | a new path whenever the target moves | bends the path's last step (`0x00411FD0`, partly traced) | hardware limit of 1999 |
+| Scrolling the map | the mouse within 8 px of an edge or the arrow keys, 480 px/s | only the mouse on the screen's edge pixel, 267 px/s ([map format](konung_map_format.md#camera-verified)) | convenience |
 
 Details: [movement: port choices](konung_movement.md#port-choices).
 
@@ -41,7 +42,6 @@ Ported, but not bit-exact.
 |---|---|---|
 | Random numbers | Go's RNG | `rand()` `0x0043FDE5`: state · `0x41C64E6D` + `0x3039`, result (state >> 16) & `0x7FFF`, seeded from the clock at start-up (`0x0043D270`); its sequences differ per run, so only the 15-bit rounding could be copied |
 | Spawn of non-creature groups without coordinates | nearest free fine cells around the group | does not occur: no living entity of such a group lacks coordinates in `GAME.0`–`GAME.2` |
-| Camera | follow on (C), the hero always centred; edge zone 8 px and arrow keys, 720 px/s; limits = the terrain image (ragged edges visible) | follow off until Ctrl+S, then the camera moves only when the hero comes within 60/50 px of the view's edge; edge pixel only, 267 px/s; limits trimmed to whole tiles plus 58/32 px ([map format](konung_map_format.md#camera-traced-not-ported)) |
 
 ## Format unknowns
 

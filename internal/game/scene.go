@@ -18,8 +18,22 @@ import (
 )
 
 const (
-	scrollSpeed    = 12
+	// scrollSpeed is the port's scroll step per update (480 px/s), between
+	// the game's 16 px per 60 ms frame (267 px/s) and the port's earlier
+	// 720 px/s. The edge zone and the arrow keys are port choices; the game
+	// scrolls only with the mouse on the screen's edge pixel (0x00436610).
+	scrollSpeed    = 8
 	edgeScrollZone = 8
+
+	// The game's camera (map format: camera): the view's world left and top
+	// stay at or beyond these, and a followed character's sprite centre is
+	// kept followMarginX / followMarginY inside the view's edges.
+	cameraMinX    = 58
+	cameraMinY    = 32
+	followMarginX = 60
+	followMarginY = 50
+	viewW         = viewRight - viewLeft + 1 // 660 at 800×600 (0x00A3E85C)
+	viewH         = viewBottom - viewTop + 1 // 556 (0x00A3E858)
 )
 
 // gameFrame is the game's frame count: one frame (main-loop pass) every
@@ -106,8 +120,11 @@ type startScene struct {
 	aiNext int     // round-robin start of the village AI's path budget
 	walk   *mapdata.WalkGrid
 	occ    map[mapdata.Cell]bool // cells held or being entered by a character
-	follow bool                  // camera follows the hero (toggle with F)
-	rng    *rand.Rand
+	follow bool                  // camera follows the hero (0x00A3E68C; Ctrl+S, off at start)
+	// camW, camH are the camera's right and bottom limits
+	// (mapdata.Map.CameraLimits).
+	camW, camH int
+	rng        *rand.Rand
 
 	hud   *hud
 	party []gamestate.Entity // group 0's entities (copies; [0] = hero) shown in the portrait grid
@@ -386,7 +403,6 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		hand:        gamestate.NewHand(),
 		mapNumber:   mapNumber,
 		pileAt:      map[mapdata.Cell]int{},
-		follow:      true,
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
 	}
 	if s.lit, s.terrainLights, err = loadLights(a.mapDir, mapNumber); err != nil {
@@ -437,6 +453,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		}
 	}
 	s.worldW, s.worldH = m.WorldSize()
+	s.camW, s.camH = m.CameraLimits()
 
 	// Village buildings show their state (0x0043CB4A).
 	if tables != nil {
@@ -582,6 +599,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	}
 	s.activatePiles()
 	s.centerOn(camX, camY)
+	s.centerHero()
 	return s, nil
 }
 
@@ -1065,11 +1083,94 @@ func (s *startScene) centerOn(x, y int) {
 	s.clampCamera()
 }
 
-// clampCamera keeps the map filling the game view: its left edge may reach
-// the HUD's inner edge and its bottom edge the bottom bar.
+// centerHero is 0x00428F90 after a map change, a load or a new game: the
+// hero's sprite top-left (+0xE4/+0xEC) goes to the screen centre, then the
+// limits apply.
+func (s *startScene) centerHero() {
+	if s.hero == nil {
+		return
+	}
+	if f, ok := s.hero.frame(s.tick); ok {
+		s.camX, s.camY = f.x-ScreenWidth/2, f.y-ScreenHeight/2
+		s.clampCamera()
+	}
+}
+
+// clampCamera applies the game's camera limits (0x00428F90, 0x00436610):
+// the view's world left at least cameraMinX, else its right edge at most
+// camW; its top at least cameraMinY, else its bottom at most camH. The
+// minimum is tested first, so on a map smaller than the view the maximum
+// wins.
 func (s *startScene) clampCamera() {
-	s.camX = max(-viewLeft, min(s.camX, s.worldW-ScreenWidth))
-	s.camY = max(-viewTop, min(s.camY, s.worldH-viewBottom-1))
+	c, t := s.camX+viewLeft, s.camY+viewTop
+	if c < cameraMinX {
+		c = cameraMinX
+	} else if c+viewW > s.camW {
+		c = s.camW - viewW
+	}
+	if t < cameraMinY {
+		t = cameraMinY
+	} else if t+viewH > s.camH {
+		t = s.camH - viewH
+	}
+	s.camX, s.camY = c-viewLeft, t-viewTop
+}
+
+// followHero is the follow part of 0x00436610, right after the scroll
+// while following: the camera moves just enough to keep the hero's follow
+// point followMarginX inside the view's left and right edges and
+// followMarginY inside its top and bottom, then the limits apply.
+func (s *startScene) followHero() {
+	x, y, ok := s.followPoint(s.hero)
+	if !ok {
+		return
+	}
+	s.pushCamera(x, y)
+}
+
+func (s *startScene) pushCamera(x, y int) {
+	c, t := s.camX+viewLeft, s.camY+viewTop
+	if c+followMarginX > x {
+		c = x - followMarginX
+	} else if c+viewW-followMarginX <= x {
+		c = x - viewW + followMarginX
+	}
+	if t+followMarginY > y {
+		t = y - followMarginY
+	} else if t+viewH-followMarginY <= y {
+		t = y - viewH + followMarginY
+	}
+	s.camX, s.camY = c-viewLeft, t-viewTop
+	s.clampCamera()
+}
+
+// followPoint is the point 0x00436610 follows (0x004366C6–0x004368C8), in
+// world pixels: the sprite's centre, rounded to even; while walking with an
+// east or west part (facing not N or S) x is the cell being left plus 5 px
+// per walk frame east/west or 2.5 px diagonally.
+func (s *startScene) followPoint(w *walker) (x, y int, ok bool) {
+	f, ok := w.frame(s.tick)
+	if !ok || f.img == nil {
+		return 0, 0, false
+	}
+	even := func(v int) int { return (v + 1) / 2 * 2 }
+	b := f.img.Bounds()
+	x, y = even(f.x+b.Dx()/2), even(f.y+b.Dy()/2)
+	if w.walking && w.dir != 2 && w.dir != 6 {
+		ax, _ := mapdata.CellCenter(w.anchor())
+		step := w.stepT
+		switch w.dir {
+		case 0:
+			x = ax - 5*step
+		case 4:
+			x = ax + 5*step
+		case 1, 7:
+			x = ax - (2*step + step/2)
+		case 3, 5:
+			x = ax + (2*step + step/2)
+		}
+	}
+	return x, y, true
 }
 
 // blocked reports cells a character cannot path through: walk-grid
@@ -1124,7 +1225,7 @@ func (s *startScene) Update() {
 	s.hud.now = s.frame
 	mx, my := ebiten.CursorPosition()
 	if s.hero != nil {
-		if inpututil.IsKeyJustPressed(ebiten.KeyC) { // port key; the game toggles with Ctrl+S (0x00436F2B)
+		if inpututil.IsKeyJustPressed(ebiten.KeyS) && ebiten.IsKeyPressed(ebiten.KeyControl) { // 0x00436F2B
 			s.follow = !s.follow
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
@@ -1158,13 +1259,6 @@ func (s *startScene) Update() {
 			s.step()
 		}
 	}
-	if s.hero != nil {
-		if s.follow {
-			x, y := s.hero.position()
-			s.centerOn(int(x), int(y))
-			return
-		}
-	}
 	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || mx < edgeScrollZone {
 		s.camX -= scrollSpeed
 	}
@@ -1178,6 +1272,13 @@ func (s *startScene) Update() {
 		s.camY += scrollSpeed
 	}
 	s.clampCamera()
+	// 0x00436610 scrolls, then follows, in the same pass and before the
+	// draw, so the follow stops a scroll at the margin. The port does both
+	// on every update; following only once per 60 ms frame let the scroll
+	// show for a few updates and then snap back (the camera shook).
+	if s.follow && s.hero != nil {
+		s.followHero()
+	}
 }
 
 // step advances the world by one game tick (60 ms): characters, the
