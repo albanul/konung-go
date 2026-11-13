@@ -69,6 +69,24 @@ func CP866ToUTF8(b []byte) string {
 	return sb.String()
 }
 
+// RuneToCP866 is the inverse of CP866ToUTF8 for one character: ASCII,
+// А..я, Ё and ё. ok is false for anything the game's fonts cannot show.
+func RuneToCP866(r rune) (c byte, ok bool) {
+	switch {
+	case r >= 0x20 && r < 0x7F:
+		return byte(r), true
+	case r >= 'А' && r <= 'п':
+		return byte(0x80 + r - 'А'), true
+	case r >= 'р' && r <= 'я':
+		return byte(0xE0 + r - 'р'), true
+	case r == 'Ё':
+		return 0xF0, true
+	case r == 'ё':
+		return 0xF1, true
+	}
+	return 0, false
+}
+
 // Font is one of the game's bitmap fonts. Header: byte first character,
 // byte glyph count, int16 advance used for characters without a glyph;
 // then count uint32 glyph addresses (0 = none; the last entry is unused). Each glyph is a Type 5

@@ -16,7 +16,8 @@ import (
 const (
 	ScreenWidth            = 800
 	ScreenHeight           = 600
-	menuItems              = 6
+	menuItems              = 7 // the six MENU800R.RES buttons + «Сетевая игра»
+	paintedItems           = 6 // items with button frames in MENU800R.RES
 	swordCursorSpriteIndex = 4
 	cursorSprites          = 11
 )
@@ -52,6 +53,10 @@ type Menu struct {
 	film      *filmPlayer
 	afterFilm func()
 	gameDir   string
+	// lan runs the LAN version's screens behind «Сетевая игра» (nil when
+	// the LAN files are missing from the game folder; the item is hidden then).
+	lan   *lanUI
+	inLAN bool
 }
 
 // Main-menu items in the order of the exe layout table (0x0045B314) and the
@@ -63,7 +68,12 @@ const (
 	itemNewGame  = 3 // 0x00437B91
 	itemSettings = 4 // 0x00437DDD, opens the settings screen
 	itemExit     = 5 // 0x00437E3D
+	itemNetwork  = 6 // port addition: «Сетевая игра», the LAN login screen
 )
+
+// menuOrder is the on-screen order of the items, top to bottom, for the
+// arrow keys; «Сетевая игра» sits where «Сохранить игру» appears in a game.
+var menuOrder = [menuItems]int{itemReturn, itemSave, itemNetwork, itemLoad, itemNewGame, itemSettings, itemExit}
 
 // firstItem is the first visible menu item: the draw routine 0x0042F8D8
 // starts at 0 while a game is running and at 2 otherwise, and the menu loops
@@ -75,13 +85,31 @@ func (m *Menu) firstItem() int {
 	return itemLoad
 }
 
+// visible reports whether item i is shown: «Вернуться в игру» and
+// «Сохранить игру» only in a game, «Сетевая игра» only without one.
+func (m *Menu) visible(i int) bool {
+	if i == itemNetwork {
+		return !m.running && m.lan != nil
+	}
+	return i >= m.firstItem()
+}
+
+// checkMenuFrames checks that a MENU*R.RES file has the two screens, the
+// marker and a normal/selected pair for each painted button (frames 3..14).
+func checkMenuFrames(path string, n int) error {
+	if need := 3 + paintedItems*2; n < need {
+		return fmt.Errorf("%s has %d frames; need at least %d", path, n, need)
+	}
+	return nil
+}
+
 type rect struct{ x, y, w, h int }
 
 // menuButtons800 is the 800x600 half of the main-menu layout table in
 // konung.exe (DGROUP VA 0x0045B314, 32 bytes per button: 640x480 x1,y1,x2,y2
 // then 800x600 x1,y1,x2,y2). The draw routine at VA 0x0042F8D8 blits each
 // button frame with its top-left at (x1, y1).
-var menuButtons800 = [menuItems][4]int{
+var menuButtons800 = [paintedItems][4]int{
 	{290, 161, 590, 210}, // Вернуться в игру
 	{288, 205, 504, 250}, // Сохранить игру
 	{265, 250, 488, 303}, // Загрузить игру
@@ -96,8 +124,8 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load menu resource %q: %w", resourcePath, err)
 	}
-	if len(frames) < 3+menuItems*2 {
-		return nil, fmt.Errorf("%s has %d frames; need at least %d", resourcePath, len(frames), 3+menuItems*2)
+	if err := checkMenuFrames(resourcePath, len(frames)); err != nil {
+		return nil, err
 	}
 	swordFrame, err := loadGraphSprite(graphPath, swordCursorSpriteIndex)
 	if err != nil {
@@ -177,11 +205,30 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		}
 		m.cursors[i] = ebiten.NewImageFromImage(img)
 	}
-	for i := range menuItems {
+	for i := range paintedItems {
 		m.buttons[i][0] = ebiten.NewImageFromImage(frames[3+i*2])
 		m.buttons[i][1] = ebiten.NewImageFromImage(frames[4+i*2])
 		b := menuButtons800[i]
 		m.buttonRects[i] = rect{x: b[0], y: b[1], w: b[2] - b[0], h: b[3] - b[1]}
+	}
+	// «Сетевая игра» only when the LAN version's files are installed (in the
+	// game folder): LAN_KONG.EXE (layout, texts), ME800R.RES, PLAY800R.RES.
+	mePath, err1 := FindGameResource("assets/Konung/ME800R.RES")
+	playPath, err2 := FindGameResource("assets/Konung/PLAY800R.RES")
+	if err1 == nil && err2 == nil {
+		lan, err := newLANUI(gameDir, assets, mePath, playPath)
+		if err != nil {
+			log.Printf("LAN screens unavailable: %v", err)
+		} else {
+			labels, err := networkButton(assets.tables)
+			if err != nil {
+				return nil, err
+			}
+			m.lan = lan
+			m.buttons[itemNetwork] = [2]*ebiten.Image{toEbiten(labels[0]), toEbiten(labels[1])}
+			b := labels[0].Bounds()
+			m.buttonRects[itemNetwork] = rect{x: networkLabelX, y: networkLabelY, w: b.Dx(), h: b.Dy()}
+		}
 	}
 	// State 9 (0x0043914B), after loading: POSTER.FLM, then the menu
 	// (state 7) with no game running.
@@ -253,6 +300,13 @@ func (m *Menu) Update() error {
 			m.running = false
 			return nil
 		}
+		// LAN screens (port addition): their own Escape (0x0042D90D).
+		if m.inLAN {
+			if m.lan.escape() {
+				m.inLAN = false
+			}
+			return nil
+		}
 		// Settings (0x00437517): restore the values and go back.
 		if m.inSettings {
 			m.settings.restore(&m.config)
@@ -307,23 +361,44 @@ func (m *Menu) Update() error {
 		m.updateSettings()
 		return nil
 	}
-	first := m.firstItem()
-	if m.selected < first {
-		m.selected = first
+	if m.inLAN {
+		if m.lan.update() {
+			m.inLAN = false
+		}
+		return nil
 	}
-	n := menuItems - first
+	var order []int
+	for _, i := range menuOrder {
+		if m.visible(i) {
+			order = append(order, i)
+		}
+	}
+	pos := -1
+	for k, i := range order {
+		if i == m.selected {
+			pos = k
+		}
+	}
+	if pos < 0 {
+		pos = 0
+		for order[pos] != itemNewGame && order[pos] != itemReturn && pos < len(order)-1 {
+			pos++
+		}
+		m.selected = order[pos]
+	}
+	n := len(order)
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-		m.selected = first + (m.selected-first+n-1)%n
+		m.selected = order[(pos+n-1)%n]
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-		m.selected = first + (m.selected-first+1)%n
+		m.selected = order[(pos+1)%n]
 	}
 	activate := -1
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		activate = m.selected
 	}
 	mx, my := ebiten.CursorPosition()
-	for i := first; i < menuItems; i++ {
+	for _, i := range order {
 		r := m.buttonRects[i]
 		if mx >= r.x && mx < r.x+r.w && my >= r.y && my < r.y+r.h {
 			m.selected = i
@@ -357,6 +432,9 @@ func (m *Menu) activate(item int) error {
 		m.inSettings = true
 	case itemExit:
 		return ebiten.Termination
+	case itemNetwork:
+		m.lan.open()
+		m.inLAN = true
 	}
 	return nil
 }
@@ -510,8 +588,16 @@ func (m *Menu) drawScreen(screen *ebiten.Image) {
 		drawAt(screen, m.sword, mx-1, my-1)
 		return
 	}
+	if m.inLAN {
+		m.lan.draw(screen)
+		drawAt(screen, m.sword, mx-1, my-1)
+		return
+	}
 	screen.DrawImage(m.background, nil)
-	for i := m.firstItem(); i < menuItems; i++ {
+	for _, i := range menuOrder {
+		if !m.visible(i) {
+			continue
+		}
 		r := m.buttonRects[i]
 		button := m.buttons[i][0]
 		if i == m.selected {

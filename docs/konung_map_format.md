@@ -179,6 +179,10 @@ The camera `0x00A3E868`/`0x00A3E884` is the world position of the view's top-lef
 
 Port (`internal/game/scene.go`): `clampCamera` (the limits, `mapdata.Map.CameraLimits`), `centerHero` (after a map change, a load, a new game and a same-map placement), `followHero` / `pushCamera` / `followPoint` (while following, on every update right after the scroll, as the game follows right after scrolling in the same pass; following only every 60 ms let a scroll show and snap back), **Ctrl+S** toggles the follow, off at the start. Port choices: the mouse within 8 px of an edge or the arrow keys scroll, 8 px per update (480 px/s, between the game's 267 and the port's earlier 720). Tests: `game.TestCamera`, `game.TestFollowStopsScroll`.
 
+## LAN version: `MAPS.RES` (verified)
+
+The LAN version (`LAN_KONG.EXE`) keeps its maps in one file instead of `KONUNG.N`/`LIGHTS.N`. Its loader `0x00417DB0` (LAN exe) seeks to `(n − 1) × 0x2F120` for map n (1-based, `[0x009EBA30]`) and reads the `KONUNG.N` sections followed by the `LIGHTS.N` part. Each entry is a full `KONUNG.N` (`0x1F720` bytes) + `LIGHTS.N` (64000 bytes); the installed file holds 20 maps (3,856,000 bytes). None of them matches a single-player map. They parse and render with the single-player decoders, `GRAPH.RES` and `OBJECTS.RES` (`mapdata.SplitMapsRes`, `go run ./cmd/map-render -mapsres assets/Konung/MAPS.RES -all output/site/lanmaps`). Which map is which cell of the fan-documented a1–d5 grid is not known.
+
 ## Open questions
 
 * None.

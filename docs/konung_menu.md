@@ -38,7 +38,7 @@ The executable uses `MENU800R.RES` and `GRAPH.RES` from `assets/Konung/`. It dec
 | 4 Установки | 215,282–333,321 | 268,353–416,402 |
 | 5 Выход | 222,327–300,371 | 276,409–366,464 |
 
-* The original draws buttons 0 and 1 (Return to game, Save game) only while a game is running (`[0x00A3E728] != 0`); otherwise the draw loop starts at button 2. Both menu loops (in-game `0x00437982`, start menu `0x00438D64`) also discard hits below 2 in that state. «Загрузить игру» has no such gate: its click case opens the load screen whether or not saves exist. The start menu therefore shows Load, New game, Settings and Exit. The Go menu does the same (`Menu.firstItem`); after a game starts, Escape opens the menu with all six.
+* The original draws buttons 0 and 1 (Return to game, Save game) only while a game is running (`[0x00A3E728] != 0`); otherwise the draw loop starts at button 2. Both menu loops (in-game `0x00437982`, start menu `0x00438D64`) also discard hits below 2 in that state. «Загрузить игру» has no such gate: its click case opens the load screen whether or not saves exist. The start menu therefore shows Load, New game, Settings and Exit (the port adds «Сетевая игра» above them when the LAN files are installed, see below). The Go menu does the same (`Menu.firstItem`); after a game starts, Escape opens the menu with all six.
 * Click switch (jump table `0x00437E50`, index = button): 0 `0x004379F8` return to game, 1 `0x00437A25` save screen, 2 `0x00437B54` load screen, 3 `0x00437B91` new game, 4 `0x00437DDD` settings, 5 `0x00437E3D` exit.
 * `MENU<width>R.RES` is loaded by `0x0043BEF8`: frame 0 is drawn as the background, and frames 1–14 go to the frame-pointer table `0x006304B8`, slots `0x1F2`–`0x1FF`. These slots are reused by other screens.
 
@@ -112,3 +112,7 @@ podman exec -w /workspaces/konung1.5 <container_id> go run ./cmd/konung /path/to
 ```
 
 The second example only changes the source file; the current fixed 800×600 layout does not scale to 640×480.
+
+## «Сетевая игра» (port addition)
+
+Not in the original menu: a seventh item, drawn with the game font at the top of the stone when no game runs, opens the LAN version's menu (ME800R) and from there its login screen, server list, hosting and joining. See [LAN version](konung_lan.md#screens).

@@ -6,6 +6,8 @@
 //	output/site/index.html          landing page (sections that exist)
 //	output/site/maps/index.html     cmd/map-render -all
 //	output/site/sprites/index.html  cmd/sprite-catalog
+//	output/site/lan/index.html      cmd/res-gallery (LAN version images)
+//	output/site/lanmaps/index.html  cmd/map-render -mapsres (LAN version maps)
 package sitenav
 
 import (
@@ -28,6 +30,8 @@ type Section struct {
 var Sections = []Section{
 	{"maps", "Maps", "Every KONUNG.N map rendered with terrain, decorations, shadows and static objects.", "go run ./cmd/map-render -all output/site/maps"},
 	{"sprites", "Sprites", "Every indexed image resource and animation frame, searchable by ID, label, and offset.", "go run ./cmd/sprite-catalog"},
+	{"lan", "LAN version", "Every image decoded from the LAN version's .RES files (PLAY*R, ME800R, NEW*R, INTO640R).", "go run ./cmd/res-gallery"},
+	{"lanmaps", "LAN maps", "The LAN version's 20 maps from MAPS.RES, rendered like the single-player maps.", "go run ./cmd/map-render -mapsres assets/Konung/MAPS.RES -all output/site/lanmaps"},
 }
 
 // Style is CSS for the navigation bar; include it in each page's <style>.

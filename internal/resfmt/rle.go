@@ -151,3 +151,31 @@ func LoadType5File(filePath string) ([]*image.RGBA, error) {
 
 	return LoadType5Frames(f)
 }
+
+// Type5Entry is one frame of a sequential Type 5 file: the file offset of its
+// 8-byte header and its RLE payload (DecodeRLEFrame input).
+type Type5Entry struct {
+	Offset int
+	Data   []byte
+}
+
+// Type5Entries splits a whole Type 5 file (big-endian tag 5, little-endian
+// size, payload, repeated) into its frames without decoding them.
+func Type5Entries(file []byte) ([]Type5Entry, error) {
+	var out []Type5Entry
+	for off := 0; off < len(file); {
+		if off+8 > len(file) {
+			return out, fmt.Errorf("frame %d at %#x: truncated header", len(out), off)
+		}
+		if tag := binary.BigEndian.Uint32(file[off:]); tag != 5 {
+			return out, fmt.Errorf("frame %d at %#x: tag %#x, want 5", len(out), off, tag)
+		}
+		size := int(binary.LittleEndian.Uint32(file[off+4:]))
+		if size > len(file)-off-8 {
+			return out, fmt.Errorf("frame %d at %#x: size %d past end of file", len(out), off, size)
+		}
+		out = append(out, Type5Entry{Offset: off, Data: file[off+8 : off+8+size]})
+		off += 8 + size
+	}
+	return out, nil
+}
