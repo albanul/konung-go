@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"log"
 	"math/rand/v2"
-	"os"
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/vorbis"
+	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/resfmt"
@@ -45,12 +45,10 @@ var sfx *soundSystem
 // starts a random track (0x00438E80), at the volume of the music setting.
 func startAudio(dir string, musicOn, soundOn bool) {
 	a := &soundSystem{sounds: map[int][]byte{}, soundOn: soundOn, rng: rand.New(rand.NewPCG(7, 9))}
-	if f, err := os.Open(filepath.Join(dir, "SOUNDS.RES")); err != nil {
+	if data, err := gamefs.ReadFile(filepath.Join(dir, "SOUNDS.RES")); err != nil {
 		log.Print(err)
 	} else {
-		st, _ := f.Stat()
-		entries, err := resfmt.LoadSoundEntries(f, st.Size())
-		f.Close()
+		entries, err := resfmt.LoadSoundEntries(bytes.NewReader(data), int64(len(data)))
 		if err != nil {
 			log.Printf("SOUNDS.RES: %v", err)
 		}
@@ -60,7 +58,7 @@ func startAudio(dir string, musicOn, soundOn bool) {
 			}
 		}
 	}
-	if data, err := os.ReadFile(filepath.Join(dir, "MUSICS.RES")); err != nil {
+	if data, err := gamefs.ReadFile(filepath.Join(dir, "MUSICS.RES")); err != nil {
 		log.Print(err)
 	} else if a.tracks, err = resfmt.LoadMusicTracks(data); err != nil {
 		log.Print(err)

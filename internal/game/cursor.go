@@ -1,23 +1,20 @@
 package game
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"image"
 	"io"
-	"os"
 
 	"konung1.5/internal/resfmt"
 )
 
 // loadGraphSprite reads a Type 5 image after GRAPH.RES's 256x256 RGB555 palettes.
 // Sprite 4 is the plain sword pointer; nearby sprites add contextual markers.
-func loadGraphSprite(graphPath string, spriteIndex int) (image.Image, error) {
-	f, err := os.Open(graphPath)
-	if err != nil {
-		return nil, fmt.Errorf("open graph resource %q: %w", graphPath, err)
-	}
-	defer f.Close()
+// graph is the whole GRAPH.RES.
+func loadGraphSprite(graph []byte, spriteIndex int) (image.Image, error) {
+	f := bytes.NewReader(graph)
 
 	const paletteBytes = 256 * 256 * 2
 	if _, err := f.Seek(paletteBytes, io.SeekStart); err != nil {

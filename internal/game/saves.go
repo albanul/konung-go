@@ -2,13 +2,12 @@ package game
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/resfmt"
@@ -49,7 +48,7 @@ type saveScreen struct {
 }
 
 func newSaveScreen(resPath, dir string, t *resfmt.ExeTables, large *gameFont) (*saveScreen, error) {
-	frames, err := resfmt.LoadType5File(resPath)
+	frames, err := loadType5File(resPath)
 	if err != nil {
 		return nil, fmt.Errorf("load %q: %w", resPath, err)
 	}
@@ -66,7 +65,7 @@ func newSaveScreen(resPath, dir string, t *resfmt.ExeTables, large *gameFont) (*
 		selected: -1,
 	}
 	// 0x0043A969: read the names at startup; without the file every slot is empty.
-	data, _ := os.ReadFile(filepath.Join(dir, gamestate.SlotNamesFile))
+	data, _ := gamefs.ReadFile(filepath.Join(dir, gamestate.SlotNamesFile))
 	s.names = gamestate.SlotNames(data, s.empty)
 	return s, nil
 }
@@ -108,10 +107,10 @@ func (s *saveScreen) save(i int, w *startScene) error {
 		return err
 	}
 	s.names[i] = append([]byte(nil), s.name...)
-	if err := os.WriteFile(filepath.Join(s.dir, gamestate.SlotNamesFile), gamestate.MarshalSlotNames(s.names), 0o644); err != nil {
+	if err := gamefs.WriteFile(filepath.Join(s.dir, gamestate.SlotNamesFile), gamestate.MarshalSlotNames(s.names)); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(s.dir, gamestate.SlotFile(i)), data, 0o644)
+	return gamefs.WriteFile(filepath.Join(s.dir, gamestate.SlotFile(i)), data)
 }
 
 // saveName is the new save's name for the current map (0x00437A25).
@@ -151,7 +150,7 @@ func (w *startScene) saveState() gamestate.SaveState {
 // for the map exits, then the save replaces the rest, and the scene is
 // built for group 0's map in restore mode.
 func (a *sceneAssets) loadSaved(dir string, i int) (*startScene, error) {
-	save, err := os.ReadFile(filepath.Join(dir, gamestate.SlotFile(i)))
+	save, err := gamefs.ReadFile(filepath.Join(dir, gamestate.SlotFile(i)))
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +158,7 @@ func (a *sceneAssets) loadSaved(dir string, i int) (*startScene, error) {
 	if err != nil {
 		return nil, err
 	}
-	gameN, err := os.ReadFile(filepath.Join(a.mapDir, fmt.Sprintf("GAME.%d", model)))
+	gameN, err := gamefs.ReadFile(filepath.Join(a.mapDir, fmt.Sprintf("GAME.%d", model)))
 	if err != nil {
 		return nil, err
 	}
@@ -189,22 +188,4 @@ func (w *startScene) restoreSaved(st gamestate.SaveState) {
 		}
 		w.pileAt[mapdata.Cell{Row: p.Row, Col: p.Col}] = idx
 	}
-}
-
-// readGameFile reads name from dir, matching the name case-insensitively
-// (the game opens QUESTR.RES; the installed file is questr.RES).
-func readGameFile(dir, name string) ([]byte, error) {
-	if data, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
-		return data, nil
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	for _, e := range entries {
-		if strings.EqualFold(e.Name(), name) {
-			return os.ReadFile(filepath.Join(dir, e.Name()))
-		}
-	}
-	return nil, fmt.Errorf("%s not found in %s", name, dir)
 }

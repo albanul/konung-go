@@ -3,10 +3,10 @@ package game
 import (
 	"fmt"
 	"image"
-	"os"
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/resfmt"
@@ -80,7 +80,7 @@ func tintUniforms(t resfmt.Tint) map[string]any {
 // loadLights reads LIGHTS.<map> next to KONUNG.<map>; the loader zero-fills
 // both parts when the file is missing (0x0043C23C).
 func loadLights(dir string, mapNumber int) (*mapdata.LitCells, *mapdata.TerrainLights, error) {
-	data, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("LIGHTS.%d", mapNumber)))
+	data, err := gamefs.ReadFile(filepath.Join(dir, fmt.Sprintf("LIGHTS.%d", mapNumber)))
 	if err != nil {
 		data = nil
 	}
@@ -109,18 +109,26 @@ func (s *startScene) updateLight() {
 	if t != s.tint || s.tintU == nil {
 		s.tint, s.tintU = t, tintUniforms(t)
 	}
-	// 0x0042894C rolls the flicker every drawn frame: green 8–11 %, red
-	// 16–23 %. The lit path (0x0042565D: night lights 0x00A4E2A0 and
-	// «Световые эффекты») passes it halved, in full while the map's village
-	// is alarmed (0x004257A9).
-	g := s.rng.IntN(4) + 8
-	r := s.rng.IntN(8) + 16
 	s.litPath = night && s.lighting && s.assets.lightMasks != nil
-	if st := s.game.SettlementOnMap(s.mapNumber); st == nil || s.game.Groups[st.Group].Alarm != gamestate.AlarmAttack {
-		r, g = r/2, g/2
+	// 0x0042894C rolls the flicker every drawn frame: green 8–11 %, red
+	// 16–23 %. The game draws a frame every 60 ms (as the flames, drawWorld),
+	// so the port rolls once per game frame, not per update. The lit path
+	// (0x0042565D: night lights 0x00A4E2A0 and «Световые эффекты») passes
+	// it halved, in full while the map's village is alarmed (0x004257A9).
+	r, g := s.flicker.FlickR, s.flicker.FlickG
+	if gameFrame := s.frame * 5 / 18; !s.lightRolled || gameFrame != s.lightFrame {
+		s.lightFrame, s.lightRolled = gameFrame, true
+		g = s.rng.IntN(4) + 8
+		r = s.rng.IntN(8) + 16
+		if st := s.game.SettlementOnMap(s.mapNumber); st == nil || s.game.Groups[st.Group].Alarm != gamestate.AlarmAttack {
+			r, g = r/2, g/2
+		}
 	}
-	s.flicker = resfmt.LitTerrainLight{Day: t, FlickR: r, FlickG: g}
-	s.litTables = nil // rebuilt on the first lit cell of the frame
+	if light := (resfmt.LitTerrainLight{Day: t, FlickR: r, FlickG: g}); light != s.flicker || s.litTables == nil {
+		s.flicker = light
+		s.litTables = nil // rebuilt on the first lit cell that needs relighting
+		s.litGen++
+	}
 }
 
 // drawLitCell draws terrain cell (r, c) through the lit path when its
@@ -150,20 +158,26 @@ func (s *startScene) drawLitCell(dst *ebiten.Image, r, c, x, y int) bool {
 		}
 		s.litCells[[2]int{r, c}] = cell
 	}
-	if s.litTables == nil {
-		s.litTables = resfmt.NewLitTables(s.flicker)
+	// Relight only when the light changed since this cell was last lit (at
+	// most once per 60 ms game frame); WritePixels is a texture upload.
+	if cell.gen != s.litGen {
+		if s.litTables == nil {
+			s.litTables = resfmt.NewLitTables(s.flicker)
+		}
+		resfmt.LightTerrainCell(s.litBuf, cell.buf, s.assets.lightMasks[l-1], s.litTables)
+		cell.img.WritePixels(s.litBuf.Pix)
+		cell.gen = s.litGen
 	}
-	resfmt.LightTerrainCell(s.litBuf, cell.buf, s.assets.lightMasks[l-1], s.litTables)
-	cell.img.WritePixels(s.litBuf.Pix)
 	drawAt(dst, cell.img, x, y)
 	return true
 }
 
 // litCell is a lit terrain cell: its composed layers and the image the
-// lighting is written to each frame.
+// lighting is written to when the light changes.
 type litCell struct {
 	buf *resfmt.TerrainCellBuffer
 	img *ebiten.Image
+	gen int // litGen the image was lit with
 }
 
 // drawTinted draws a world image at screen (x, y) through the day/night
@@ -174,6 +188,8 @@ func (s *startScene) drawTinted(dst, img *ebiten.Image, x, y int, raw bool) {
 		drawAt(dst, img, x, y)
 		return
 	}
+	perf.draws++
+	perf.tinted++
 	b := img.Bounds()
 	op := &ebiten.DrawRectShaderOptions{Uniforms: s.tintU}
 	op.Images[0] = img

@@ -88,7 +88,10 @@ Pitfalls:
 * `startScene.updateLight` runs at the start of each `Draw` with the port's game time (`gameTime`, the value saved as `0x00A3E770`). It rolls the moon at time-of-day 0 and takes the fixed map light or `gamestate.DayTint`. The menu sets `dayNight` from the setting.
 * A Kage shader (`tintShaderSrc`) applies the three 32-entry tables to the decoded RGBA sprites. Because the tint is a per-channel lookup on the 5-bit values, this gives the same colours as tinting the palette.
 * The day passes at the game time rate, one unit per 60 ms tick, so a day of 21600 units lasts 21.6 minutes at normal speed, as in the original.
-* The lit path is computed on the CPU (`resfmt.LightTerrainCell`) per visible lit cell and frame, because the flicker changes every frame. The cell's composed layers are cached (`litCell`), and the frame's tables are built once (`resfmt.NewLitTables`). This costs about 34 µs per cell.
+* The lit path is computed on the CPU (`resfmt.LightTerrainCell`) per visible lit cell.
+  * The flicker is rolled once per game frame (60 ms, `s.frame*5/18`, like the flames), not per 60 Hz update. That matches the game's drawn frames.
+  * A cell is relit and uploaded (`WritePixels`) only when the light (flicker or tint) changed since it was last lit (`litGen`). That is at most once per 60 ms.
+  * The cell's composed layers are cached (`litCell`), and the tables are built once per light change (`resfmt.NewLitTables`). Lighting costs about 34 µs per cell natively, and much more in the browser build, where each upload is a WebGL texture write.
 * Flames: [flames and transparency](konung_flames.md).
 
 ## Open questions

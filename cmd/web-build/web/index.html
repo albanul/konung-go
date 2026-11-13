@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Князь: Легенды лесной страны</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #status { position: fixed; left: 0; right: 0; top: 45%; color: #c8b47a;
+            font: 16px sans-serif; text-align: center; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="status">Loading…</div>
+<script src="konungfs.js"></script>
+<script src="wasm_exec.js"></script>
+<script>
+(async () => {
+  const status = document.getElementById("status");
+  try {
+    const go = new Go();
+    const { instance } = await WebAssembly.instantiateStreaming(fetch("konung.wasm"), go.importObject);
+    await go.run(instance);
+    status.textContent = "The game has ended. Reload the page to play again.";
+  } catch (e) {
+    status.textContent = "Error: " + e;
+    throw e;
+  }
+})();
+</script>
+</body>
+</html>
