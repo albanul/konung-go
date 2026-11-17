@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"image"
+
+	"konung1.5/internal/resfmt"
 )
 
 // LAN version screens, read from LAN_KONG.EXE (docs/konung_lan.md#screens).
@@ -19,6 +22,18 @@ const (
 	lanMsgRectsVA   = 0x00478F90 // message box buttons
 	lanMessagesVA   = 0x0047E264 // message texts: 0x80-byte records, line 2 at +0x40
 	lanMessageCount = 9          // ids 0 (none) … 8
+
+	// The map window (draw 0x0041E8EC, hit test 0x004176AB): per video
+	// mode 16 bytes (int32 area x, y, width, height); row offsets and
+	// (region, length) runs as the single-player window, region = map number
+	// (1–20, 0 = none); per map an int32 x and y (from the area's top-left)
+	// where the number of players there is drawn, +3.
+	lanMapAreaVA    = 0x0047EFA4
+	lanMapRowsVA    = 0x00477750
+	lanMapRunsVA    = 0x004714D0
+	lanMapMarkerXVA = 0x0047F004
+	lanMapMarkerYVA = 0x0047F058
+	lanMapMode      = 1 // 800×600
 )
 
 // Rect is an inclusive 800×600 hotspot.
@@ -42,7 +57,19 @@ type LANExe struct {
 	MenuRects, LoginRects, MessageRects []Rect
 	// Messages[id] are the message box's two CP866 lines (id 1–8; 0 none).
 	Messages [lanMessageCount][2][]byte
+	// Map is the map window's area (800×600) and row runs; a run's region is
+	// the map number. MapMarkers[m] is where map m's player count is drawn,
+	// relative to the area's top-left (index 0 unused).
+	Map        resfmt.WorldMap
+	MapMarkers [LANMaps + 1]image.Point
 }
+
+// LANMaps is the number of LAN maps (MAPS.RES).
+const LANMaps = 20
+
+// LANMapTint is the current map's red tint in the map window
+// (0x0044FF51(0x30, 0, 0); the single-player window uses 24).
+const LANMapTint = 0x30
 
 // Login screen hotspots (index into LANExe.LoginRects, switch 0x0042F269).
 const (
@@ -131,6 +158,26 @@ func ParseLANExe(exe []byte) (*LANExe, error) {
 		r := b[id*0x80:]
 		x.Messages[id] = [2][]byte{cString(r[:0x40]), cString(r[0x40:0x80])}
 	}
+
+	var bad error
+	at32 := func(va int) int {
+		b, err := at(va)
+		if err != nil || len(b) < 4 {
+			bad = fmt.Errorf("LAN_KONG.EXE: map tables at %#x", va)
+			return 0
+		}
+		return int(int32(binary.LittleEndian.Uint32(b)))
+	}
+	area := lanMapAreaVA + 16*lanMapMode
+	ax, ay := at32(area), at32(area+4)
+	rect := image.Rect(ax, ay, ax+at32(area+8), ay+at32(area+12))
+	for m := 1; m <= LANMaps; m++ {
+		x.MapMarkers[m] = image.Pt(at32(lanMapMarkerXVA+4*m), at32(lanMapMarkerYVA+4*m))
+	}
+	if bad != nil {
+		return nil, bad
+	}
+	x.Map = resfmt.ReadWorldMap(func(va int) []byte { b, _ := at(va); return b }, rect, lanMapRowsVA, lanMapRunsVA)
 	return x, nil
 }
 

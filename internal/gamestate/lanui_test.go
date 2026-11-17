@@ -1,6 +1,7 @@
 package gamestate
 
 import (
+	"image"
 	"os"
 	"testing"
 
@@ -56,5 +57,31 @@ func TestTextField(t *testing.T) {
 	}
 	if len(g.Text) != 8 {
 		t.Errorf("width-limited field holds %d characters, want 8", len(g.Text))
+	}
+}
+
+// The map window: the 800×600 area, and each map's player-count spot lies
+// inside that map's region of the run data.
+func TestLANMapWindow(t *testing.T) {
+	data, err := os.ReadFile("../../assets/Konung/LAN_KONG.EXE")
+	if err != nil {
+		t.Skip("LAN_KONG.EXE not available:", err)
+	}
+	x, err := ParseLANExe(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if x.Map.Area != image.Rect(80, 60, 80+502, 60+361) {
+		t.Errorf("area = %v", x.Map.Area)
+	}
+	for m := 1; m <= LANMaps; m++ {
+		p := x.MapMarkers[m].Add(image.Pt(12, 12))
+		if r, ok := x.Map.RegionAt(p.X, p.Y); !ok || r != m {
+			t.Errorf("map %d marker %v lies in region %d", m, x.MapMarkers[m], r)
+		}
+	}
+	// Map 1 (model 0's village) is the top middle tile, map 4 the bottom left.
+	if x.MapMarkers[1] != image.Pt(202, 13) || x.MapMarkers[4] != image.Pt(14, 178) {
+		t.Errorf("markers 1, 4 = %v, %v", x.MapMarkers[1], x.MapMarkers[4])
 	}
 }

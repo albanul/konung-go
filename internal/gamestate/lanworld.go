@@ -40,10 +40,11 @@ func LANStart(exits []MapExit, model int) (MapExit, error) {
 
 // EnterLANWorld turns g, a single-player GAME.N used as the hero's template,
 // into a LAN world holding only the hero: group 0 with its first entity on
-// map m at (row, col) facing facing; every other group, settlement, pile
-// and map exit is removed (the LAN world's own characters come from
-// GAME.RES, whose entity layout is not ported yet).
-func (g *Game) EnterLANWorld(m, row, col, facing int) {
+// map m at (row, col) facing facing. Every other group, settlement and pile
+// is removed (the LAN world's own characters come from GAME.RES, whose
+// entity layout is not ported yet); the map exits become exits, GAME.RES's
+// (LANExits: 8 teleports on every map, 40 on map 12).
+func (g *Game) EnterLANWorld(m, row, col, facing int, exits []MapExit) {
 	if len(g.Groups) == 0 {
 		return
 	}
@@ -57,5 +58,5 @@ func (g *Game) EnterLANWorld(m, row, col, facing int) {
 		e := &g.Entities[h]
 		e.Row, e.Col, e.Variant = row, col, facing&7
 	}
-	g.Settlements, g.Piles, g.Exits = nil, nil, nil
+	g.Settlements, g.Piles, g.Exits = nil, nil, exits
 }

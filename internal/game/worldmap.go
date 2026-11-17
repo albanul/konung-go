@@ -2,6 +2,7 @@ package game
 
 import (
 	"image"
+	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/gamestate"
@@ -29,6 +30,40 @@ type worldMapWindow struct {
 	overlay *ebiten.Image
 	known   [resfmt.WorldMapRegions]byte
 	here    int
+	// lan, when set, is the LAN version's map (draw 0x0041E8EC): its own
+	// picture (INTO640R.RES slot 179) and runs, every location shown,
+	// regions = map numbers, no travel by click.
+	lan *lanWorldMap
+}
+
+// lanWorldMap is the LAN map window's data (gamestate.LANExe.Map and
+// MapMarkers, the INTO640R.RES picture plain and tinted for the current map).
+type lanWorldMap struct {
+	m               resfmt.WorldMap
+	markers         [gamestate.LANMaps + 1]image.Point
+	reveal, current image.Image
+}
+
+// newLANWorldMap reads the LAN map picture (INTO640R.RES slot 179, drawn
+// with its GRAPH.RES palette) for the LAN map tables of exe.
+func newLANWorldMap(exe *gamestate.LANExe, into, graph []byte) (*lanWorldMap, error) {
+	res, err := resfmt.ParseInterface(into)
+	if err != nil {
+		return nil, err
+	}
+	pal, err := resfmt.Palettes(graph)
+	if err != nil {
+		return nil, err
+	}
+	reveal, err := res.Image(resfmt.WorldMapRevealSlot, pal)
+	if err != nil {
+		return nil, err
+	}
+	current, err := res.ImageTinted(resfmt.WorldMapRevealSlot, pal, gamestate.LANMapTint, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	return &lanWorldMap{m: exe.Map, markers: exe.MapMarkers, reveal: reveal, current: current}, nil
 }
 
 func newWorldMapWindow(t *resfmt.ExeTables) *worldMapWindow {
@@ -39,6 +74,12 @@ func newWorldMapWindow(t *resfmt.ExeTables) *worldMapWindow {
 // screen point (x, y) when the party knows it, else 0. inArea is false
 // outside the map area, where the normal hotspots apply.
 func (w *worldMapWindow) regionAt(g *gamestate.Game, x, y int) (m int, inArea bool) {
+	if w.lan != nil {
+		// The LAN hit test (0x004176AB) only names the location for the
+		// status line; there is no travel and no single-player name.
+		_, ok := w.lan.m.RegionAt(x-viewLeft-w.lan.m.Area.Min.X, y-viewTop-w.lan.m.Area.Min.Y)
+		return 0, ok
+	}
 	region, ok := w.m.RegionAt(x-viewLeft-w.m.Area.Min.X, y-viewTop-w.m.Area.Min.Y)
 	if !ok {
 		return 0, false
@@ -52,7 +93,7 @@ func (w *worldMapWindow) regionAt(g *gamestate.Game, x, y int) (m int, inArea bo
 // draw tiles the view (tiled: the T setting), draws the map picture (slot 4)
 // at the view's top-left and the known locations over it, the current one
 // tinted red.
-func (w *worldMapWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, mapNumber int, tiled bool) {
+func (w *worldMapWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, mapNumber int, tiled bool, font *gameFont) {
 	if !w.open {
 		return
 	}
@@ -61,6 +102,10 @@ func (w *worldMapWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, mapN
 	}
 	view := dst.SubImage(image.Rect(viewLeft, viewTop, viewRight+1, viewBottom+1)).(*ebiten.Image)
 	h.draw(view, resfmt.WorldMapSlot, viewLeft, viewTop)
+	if w.lan != nil {
+		w.drawLAN(view, mapNumber, font)
+		return
+	}
 	if w.overlay == nil || w.known != g.KnownMaps || w.here != mapNumber {
 		w.known, w.here = g.KnownMaps, mapNumber
 		w.overlay = nil
@@ -94,7 +139,7 @@ func (s *startScene) toggleMap(hero *gamestate.Entity) {
 // (gamestate.Game.Travel, 0x00422AD8); the window closes. Clicks elsewhere
 // in the view are ignored (0x00422EDF).
 func (s *startScene) mapClick(hero *gamestate.Entity, mx, my int) {
-	m, _ := s.wmap.regionAt(s.game, mx, my)
+	m, _ := s.wmap.regionAt(s.game, mx, my) // 0 on the LAN map: no travel
 	if m == 0 {
 		return
 	}
@@ -104,4 +149,30 @@ func (s *startScene) mapClick(hero *gamestate.Entity, mx, my int) {
 	}
 	s.wmap.open = false
 	s.changeMap(x)
+}
+
+// drawLAN is the LAN map (0x0041E8EC): every location, the current map
+// tinted, and the number of players on each map at its marker (+3). The
+// counts come from the players' groups; the port knows only its own hero's
+// map until the world is synchronised.
+func (w *worldMapWindow) drawLAN(view *ebiten.Image, mapNumber int, font *gameFont) {
+	l := w.lan
+	if l.reveal == nil {
+		return
+	}
+	if w.overlay == nil || w.here != mapNumber {
+		w.here = mapNumber
+		all := func(int) bool { return true }
+		w.overlay = toEbiten(l.m.Compose(l.reveal, l.current, all, mapNumber))
+	}
+	ox, oy := viewLeft+l.m.Area.Min.X, viewTop+l.m.Area.Min.Y
+	drawAt(view, w.overlay, ox, oy)
+	if font == nil || mapNumber < 1 || mapNumber > gamestate.LANMaps {
+		return
+	}
+	counts := map[int]int{mapNumber: 1}
+	for m, n := range counts {
+		p := l.markers[m]
+		font.drawLine(view, []byte(strconv.Itoa(n)), ox+p.X+3, oy+p.Y+3)
+	}
 }

@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -17,7 +18,7 @@ import (
 // serves as the template for everything the scene needs from a GAME.N (items,
 // sprites, the HUD's party); the LAN world's own characters (GAME.RES
 // entities) and the other players are not placed yet.
-func (a *sceneAssets) lanWorld(gameDir string, at netplay.EnterPayload, hero *netplay.Hero, model int) (*startScene, error) {
+func (a *sceneAssets) lanWorld(gameDir string, exe *gamestate.LANExe, at netplay.EnterPayload, hero *netplay.Hero, model int) (*startScene, error) {
 	data, err := readGameFile(gameDir, "MAPS.RES")
 	if err != nil {
 		return nil, err
@@ -34,6 +35,15 @@ func (a *sceneAssets) lanWorld(gameDir string, at netplay.EnterPayload, hero *ne
 	}
 	la := *a // the same resources, maps from MAPS.RES
 	la.lanMaps = maps
+	// The LAN map window (M): INTO640R.RES's map picture and LAN_KONG.EXE's
+	// tables; without them the window shows the bare parchment.
+	if exe != nil {
+		if into, err := readGameFile(gameDir, "INTO640R.RES"); err != nil {
+			log.Printf("LAN map window: %v", err)
+		} else if la.lanMap, err = newLANWorldMap(exe, into, a.graph); err != nil {
+			log.Printf("LAN map window: %v", err)
+		}
+	}
 	la.gamePath = filepath.Join(a.mapDir, fmt.Sprintf("GAME.%d", model))
 	tmpl, err := os.ReadFile(la.gamePath)
 	if err != nil {
@@ -52,13 +62,19 @@ func (a *sceneAssets) lanWorld(gameDir string, at netplay.EnterPayload, hero *ne
 	if hero != nil {
 		applyLANHero(&game.Entities[game.Groups[0].First], hero)
 	}
-	game.EnterLANWorld(at.Map, at.Row, at.Col, at.Facing)
-	s, err := la.buildScene(game, at.Map, nil, nil)
+	// GAME.RES's map exits: the teleports between the LAN maps. (The
+	// original client skips them and the server moves players between maps;
+	// here the client changes maps itself until the world is synchronised.)
+	world, err := readGameFile(gameDir, "GAME.RES")
 	if err != nil {
 		return nil, err
 	}
-	s.lan = true
-	return s, nil
+	exits, err := gamestate.LANExits(world)
+	if err != nil {
+		return nil, err
+	}
+	game.EnterLANWorld(at.Map, at.Row, at.Col, at.Facing, exits)
+	return la.buildScene(game, at.Map, nil, nil)
 }
 
 // applyLANHero puts an account's hero (LANUSERS.DAT record) on the scene's

@@ -379,7 +379,7 @@ func (m *Menu) Update() error {
 		}
 		// The server answered «Ok»: enter the LAN world (state 10 → 1).
 		if at, hero := m.lan.takeStart(); at != nil {
-			w, err := m.assets.lanWorld(m.gameDir, *at, hero, m.lan.model)
+			w, err := m.assets.lanWorld(m.gameDir, m.lan.exe, *at, hero, m.lan.model)
 			if err != nil {
 				log.Printf("LAN world: %v", err)
 				m.lan.disconnect()

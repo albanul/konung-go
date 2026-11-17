@@ -188,6 +188,7 @@ type sceneAssets struct {
 	// lanMaps, when set, are the LAN version's maps (MAPS.RES; map n =
 	// entry n−1) used instead of KONUNG.N and LIGHTS.N.
 	lanMaps []mapdata.MapsResEntry
+	lanMap  *lanWorldMap // the LAN map window (M); nil in single player
 }
 
 // mapFile returns map n's KONUNG.N and LIGHTS.N bytes (nil lights when the
@@ -423,6 +424,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		occ:         map[mapdata.Cell]bool{},
 		hand:        gamestate.NewHand(),
 		mapNumber:   mapNumber,
+		lan:         a.lanMaps != nil, // also after a map change
 		pileAt:      map[mapdata.Cell]int{},
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
 	}
@@ -445,6 +447,10 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		s.talk = newTalkWindow(tables, a.quests, a.font)
 		s.trade = newTradeWindow(tables, s.inv.strip, a.font, a.largeFont)
 		s.wmap = newWorldMapWindow(tables)
+		s.wmap.lan = a.lanMap
+		if a.lanMaps != nil && a.lanMap == nil {
+			s.wmap.lan = &lanWorldMap{} // a LAN world without the map data: the bare parchment
+		}
 	}
 	// Only upload tiles the map references; slot 304 is a large non-tile image.
 	useTile := func(slot int) {
@@ -1431,7 +1437,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	if s.trade.open() {
 		s.trade.draw(screen, s.hud, s.game, s.tables, s.tiling)
 	}
-	s.wmap.draw(screen, s.hud, s.game, s.mapNumber, s.tiling)
+	s.wmap.draw(screen, s.hud, s.game, s.mapNumber, s.tiling, s.font)
 	if text := s.statusText(); text != nil {
 		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.
 		s.font.drawWrapped(screen, text, viewLeft+10, viewBottom+5, viewRight-viewLeft-15)
