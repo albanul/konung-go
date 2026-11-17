@@ -21,6 +21,7 @@ type Client struct {
 	*Conn
 	PlayerID string
 	Session  SessionInfo // as of joining; later changes arrive as messages
+	Hero     *Hero       // the account's hero; nil on a server without accounts
 }
 
 // Dial connects to a server at addr ("host:port") and joins as j. It fails
@@ -55,7 +56,7 @@ func Dial(addr string, j JoinInfo, opts Options) (*Client, error) {
 				conn.Close()
 				return nil, err
 			}
-			return &Client{Conn: conn, PlayerID: w.PlayerID, Session: w.Session}, nil
+			return &Client{Conn: conn, PlayerID: w.PlayerID, Session: w.Session, Hero: w.Hero}, nil
 		case MsgError:
 			var e ErrorPayload
 			if err := m.Decode(&e); err != nil {

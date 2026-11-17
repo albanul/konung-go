@@ -92,6 +92,7 @@ type lanUI struct {
 	server  gamestate.ServerFile
 
 	client   *netplay.Client
+	hero     *netplay.Hero // the account's hero from a server with accounts
 	host     *netplay.Server
 	session  string // joined session's name
 	players  int
@@ -333,7 +334,7 @@ func (u *lanUI) disconnect() {
 		u.host.Close()
 		u.host = nil
 	}
-	u.session, u.players = "", 0
+	u.session, u.players, u.hero = "", 0, nil
 }
 
 // rows is the server list: «Новый сервер», then the sessions found by
@@ -479,6 +480,8 @@ func (u *lanUI) joined(s *netplay.Server, c *netplay.Client, err error) {
 				u.msg = gamestate.MsgVersion
 			case netplay.ErrName:
 				u.msg = msgNameTaken
+			case netplay.ErrPassword:
+				u.msg = gamestate.MsgWrongPass
 			}
 		}
 		return
@@ -491,7 +494,7 @@ func (u *lanUI) joined(s *netplay.Server, c *netplay.Client, err error) {
 		return
 	}
 	u.host, u.client = s, c
-	u.session, u.players = c.Session.Name, len(c.Session.Players)
+	u.session, u.players, u.hero = c.Session.Name, len(c.Session.Players), c.Hero
 }
 
 // typeText edits the focused field (0x0042CB94): typed characters, Tab
@@ -634,6 +637,16 @@ func (u *lanUI) drawLogin(dst *ebiten.Image) {
 		r := R[gamestate.LoginRow0+min(len(rows)-u.scroll, gamestate.LoginRows-1)]
 		u.font.drawLine(dst, cp866("Поиск серверов..."), r.X1+5, r.Y1+5)
 	}
+	if u.hero != nil {
+		for i, v := range heroValues(u.hero) {
+			if v != "" {
+				// The anchors are points (zero-size hotspots); the text
+				// starts at the point, inside the value box.
+				r := R[gamestate.LoginParams+i]
+				u.font.drawLine(dst, cp866(v), r.X1, r.Y1)
+			}
+		}
+	}
 	if u.savePass {
 		r := R[gamestate.LoginSavePass]
 		c := u.play[playCheck].Bounds()
@@ -657,4 +670,18 @@ func (u *lanUI) drawMessage(dst *ebiten.Image) {
 	}
 	r := u.exe.MessageRects[4]
 	drawAt(dst, u.play[playOk], r.X1, r.Y1)
+}
+
+// heroValues are the login screen's stat texts after login (0x0042959C),
+// at the 14 anchors: «Параметры» Харизма, Сила, Ловкость, Выносливость,
+// Золото, Макс. груз, Макс. отряд; «Навыки» Фехтование, Меткость,
+// Идентификация, Торговля, Кузнечное дело, Плотницкое дело, Знахарство.
+// Фехтование and Меткость are stored ×100. «Макс. груз» and «Макс. отряд»
+// are derived in the original (not stored) and stay empty here.
+func heroValues(h *netplay.Hero) [14]string {
+	n := strconv.Itoa
+	return [14]string{
+		n(h.Charisma), n(h.Strength), n(h.Dexterity), n(h.Endurance), n(h.Gold), "", "",
+		n(h.Fencing / 100), n(h.Archery / 100), n(h.Identification), n(h.Trade), n(h.Smithing), n(h.Carpentry), n(h.Herbalism),
+	}
 }

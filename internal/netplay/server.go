@@ -34,7 +34,24 @@ type ServerConfig struct {
 	OnJoin func(p PlayerInfo)
 	// OnLeave is called after a player has left (also for kicked players).
 	OnLeave func(p PlayerInfo)
+	// Accounts checks logins; nil keeps no accounts (any name joins and
+	// nothing is saved), as for a session hosted from the game.
+	Accounts AccountStore
 }
+
+// AccountStore keeps the players' accounts on a dedicated server, as the LAN
+// exe's server kept LANUSERS.DAT: the first login with a name creates the
+// account (the server announces «Новый игрок»), later logins must give the
+// same password (else the client shows «Неправильный пароль», message 7).
+type AccountStore interface {
+	// Login checks or creates the account and returns its hero. It returns
+	// ErrWrongPassword when the name exists with another password; created
+	// reports a new account.
+	Login(j JoinInfo) (hero *Hero, created bool, err error)
+}
+
+// ErrWrongPassword is an AccountStore's answer to a wrong password.
+var ErrWrongPassword = errors.New("netplay: wrong password")
 
 func (c ServerConfig) withDefaults() ServerConfig {
 	if c.Name == "" {
@@ -323,6 +340,20 @@ func (s *Server) join(conn *Conn) (*serverPlayer, bool) {
 		return refuse(ErrClan, fmt.Sprintf("clan must be at most %d characters", MaxClanLen))
 	}
 
+	j.Name, j.Clan = name, clan
+	created := false
+	var hero *Hero
+	if s.cfg.Accounts != nil {
+		var err error
+		hero, created, err = s.cfg.Accounts.Login(j.JoinInfo)
+		switch {
+		case errors.Is(err, ErrWrongPassword):
+			return refuse(ErrPassword, "wrong password")
+		case err != nil:
+			return refuse(ErrServer, "account store unavailable")
+		}
+	}
+
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -339,10 +370,10 @@ func (s *Server) join(conn *Conn) (*serverPlayer, bool) {
 			return refuse(ErrName, "name is taken")
 		}
 	}
-	p := &serverPlayer{info: PlayerInfo{ID: newID(), Name: name, Clan: clan, Model: j.Model}, conn: conn}
+	p := &serverPlayer{info: PlayerInfo{ID: newID(), Name: name, Clan: clan, Model: j.Model, New: created}, conn: conn}
 	s.players[p.info.ID] = p
 	s.order = append(s.order, p.info.ID)
-	conn.Send(mustMessage(MsgWelcome, WelcomePayload{PlayerID: p.info.ID, Session: s.sessionLocked()}))
+	conn.Send(mustMessage(MsgWelcome, WelcomePayload{PlayerID: p.info.ID, Session: s.sessionLocked(), Hero: hero}))
 	s.broadcastLocked(mustMessage(MsgPlayerJoined, p.info), p.info.ID)
 	s.mu.Unlock()
 	if s.cfg.OnJoin != nil {

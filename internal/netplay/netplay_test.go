@@ -459,3 +459,55 @@ func TestBroadcastAddrs(t *testing.T) {
 		}
 	}
 }
+
+// memAccounts is a minimal AccountStore for tests.
+type memAccounts struct {
+	mu   sync.Mutex
+	pass map[string]string
+}
+
+func (a *memAccounts) Login(j JoinInfo) (*Hero, bool, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	key := strings.ToLower(j.Name)
+	p, ok := a.pass[key]
+	if !ok {
+		a.pass[key] = j.Password
+		return &Hero{Level: 1, Gold: 1000}, true, nil
+	}
+	if p != j.Password {
+		return nil, false, ErrWrongPassword
+	}
+	return &Hero{Level: 1, Gold: 1000}, false, nil
+}
+
+func TestAccounts(t *testing.T) {
+	s := startServer(t, ServerConfig{Accounts: &memAccounts{pass: map[string]string{}}})
+	first, err := Dial(s.Addr().String(), JoinInfo{Name: "Volk", Password: "секрет", Model: 1}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Session.Players[0].New {
+		t.Error("first login did not create the account")
+	}
+	if first.Hero == nil || first.Hero.Gold != 1000 {
+		t.Errorf("welcome hero = %+v", first.Hero)
+	}
+	first.Close()
+	waitGone := time.Now().Add(wait)
+	for len(s.Session().Players) > 0 && time.Now().Before(waitGone) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	var je *JoinError
+	if _, err := Dial(s.Addr().String(), JoinInfo{Name: "volk", Password: "wrong", Model: 1}, Options{}); !errors.As(err, &je) || je.Code != ErrPassword {
+		t.Errorf("wrong password: %v", err)
+	}
+	again, err := Dial(s.Addr().String(), JoinInfo{Name: "Volk", Password: "секрет", Model: 1}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if again.Session.Players[0].New {
+		t.Error("second login created the account again")
+	}
+}

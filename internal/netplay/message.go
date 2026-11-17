@@ -126,6 +126,9 @@ type PlayerInfo struct {
 	Name  string `json:"name"`
 	Clan  string `json:"clan,omitempty"`
 	Model int    `json:"model"`
+	// New marks an account created by this login («Новый игрок <name> клан
+	// <clan>», 0x0044B1CE).
+	New bool `json:"new,omitempty"`
 }
 
 // SessionInfo describes a session: what discovery reports and what a client
@@ -139,10 +142,43 @@ type SessionInfo struct {
 	Players    []PlayerInfo `json:"players"`
 }
 
-// WelcomePayload answers a successful join.
+// WelcomePayload answers a successful join. Hero is the account's hero on
+// a server that keeps accounts (the original's login answer 0x87).
 type WelcomePayload struct {
 	PlayerID string      `json:"player_id"`
 	Session  SessionInfo `json:"session"`
+	Hero     *Hero       `json:"hero,omitempty"`
+}
+
+// Hero is an account's hero and counters, the LAN server's LANUSERS.DAT
+// record (0x80 bytes, docs/konung_lan.md#accounts). Fencing and Archery are
+// ×100, as stored.
+type Hero struct {
+	Level      int `json:"level"`
+	Class      int `json:"class"`
+	Model      int `json:"model"`
+	Palette    int `json:"palette"`
+	Experience int `json:"experience"`
+	Gold       int `json:"gold"`
+
+	Charisma  int `json:"charisma"`
+	Strength  int `json:"strength"`
+	Dexterity int `json:"dexterity"`
+	Endurance int `json:"endurance"`
+
+	Fencing        int `json:"fencing"`
+	Archery        int `json:"archery"`
+	Identification int `json:"identification"`
+	Trade          int `json:"trade"`
+	Smithing       int `json:"smithing"`
+	Carpentry      int `json:"carpentry"`
+	Herbalism      int `json:"herbalism"`
+
+	Rating         int `json:"rating"`
+	KillsHeroes    int `json:"kills_heroes"`
+	KillsHirelings int `json:"kills_hirelings"`
+	KillsMonsters  int `json:"kills_monsters"`
+	Amulets        int `json:"amulets"`
 }
 
 // ErrorPayload explains a refusal.
@@ -156,6 +192,8 @@ const (
 	ErrFull     = "full"
 	ErrName     = "name"
 	ErrModel    = "model"
+	ErrPassword = "password" // message 7, «Неправильный пароль»
+	ErrServer   = "server"   // the server cannot check the login
 	ErrClan     = "clan"
 	ErrVersion  = "version"
 	ErrProtocol = "protocol"

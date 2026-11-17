@@ -6,7 +6,7 @@ The single-player `konung.exe` has no network code (imports only GDI32, KERNEL32
 
 ## Layout
 
-The LAN files live in the game folder (`assets/Konung`) next to the single-player files, as in the original install: the GOG folder already held the LAN version's `GAME.RES`, `HISCORES.DAT`, `SERVER.LOG` and `Servers.cfg`, which `konung.exe` never opens. Names do not clash; `GAME.RES`, `LIGHTS.RES` and `SERVER.LOG` were byte-identical, and `HISCORES.DAT` is the LAN one (the GOG one was all zeros). The port is one binary: hosting and joining happen from the game UI, with no command-line modes.
+The LAN files live in the game folder (`assets/Konung`) next to the single-player files, as in the original install: the GOG folder already held the LAN version's `GAME.RES`, `HISCORES.DAT`, `SERVER.LOG` and `Servers.cfg`, which `konung.exe` never opens. Names do not clash; `GAME.RES`, `LIGHTS.RES` and `SERVER.LOG` were byte-identical, and `HISCORES.DAT` is the LAN one (the GOG one was all zeros). The game is one binary: hosting and joining happen from its UI, with no command-line modes. A dedicated server that keeps the players' progress is a separate binary, `cmd/konung-server` (below).
 
 ## Port status
 
@@ -14,8 +14,10 @@ The LAN files live in the game folder (`assets/Konung`) next to the single-playe
 * Images: `go run ./cmd/res-gallery` → `output/site/lan`. Maps: `go run ./cmd/map-render -mapsres assets/Konung/MAPS.RES -all output/site/lanmaps`.
 * LAN screens (`internal/game/lanui.go`, data from the exe via `gamestate.ParseLANExe`): the LAN menu, the rating screen (frame only), the login screen with typing, Tab, «Сохранить пароль», the portraits, the server list (LAN search on entering; Enter in the address field searches that address too), hosting («Новый сервер»: server + discovery in the game process, `netplay.Host`, named from `SERVER`), joining, the message box, «Ok» → wait, and `LAN.CFG` read and written in the original layout (`gamestate.LANConfig`). Verified by running two game copies under Xvfb: host, discovery, join, the duplicate-name refusal, the live ` [n]` count, wait and cancel.
 * Network layer `internal/netplay` (adapted from the author's go-tetris `pkg/network`, MIT): newline-delimited JSON messages over TCP (`Conn`: ordered, keep-alive pings, a stalled peer is disconnected instead of messages being dropped, graceful close with a TCP half-close), a session server (`Listen`: join handshake with protocol version, name, password, clan and hero model; up to 16 players; chat; `MsgGame` handed to `OnGame`; membership messages in one order for everyone), a client (`Dial`) and LAN discovery (`ServeDiscovery`/`Discover`: UDP broadcast on the game port, replacing DirectPlay's session list). Port 7777 for both, as the original's TCP/IP port.
-* Port choices: one connection type (the port's TCP/IP), so the list skips the original's DirectPlay connection stage; the list shows session names (with the host's address only when names repeat); the scroll arrows are clickable (the original's 800×600 rectangles were copied from the NEW screen); a duplicate name is refused with a port message («Ошибка: Игрок с таким именем уже в игре»), since accounts are not ported; Escape in the LAN menu returns to the port's main menu; text uses the single-player fonts (`FontSlotVA`, focused `FontLargeVA`) — the LAN exe's fonts `0x7A5142`/`0x7AB36F` are not mapped.
-* Not ported: the game start from the wait (the server's start message is not traced), «Новый герой» (state 4), «Установки» (state 8), the rating rows, the login screen's stat values, accounts and passwords (`LANUSERS.DAT`; the password is sent but ignored), in-game chat, gameplay.
+* Dedicated server `cmd/konung-server` (`-data DIR`, `-port`, `-max`, `-name`, `-minutes`; `Containerfile` for a container): accounts and progress in SQLite (`DIR/konung.db`, `internal/lanstore`), session name and length from `DIR/SERVER` if present, LAN discovery on the game port, the session clock with the rating update at each end. First login creates the account (the server logs «Новый игрок <name> клан <clan>»); a wrong password shows «Неправильный пароль»; after joining, the login screen shows the account's hero in the «Параметры»/«Навыки» boxes (at the anchor points). In-game hosting («Новый сервер») keeps no accounts. Verified end to end under Xvfb with the real server: account created, wrong password refused, rejoin with the stored hero, leave, session ends.
+* Port choices: one connection type (the port's TCP/IP), so the list skips the original's DirectPlay connection stage; the list shows session names (with the host's address only when names repeat); the scroll arrows are clickable (the original's 800×600 rectangles were copied from the NEW screen); a name already in the session is refused with a port message («Ошибка: Игрок с таким именем уже в игре»; the original's reconnect path `0x00447CF8` is not ported); Escape in the LAN menu returns to the port's main menu; text uses the single-player fonts (`FontSlotVA`, focused `FontLargeVA`) — the LAN exe's fonts `0x7A5142`/`0x7AB36F` are not mapped.
+* Server differences, on purpose: passwords are stored as salted PBKDF2-SHA256 hashes (the original kept them in plain text); accounts and items are SQLite rows, not fixed `0x80` / `0x200`-byte records; there is no 7-character password limit on the server (the client field still allows 7); a participant is marked at join, not at «Ok» (`0x4C` has no port counterpart yet).
+* Not ported: the game start from the wait (the server's start message is not traced), the hero check at «Ok» (`0x00447460`), the rating rows on «Рейтинг» (the store has them: `lanstore.Store.Ratings`), «Новый герой» (state 4), «Установки» (state 8), «Макс. груз» / «Макс. отряд» (derived), in-game chat, gameplay — so no kills, amulets or items are produced yet; the store's `Score`, `SaveItems` and `LoadItems` wait for it.
 
 ## Files
 
@@ -35,10 +37,10 @@ All text files are CP866. VAs below are in `LAN_KONG.EXE` (`BEGTEXT` at `0x41000
 | `MP3_SND.DLL` | `MP3_init`, `MP3_converttoWAV22M`, `MP3_close` | not analysed |
 | `SERVER` | Server settings: `TEAM 3 180` (keyword `TEAM`, `%s %i %i`: mode, teams, minutes), `Home Server` (session name), 6 × `%i %i %i` (map x y; probably starts and scoring spots), `//` comments. Parsed at `0x00431481`; default name «Стандартный Сервер с Командной игрой» | keywords verified; line meanings open |
 | `LAN.CFG` | Client settings (`gamestate.LANConfig`), read `0x00431176`, written `0x00432898` after every login edit; 486 bytes: dword 0 = resolution index `[0xA6EB2C]` with bit 31 = «Сохранить пароль» `[0xA6EB0C]`; dwords 1–6 = settings `0xA6EAC4`, `0xA6EAD8`, `0xA6EAEC`, `0xA6EAF4`, `0xA6EB10`, `0xA6EB18` (meanings open); name 33 (`0xA6E3B4`); password 9 (`0xA6E3D8`, zero unless «Сохранить пароль»); clan 32 (`0xA6E33C`); IP, modem, phone 128 each (`0xA83214`, `0xA83294`, `0xA83314`) | verified; not shipped (created by the game) |
-| `LANUSERS.DAT` | Server accounts, `0x0043167B`: `0x2000` header (clan names, 32 bytes each) + `0x138800` records | sizes verified; record layout open |
+| `LANUSERS.DAT` | Server accounts: 256 × 32-byte clan names, then 10000 × `0x80`-byte account records ([accounts](#accounts)) | verified (layout matches the shipped «HERO» record) |
 | `CLANS.CFG` | «Византийцы», «Русские», «Викинги» | verified |
-| `HISCORES.DAT` | `0x4D8` bytes (`0x004313EC`): team names and scores | size verified |
-| `SAVITEMS.DAT` | Created by the server (`0x00431784`); players' items between sessions | open |
+| `HISCORES.DAT` | Client-side cache of the 10 «Рейтинг» rows: 10 × `0x7C` (read `0x004313EC`, written `0x004173CE`; ratings ÷ 10); the server never reads it | verified |
+| `SAVITEMS.DAT` | Server: 10000 × `0x200` bytes, one per account ([items](#items-between-sessions-savitemsdat)) | verified against code (not shipped) |
 | `CLIENT.LOG`, `SERVER.LOG` | `%s rc=%i` | — |
 
 `GRAPH.RES`, `OBJECTS.RES` and `FLAMES.RES` were not shipped with the LAN files; the single-player ones render the LAN maps and images without errors.
@@ -82,6 +84,53 @@ List: on entering, the DirectPlay connections; picking one enumerates sessions o
 
 **Message box**: PLAY frame 12 at (144,193); lines centred on x = 400 from y = 233; buttons (hotspots `0x00478F90`): message 1 «Ok» (241,347) and «Отмена» (453,347), others one «Ok» (347,347)–(452,393). Texts (`0x0047E264`, 0x80-byte records, line 2 at `+0x40`): 1 «Предупреждение: Старый персонаж будет удален!», 2 «Ошибка: Неправильная версия клиентской части» / «Выполните обновление Вашей программы», 3 «Ошибка: Слишком много игроков», 4 «Ошибка: Не указано имя игрока», 5 «Ошибка: Сервер не доступен», 6 «Ошибка: Не указан сервер», 7 «Ошибка: Неправильный пароль», 8 «На сервере идет выход персонажа из игры» / «Повторите вход в игру через некоторое время».
 
+## Accounts
+
+The LAN server (`[0xA83398]` set) keeps `LANUSERS.DAT` in memory (clans `0xC447B0`, accounts `0xE257C0`) on handle `[0xF5EC54]` (open/create `0x0043167B`; a new file gets the three default clans and zeroed records). Account index = (record − `0xE257C0`) / `0x80`; it also selects the `SAVITEMS.DAT` record. Online slot (0–15) → record: `[0xF5DFC0 + 4·slot]`. Port: `lanstore` (`accounts`, `clans` tables).
+
+| Off | Size | Field | Default |
+|---|---|---|---|
+| `+0x00` | 32 | name (CP866; compared with `strcmp`, case-sensitive) | — |
+| `+0x20` | 8 | password, plain text | — |
+| `+0x28`, `+0x2C`, `+0x30` | i32 ×3 | kills: player heroes, hirelings, monsters | 0 |
+| `+0x34` | i32 | amulet deliveries | 0 |
+| `+0x38` | i32 | experience (guess) | 0 |
+| `+0x3C` | i32 | gold | 1000 |
+| `+0x40` | i32 | palette = dye ÷ 512 (per-model tables `0x004821CC`/`0x004821EC`/`0x0048220C`, 8 each; first entries 70, 28, 34) | 34 |
+| `+0x44` | i32 | rating, 0 … 10,000,000 | 1000 |
+| `+0x48` | i32 | session points: 0 not in the session, −1 joined without points, > 0 points | 0 |
+| `+0x4C` | i32 | unknown (entity `+0x16`) | 0 |
+| `+0x50`…`+0x5C` | u16 ×7 | Фехтование ×100, Торговля, Меткость ×100, Плотницкое дело, Знахарство, Идентификация, Кузнечное дело | 100, 10, 0, 1, 50, 20, 10 |
+| `+0x5E`, `+0x60` | u16 | Ловкость, Харизма | 3, 3 |
+| `+0x62` | u16 | unknown (entity `+0x28`, checked at «Ok») | 10 |
+| `+0x64`, `+0x66` | u16 | Сила, Выносливость | 15, 10 |
+| `+0x68` | u8 | clan index | 0 |
+| `+0x69` | u8 | level 1–13 (0 = re-init the record at load, `0x00447067`) | 1 |
+| `+0x6A` | u8 | hero model (guess) | 2 |
+| `+0x6B` | u8 | class (2–5) | 5 |
+| `+0x6C` | 20 | unused | 0 |
+
+Defaults: create path `0x00432E2B`. Saved (`0x004475F8`) on create, every score change (`0x0043B7EA`), logout/quit (`0x00443C1C`), the session's end (`0x0043459D`) and shutdown. The shipped record 0 («HERO»/«HERO», level 1, rating 1000, model 2, class 2, traded stats) fits the layout.
+
+**Login flow** (server dispatcher `0x0043319C`, table `0x00482914`; packets: dword length, sender slot, then sub-messages with a type byte, `& 0x3F` = handler, bit `0x80` = sequenced): `0x47` login (`0x00432CF0`: name, client version byte = 6 else error 2, password; unknown name → new account; other password → 7; reply `0x87` with the hero, then the clan list); `0x46` ×10 rating rows (`0x0044A964`: rows 0–8 the table's top, row 9 the requester's own; reply `0x86`); `0x4C` enter the game at «Ok» (`0x0044ADB4`: 7 wrong password, 3 sixteen online, 8 still leaving; clan registered; «Новый игрок» printed; hero checked against the record by `0x00447460` — a failed check resets the hero to level 1 and answers 7; items loaded); `0x44` logout and `0x54` quit (save, leaving timer `0xA8C`). Errors: reply `0x85`, byte `+4` = message id.
+
+## Items between sessions (`SAVITEMS.DAT`)
+
+One `0x200`-byte record per account (handle `[0xF5EC58]`, create `0x00431784` fills `0xFF`), written by `0x00444918` from the hero, read by `0x0044444C` at «Ok» and at a new session. Port: `lanstore` `items` table.
+
+| Off | Size | Content |
+|---|---|---|
+| `+0x00` | 6 × 7 | equipment: item `+1` (enchantment), `+3` (type), `+0` (category, `0xFF` empty) \| `0x80` (guess: identified by this player), high words of condition `+4` and maximum `+8` |
+| `+0x2A`, `+0x2B` | 1, 1 | boxed arrows: type, count |
+| `+0x2C` | 5 × 3 | jewellery: `+1`, `+3`, category \| flag |
+| `+0x3B` | 32 × 7 | bag, as equipment (arrows keep their count) |
+
+On load, bag items are dropped when category > 12, category ≤ 5 with type ≥ 70, category 9 with type ≥ 14, or category 11 with type ≥ 10 (amulet parts).
+
+## Score and rating
+
+`0x0043B67C(killer, victim, points)` (`gamestate.HeroKillPoints`, `lanstore.Store.Score`): an amulet part delivered on a scoring spot (table `0x004826D0`) = 25 points; a player hero's kill = max(1, 2·victim level − killer level + 1), doubled when the victim carries an amulet part; hireling and monster kills are counted with 0 points. Session end `0x00444150` (`gamestate.SessionRatings`, `lanstore.Store.EndSession`): over the participants (session points ≠ 0), R̄ = mean rating, P = sum of positive points, p̄ = P / n; each rating += (max(points, 0) − p̄) · R̄ / P, clamped to 0 … 10,000,000. Rating table `0x00446FA0` (10000 × `0x7C`, by rating; clan rating = members' mean, a guess): name, clan, amulets, the three kill counters, rating, clan rating, ranks.
+
 ## Networking (verified in code)
 
 | What | Detail | VA |
@@ -99,5 +148,5 @@ List: on entering, the DirectPlay connections; picking one enumerates sessions o
 * The server's message dispatcher: the password check, the ten `0x46` requests, the game-start message, team assignment (by clan or model?), the source of the ` [n]` count.
 * «Новый герой»: the hero record `0xA6E874` layout, class defaults and stat costs; the settings screen (state 8); the LAN fonts `0x7A5142`/`0x7AB36F`.
 * The message types and payloads (callers of `0x0042FDE4`: `0x417CD2`, `0x41FFD5`, `0x42E054`, `0x42E0D1`, `0x42E147`, `0x42E34C`, `0x42F09C`, `0x42F1EF`, `0x42F8CF`; receive dispatch from `0x42F8A1`).
-* Server rules: session timer and reset, teams and starts, amulet scoring, respawn, rating, `SAVITEMS.DAT`.
-* Which `MAPS.RES` map is which cell of the a1–d5 grid; the six `SERVER` lines; the `LANUSERS.DAT` record; `GAME.RES`; `Quest_r.res`; item differences from single-player.
+* Server rules still open: the game start for a client (`0x00447CF8`) and the `0x53` broadcast, team assignment, the scoring-spot table `0x004826D0`, respawn, the saves at `0x00448A6A` and `0x0044CCF3`, the account fields `+0x4C` and `+0x62`.
+* Which `MAPS.RES` map is which cell of the a1–d5 grid; the six `SERVER` lines; `GAME.RES`; `Quest_r.res`; item differences from single-player.
