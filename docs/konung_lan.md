@@ -19,7 +19,8 @@ The LAN files live in the game folder (`assets/Konung`) next to the single-playe
 * Other players (`netplay` `MsgAppear`/`MsgMove`/`MsgMoved`, `game/lanremote.go`): on entering, the server sends the new hero's start, then every hero already in the world to it, and the new hero to everyone else (as the original's `0x8C` then `0x5A`); each client reports its hero's map, cell and facing when they change, and the server relays it to the others (as `0x19`; moves before entering are dropped, cells off the grid too). A remote hero on the own map is a walker (`npcRemote`) made from the own hero's template with the player's model and palette and the account's values, in an emptied group (no party, village or combat rule applies to it); it walks to each reported cell, is placed at once after a jump of more than 24 cells, leaves the map when its map changes, comes back after the own map change, and goes when the player leaves. It cannot be clicked (no orders, dialogue or selection); the cursor over it shows «<name>, клан <clan>». Heroes are named by their accounts (`Game.Names`, read by `Game.EntityName`): the own hero's status line and character window show the player's name, not the template's first name (Волк, Драгомир, Михаил). Verified under Xvfb with two game copies and the dedicated server: each sees the other, and a walk on one shows on the other. `GAME.RES`'s characters are not placed yet, and nothing beyond positions is synchronised (no combat, items or chat in the world).
 * Port choices: no hosting from the game — the list leaves out the original's row 0 «Новый сервер» and shows only the sessions found; one connection type (the port's TCP/IP), so the list skips the original's DirectPlay connection stage; the list shows session names (with the host's address only when names repeat); the scroll arrows are clickable (the original's 800×600 rectangles were copied from the NEW screen); a name already in the session is refused with a port message («Ошибка: Игрок с таким именем уже в игре»; the original's reconnect path `0x00447CF8` is not ported); Escape in the LAN menu returns to the port's main menu; text uses the single-player fonts (`FontSlotVA`, focused `FontLargeVA`) — the LAN exe's fonts `0x7A5142`/`0x7AB36F` are not mapped.
 * Server differences, on purpose: passwords are stored as salted PBKDF2-SHA256 hashes (the original kept them in plain text); accounts and items are SQLite rows, not fixed `0x80` / `0x200`-byte records; there is no 7-character password limit on the server (the client field still allows 7); a participant is marked at join, not at «Ok» (`0x4C` has no port counterpart yet).
-* Not ported: the other players' actions beyond walking (attacks, stance, items, HP), `GAME.RES`'s villagers and creatures (the LAN entity layout), the account's items in the world (`SAVITEMS.DAT` → bag), the LAN HUD (`INTO640R`; the single-player HUD stands in), per-map single-player tables keyed by map number (fixed light, location names) applied to LAN maps, the hero check at «Ok» (`0x00447460`), the rating rows on «Рейтинг» (the store has them: `lanstore.Store.Ratings`), «Новый герой» (state 4), «Установки» (state 8), «Макс. груз» / «Макс. отряд» (derived), in-game chat, gameplay — so no kills, amulets or items are produced yet; the store's `Score`, `SaveItems` and `LoadItems` wait for it.
+* «Новый герой» (`gamestate/lanhero.go`, `game/lannewhero.go`; [new hero](#new-hero)): the NEW800R screen with the class, combat and peaceful skill, the stat trade on the LAN tables, «Макс. груз» / «Макс. отряд», the clan field and list (`CLANS.CFG`, typed clans and the server's list from the welcome), the hero preview and its look; «Ok» keeps the build, and the next join warns «Старый персонаж будет удален!» (message 1, Ok/Отмена) and sends it (`JoinInfo.NewHero`). The server checks the choices with the screen's own rules (`LANHeroChoice.Build`) and rebuilds the account's hero. Verified under Xvfb with the dedicated server: the screen, the warning, the rebuilt hero on the login screen.
+* Not ported: the other players' actions beyond walking (attacks, stance, items, HP), `GAME.RES`'s villagers and creatures (the LAN entity layout), the account's items in the world (`SAVITEMS.DAT` → bag), the LAN HUD (`INTO640R`; the single-player HUD stands in), per-map single-player tables keyed by map number (fixed light, location names) applied to LAN maps, the rating rows on «Рейтинг» (the store has them: `lanstore.Store.Ratings`), «Установки» (state 8), in-game chat, gameplay — so no kills, amulets or items are produced yet; the store's `Score`, `SaveItems` and `LoadItems` wait for it.
 
 ## Files
 
@@ -29,7 +30,7 @@ All text files are CP866. VAs below are in `LAN_KONG.EXE` (`BEGTEXT` at `0x41000
 |---|---|---|
 | `PLAY800R.RES`, `PLAY640R.RES` | Type 5, 14 frames (loader `0x004245B4`, image slots `0x1F2`+k): 0 login screen, 1 rating screen, 2–7 portraits (pairs colour = selected / grey), 8/9 «Отмена» normal/pressed, 10/11 «Ok» normal/pressed, 12 message box panel (513×214), 13 «Сохранить пароль» mark | verified |
 | `ME800R.RES` | Type 5, 17 frames (loader `0x0042474C`): 0 LAN menu background, 1 settings background, 2 settings marker, 3–16 label overlays (353×345, drawn at (209,132)) in normal/hover pairs: 3 «Вернуться в игру», 5 «Рейтинг», 7 «Новая игра», 9 «Новый герой», 11 «Установки», 13 «Выход», 15 «Закончить игру» | verified |
-| `NEW800R.RES`, `NEW640R.RES` | Type 5, 7 frames (loader `0x00424944`): 0 «Новый герой» background, 1 portrait (100×100), 2 marker, 3–6 «Ok»/«Отмена» pairs | verified |
+| `NEW800R.RES`, `NEW640R.RES` | Type 5, 7 frames (loader `0x00424944`, image slots `0x1F9`+k): 0 «Новый герой» background, 1 100×100 tile repeated under it, 2 marker (13×13), 3/4 «Отмена», 5/6 «Ok» (normal/pressed) | verified |
 | `INTO640R.RES` | Interface layout (`resfmt.ParseInterface`), 275 images: HUD frame, panels, item icons, portraits; drawn with the single-player `GRAPH.RES` palettes | decoded |
 | `MAPS.RES` | 20 × (`KONUNG.N` + `LIGHTS.N`), map n at `(n−1) × 0x2F120` (loader `0x00417DB0`); none matches a single-player map ([map format](konung_map_format.md#lan-version-mapsres-verified)) | verified |
 | `SOUNDS_.RES` | Same layout as `SOUNDS.RES` (`resfmt.LoadSoundEntries`): 244 sounds; 145 identical to single-player, 52 differ, 47 new | decoded |
@@ -57,7 +58,7 @@ States are `[0x9EB9EC]`; clicks go through the jump table `0x0042F7F8`, Escape t
 | 1 | in game (INTO HUD) | — |
 | 2 | rating: PLAY frame 1, 10 best players and 10 best clans; any click → menu | `0x004271AC` / `0x0042E384` |
 | 3 | LAN menu (ME800R) | `0x00427970` / `0x0042DE9C` |
-| 4 | «Новый герой» (NEW800R; hotspots `0x0047DE24`): clan field and list (from `CLANS.CFG`), 4 classes, 5 skill toggles, −/+ for 4 stats, portrait cycling 8 portraits per model; «Ok» saves the hero and opens the login | `0x00427D14` / `0x0042E3CA` |
+| 4 | «Новый герой» ([new hero](#new-hero)): clan field and list, 4 classes, the combat and peaceful skill, −/+ for 4 stats, the hero preview stepping 8 looks; «Ok» keeps the build and opens the login | `0x00427D14` / `0x0042E3CA` |
 | 5 | login «Новая игра» (PLAY frame 0) | `0x00429598` / `0x0042EC30` |
 | 6 | quit | `0x0042F2FD` |
 | 8 | settings (ME frames 1, 2; hotspots `0x0047EC04`) | `0x0042A1A8` / `0x0042F317` |
@@ -88,6 +89,31 @@ List: on entering, the DirectPlay connections; picking one enumerates sessions o
 
 **Message box**: PLAY frame 12 at (144,193); lines centred on x = 400 from y = 233; buttons (hotspots `0x00478F90`): message 1 «Ok» (241,347) and «Отмена» (453,347), others one «Ok» (347,347)–(452,393). Texts (`0x0047E264`, 0x80-byte records, line 2 at `+0x40`): 1 «Предупреждение: Старый персонаж будет удален!», 2 «Ошибка: Неправильная версия клиентской части» / «Выполните обновление Вашей программы», 3 «Ошибка: Слишком много игроков», 4 «Ошибка: Не указано имя игрока», 5 «Ошибка: Сервер не доступен», 6 «Ошибка: Не указан сервер», 7 «Ошибка: Неправильный пароль», 8 «На сервере идет выход персонажа из игры» / «Повторите вход в игру через некоторое время».
 
+## New hero
+
+State 4, drawn by `0x00427D14`, clicks `0x0042E3CA` (jump table `0x0042EB84`, hit test `0x00417934`). It is the single-player creation screen ([new game](konung_new_game.md)): the same 33-hotspot layout and the same class, skill and stat-trade handlers, with the LAN tables below. The hero portraits are replaced by the clan picker, and the preview switches the look. Opening it (`0x0042E0DB`) logs out (`0x44`), clears the server address and resets the template `0xA6E874` (LAN entity layout): the single-player template (Воин; Хар 3, Сил 15, Лов 3, Вын 10; Фехтование, Идентификация; no free points) at **level 13** (single-player 10), gold 1000, no items.
+
+Hotspots `0x0047DE24` (33, 800×600 rects; `LANExe.NewHeroRects`): 0 clan field (31 bytes), 1/2 clan list scroll, 3–6 Купец/Охотник/Вождь/Воин, 7–10 values Хар/Сил/Лов/Вын, 11 «Макс. груз», 12 «Макс. отряд», 13 Кузнечное дело, 14 Плотницкое дело, 15 Фехтование, 16 Меткость, 17–19 Идентификация/Торговля/Знахарство, 20 «Ok» (85,545), 21 «Отмена» (195,545), 22 the hero (610,160; 160×160), 23 clan rows (33,176–361,521; +5, 15 px per row), 24 free points, 25–32 −/+ for Хар, Сил, Лов, Вын. Values in font `0x7A5142` at the rect's top-left; markers as in single-player (the class, the higher combat skill, Идентификация > 10, Торговля > 10, Знахарство > 50).
+
+| Rule | LAN | Code / table |
+|---|---|---|
+| Class preset, skills | as single-player (`SelectClass`, `SelectCombatSkill`, `SelectSkill`) | `0x00437E86` handlers |
+| Raise cost | first row of (favourite threshold, other threshold, cost) with value < threshold: (12,9,5) (19,14,15) (26,20,25) (34,28,35) (43,36,60) (53,44,100) (63,52,200) (74,60,300) (80,65,400) (90,70,500) (95,75,600) (100,80,800); paid from the free points, 0 if they don't cover it | `0x0044CDF0`, `0x00481E24`; `LANRaiseCost` |
+| Favourite stat | Купец Вын, Охотник Лов, Вождь Хар, Воин Сил | `0x00481DDC` |
+| Cap | value < cap at level 13: favourite 105, others 42 (every class) | `0x00481EC0` + class·0x68 + stat·0x1A + level·2 − 1 |
+| − | a non-zero stat loses a point and the free points get that point's cost back | as single-player; `LANTradeStat` |
+| «Макс. отряд» | 1 + the number of the class's thresholds base Хар reaches (Купец, Вождь 15/21/28; Охотник 17/23/30; Воин 20/28/36), at most 3 | `0x0044D798`, `0x00482190`; `LANMaxParty` |
+| «Макс. груз» | 10 + base Вын/3 kg, `%4.1f` | `0x00427D14`; `LANMaxWeight` |
+| Looks | the preview click steps a look index 0–7 (`[0xA6EB4C]`); palette = table[model][look]: 70,71,72,70,73,74,113,114 / 28,29,30,31,32,33,109,110 / 34,35,36,37,38,39,111,112 | `0x004821CC`, `0x004821EC`, `0x0048220C`; `LANLooks` |
+
+Because free points start at 0, a build is a trade: the cost of each point depends only on its value, so any final stats are reachable when each is within 0 … cap and the points refunded cover the points spent (`LANHeroChoice.Build`). `TestLANHeroTables` checks the hard-coded tables against `LAN_KONG.EXE`.
+
+«Ok» (`0x0042E756`) sets level 1 and the pending flag `[0xA6EAF8]`, backs the hero up (`0xA6E974`), saves `LAN.CFG`, adds a new clan to the list and opens the login; nothing is sent. With the flag set the login answer (`0x00420750`) keeps the built hero, and the login «Ok» shows message 1 «Предупреждение: Старый персонаж будет удален!»: «Ok» (`0x0042DBDB`) connects and sends `0x4C`; «Отмена» (`0x0042D9D8`) clears the flag for the LAN menu. «Отмена» on the screen (`0x0042E826`) returns to the LAN menu. The model is not chosen here: the login portraits (`0x0042ECA2`/`0x0042ECD2`/`0x0042ED02`) set the name index (124/151/10), the model (1/2/0) and the palette of the same look index.
+
+`0x4C` (`0x004179B4`, 0x73 bytes) carries the name, password, clan and the whole hero on every entry. The server's check `0x00447460` accepts a level-1 hero with every stat ≤ 30 and free points ≤ 50 as long as gold and `+0x28` equal the record's; otherwise it needs the record's free points and, above level 1, its stats and class. Skills, model and palette are never checked. A rejected hero (`0x0044B513`) has its record reset (free points 0, gold 100, level 1, every stat 1) and gets message 7.
+
+Port, with a server that decides: the client sends only the choices (`netplay.HeroChoice`: class, combat skill, peaceful skill, the four stats, a look per type) with the next join after the warning; the server rebuilds them with the screen's rules and refuses anything the screen cannot produce (`ErrHero`, port message «Ошибка: Сервер не принял нового героя»). The rebuild resets level, gold, stats, skills, free points and items, and keeps the rating and counters; the clan changes only with a rebuild (and on the first login). The hero type stays a per-session choice at login. Port additions: a look per hero type (the original has one look index for every type), and a right click on the preview shows the next type.
+
 ## Accounts
 
 The LAN server (`[0xA83398]` set) keeps `LANUSERS.DAT` in memory (clans `0xC447B0`, accounts `0xE257C0`) on handle `[0xF5EC54]` (open/create `0x0043167B`; a new file gets the three default clans and zeroed records). Account index = (record − `0xE257C0`) / `0x80`; it also selects the `SAVITEMS.DAT` record. Online slot (0–15) → record: `[0xF5DFC0 + 4·slot]`. Port: `lanstore` (`accounts`, `clans` tables).
@@ -98,7 +124,7 @@ The LAN server (`[0xA83398]` set) keeps `LANUSERS.DAT` in memory (clans `0xC447B
 | `+0x20` | 8 | password, plain text | — |
 | `+0x28`, `+0x2C`, `+0x30` | i32 ×3 | kills: player heroes, hirelings, monsters | 0 |
 | `+0x34` | i32 | amulet deliveries | 0 |
-| `+0x38` | i32 | experience (guess) | 0 |
+| `+0x38` | i32 | free points (entity `+0x12`, `0x004475F8`) | 0 |
 | `+0x3C` | i32 | gold | 1000 |
 | `+0x40` | i32 | palette = dye ÷ 512 (per-model tables `0x004821CC`/`0x004821EC`/`0x0048220C`, 8 each; first entries 70, 28, 34) | 34 |
 | `+0x44` | i32 | rating, 0 … 10,000,000 | 1000 |
@@ -110,11 +136,13 @@ The LAN server (`[0xA83398]` set) keeps `LANUSERS.DAT` in memory (clans `0xC447B
 | `+0x64`, `+0x66` | u16 | Сила, Выносливость | 15, 10 |
 | `+0x68` | u8 | clan index | 0 |
 | `+0x69` | u8 | level 1–13 (0 = re-init the record at load, `0x00447067`) | 1 |
-| `+0x6A` | u8 | hero model (guess) | 2 |
+| `+0x6A` | u8 | hero model (`0x004475F8`) | 2 |
 | `+0x6B` | u8 | class (2–5) | 5 |
 | `+0x6C` | 20 | unused | 0 |
 
 Defaults: create path `0x00432E2B`. Saved (`0x004475F8`) on create, every score change (`0x0043B7EA`), logout/quit (`0x00443C1C`), the session's end (`0x0043459D`) and shutdown. The shipped record 0 («HERO»/«HERO», level 1, rating 1000, model 2, class 2, traded stats) fits the layout.
+
+Port (`lanstore`): `+0x38` is the column `free_points`; three columns `look0`–`look2` keep a look per hero type (schema version 2). The model and palette are this session's: the type picked at login and its look.
 
 **Login flow** (server dispatcher `0x0043319C`, table `0x00482914`; packets: dword length, sender slot, then sub-messages with a type byte, `& 0x3F` = handler, bit `0x80` = sequenced): `0x47` login (`0x00432CF0`: name, client version byte = 6 else error 2, password; unknown name → new account; other password → 7; reply `0x87` with the hero, then the clan list); `0x46` ×10 rating rows (`0x0044A964`: rows 0–8 the table's top, row 9 the requester's own; reply `0x86`); `0x4C` enter the game at «Ok» (`0x0044ADB4`: 7 wrong password, 3 sixteen online, 8 still leaving; clan registered; «Новый игрок» printed; hero checked against the record by `0x00447460` — a failed check resets the hero to level 1 and answers 7; items loaded); `0x44` logout and `0x54` quit (save, leaving timer `0xA8C`). Errors: reply `0x85`, byte `+4` = message id.
 
@@ -173,7 +201,7 @@ Other players reach the client as `0x5A`/`0x1A` (appearance: entity word, HP/16,
 ## Open
 
 * The client's side of the rating rows (`0x86` answers to the ten `0x46` requests) and the «Рейтинг» screen layout (`0x004271AC`).
-* «Новый герой»: the hero record `0xA6E874` layout, class defaults and stat costs; the settings screen (state 8); the LAN fonts `0x7A5142`/`0x7AB36F`.
+* The settings screen (state 8); the LAN fonts `0x7A5142`/`0x7AB36F`; the hero fields `+0x16`, `+0x28` (record `+0x4C`, `+0x62`) and `+0x3E`.
 * The message types and payloads (callers of `0x0042FDE4`: `0x417CD2`, `0x41FFD5`, `0x42E054`, `0x42E0D1`, `0x42E147`, `0x42E34C`, `0x42F09C`, `0x42F1EF`, `0x42F8CF`; receive dispatch from `0x42F8A1`).
 * Server rules still open: the `0x53` broadcast, the `0x1B` move message, how a client entering gets the others' positions, the free-cell search at entry, respawn, row/col sent as single bytes although rows reach 319, the saves at `0x00448A6A` and `0x0044CCF3`, the account fields `+0x4C` and `+0x62`.
 * Which `MAPS.RES` map is which cell of the a1–d5 grid; the six `SERVER` lines; `GAME.RES`; `Quest_r.res`; item differences from single-player.

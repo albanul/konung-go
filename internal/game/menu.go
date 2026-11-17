@@ -219,11 +219,13 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		m.buttonRects[i] = rect{x: b[0], y: b[1], w: b[2] - b[0], h: b[3] - b[1]}
 	}
 	// «Сетевая игра» only when the LAN version's files are installed (in the
-	// game folder): LAN_KONG.EXE (layout, texts), ME800R.RES, PLAY800R.RES.
+	// game folder): LAN_KONG.EXE (layout, texts), ME800R.RES, PLAY800R.RES
+	// (and NEW800R.RES for «Новый герой»).
 	mePath, err1 := FindGameResource("assets/Konung/ME800R.RES")
 	playPath, err2 := FindGameResource("assets/Konung/PLAY800R.RES")
 	if err1 == nil && err2 == nil {
-		lan, err := newLANUI(gameDir, assets, mePath, playPath)
+		newPath, _ := FindGameResource("assets/Konung/NEW800R.RES") // «Новый герой»; optional
+		lan, err := newLANUI(gameDir, assets, mePath, playPath, newPath)
 		if err != nil {
 			log.Printf("LAN screens unavailable: %v", err)
 		} else {

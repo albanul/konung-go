@@ -17,6 +17,8 @@ package netplay
 import (
 	"encoding/json"
 	"fmt"
+
+	"konung1.5/internal/gamestate"
 )
 
 // DefaultPort is the TCP game port and the UDP discovery port. The original
@@ -29,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 1
+const ProtocolVersion = 2
 
 // MsgType identifies a message.
 type MsgType int
@@ -115,9 +117,29 @@ const Models = 3
 // UTF-8 on the wire.
 type JoinInfo struct {
 	Name     string `json:"name"`
-	Password string `json:"password,omitempty"` // accounts are not ported; the server ignores it
-	Clan     string `json:"clan,omitempty"`     // CLANS.CFG starts with the three nations
-	Model    int    `json:"model"`
+	Password string `json:"password,omitempty"`
+	// Clan names a new account's clan (CLANS.CFG starts with the three
+	// nations); an existing account changes clan only with NewHero.
+	Clan  string `json:"clan,omitempty"`
+	Model int    `json:"model"` // the hero type for this session (start village and team)
+	// NewHero rebuilds the account's hero from «Новый герой» choices (the
+	// original sends the built hero with 0x4C after «Старый персонаж будет
+	// удален!»); the server checks them with gamestate.LANHeroChoice.Build.
+	// Progress (level, gold, free points, items) is reset; rating and
+	// counters stay.
+	NewHero *HeroChoice `json:"new_hero,omitempty"`
+}
+
+// HeroChoice is what «Новый герой» picks: class byte 2–5 (Купец, Охотник,
+// Вождь, Воин), the combat skill (Меткость, else Фехтование), the peaceful
+// skill (0 Идентификация, 1 Торговля, 2 Знахарство), the four base stats
+// after trading (Хар, Сил, Лов, Вын) and a look 0–7 per hero type.
+type HeroChoice struct {
+	Class   int    `json:"class"`
+	Archery bool   `json:"archery"`
+	Skill   int    `json:"skill"`
+	Stats   [4]int `json:"stats"`
+	Looks   [3]int `json:"looks"`
 }
 
 // JoinPayload is the client's first message.
@@ -154,6 +176,9 @@ type WelcomePayload struct {
 	PlayerID string      `json:"player_id"`
 	Session  SessionInfo `json:"session"`
 	Hero     *Hero       `json:"hero,omitempty"`
+	// Clans are the server's clans for the «Новый герой» list (the
+	// original's login answer 0x87 is followed by the clan list).
+	Clans []string `json:"clans,omitempty"`
 }
 
 // Hero is an account's hero and counters, the LAN server's LANUSERS.DAT
@@ -164,7 +189,7 @@ type Hero struct {
 	Class      int `json:"class"`
 	Model      int `json:"model"`
 	Palette    int `json:"palette"`
-	Experience int `json:"experience"`
+	FreePoints int `json:"free_points"` // +0x38: free experience for stat raises (0x004475F8)
 	Gold       int `json:"gold"`
 
 	Charisma  int `json:"charisma"`
@@ -185,6 +210,10 @@ type Hero struct {
 	KillsHirelings int `json:"kills_hirelings"`
 	KillsMonsters  int `json:"kills_monsters"`
 	Amulets        int `json:"amulets"`
+
+	// Looks is the chosen look (0–7, gamestate.LANLooks) per hero type;
+	// Palette is the one of Model, this session's type.
+	Looks [3]int `json:"looks"`
 }
 
 // ErrorPayload explains a refusal.
@@ -199,6 +228,7 @@ const (
 	ErrName     = "name"
 	ErrModel    = "model"
 	ErrPassword = "password" // message 7, «Неправильный пароль»
+	ErrHero     = "hero"     // NewHero is not something «Новый герой» can produce
 	ErrServer   = "server"   // the server cannot check the login
 	ErrClan     = "clan"
 	ErrVersion  = "version"
@@ -245,4 +275,19 @@ type MovedPayload struct {
 // ChatPayload is a chat line.
 type ChatPayload struct {
 	Text string `json:"text"`
+}
+
+// Build checks c with the creation screen's rules (gamestate.LANHeroChoice)
+// and returns the level-1 hero it makes, or why the screen could not have
+// produced c.
+func (c HeroChoice) Build() (gamestate.Entity, error) {
+	for m, l := range c.Looks {
+		if l < 0 || l > 7 {
+			return gamestate.Entity{}, fmt.Errorf("look %d of hero type %d", l, m)
+		}
+	}
+	if c.Class < 0 || c.Class > 255 {
+		return gamestate.Entity{}, fmt.Errorf("class %d", c.Class)
+	}
+	return gamestate.LANHeroChoice{Class: byte(c.Class), Archery: c.Archery, Skill: c.Skill, Stats: c.Stats}.Build()
 }

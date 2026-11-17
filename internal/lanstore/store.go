@@ -39,9 +39,16 @@ const (
 // 0x0043167B; CLANS.CFG has the same three).
 var DefaultClans = []string{"Византийцы", "Русские", "Викинги"}
 
-// defaultPalette is each hero model's first dye (tables 0x004821CC,
-// 0x004821EC, 0x0048220C, entries ÷ 512); a new account starts with it.
-var defaultPalette = [netplay.Models]int{70, 28, 34}
+// migrations bring a database from version i+1 to i+2 (PRAGMA
+// user_version; version 1 is schema).
+var migrations = []string{
+	// 2: +0x38 is the free points (0x004475F8), not experience; a look per
+	// hero type («Новый герой»), the hero type being chosen per session.
+	`ALTER TABLE accounts RENAME COLUMN experience TO free_points;
+	ALTER TABLE accounts ADD COLUMN look0 INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE accounts ADD COLUMN look1 INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE accounts ADD COLUMN look2 INTEGER NOT NULL DEFAULT 0;`,
+}
 
 const schema = `
 CREATE TABLE clans (
@@ -56,7 +63,7 @@ CREATE TABLE accounts (                  -- LANUSERS.DAT record, 0x80 bytes
 	kills_hirelings INTEGER NOT NULL DEFAULT 0,    -- +0x2C
 	kills_monsters  INTEGER NOT NULL DEFAULT 0,    -- +0x30
 	amulets         INTEGER NOT NULL DEFAULT 0,    -- +0x34
-	experience      INTEGER NOT NULL DEFAULT 0,    -- +0x38 (meaning a guess)
+	experience      INTEGER NOT NULL DEFAULT 0,    -- +0x38 (renamed free_points by migration 2)
 	gold            INTEGER NOT NULL DEFAULT 1000, -- +0x3C
 	palette         INTEGER NOT NULL,              -- +0x40
 	rating          INTEGER NOT NULL DEFAULT 1000, -- +0x44
@@ -128,40 +135,57 @@ func (s *Store) migrate() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		return err
 	}
-	if v >= 1 {
-		return nil
-	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(schema); err != nil {
-		return err
-	}
-	for i, c := range DefaultClans {
-		if _, err := tx.Exec(`INSERT INTO clans (id, name) VALUES (?, ?)`, i, c); err != nil {
+	if v < 1 {
+		if _, err := tx.Exec(schema); err != nil {
 			return err
 		}
+		for i, c := range DefaultClans {
+			if _, err := tx.Exec(`INSERT INTO clans (id, name) VALUES (?, ?)`, i, c); err != nil {
+				return err
+			}
+		}
+		v = 1
 	}
-	if _, err := tx.Exec(`PRAGMA user_version = 1`); err != nil {
+	for ; v-1 < len(migrations); v++ {
+		if _, err := tx.Exec(migrations[v-1]); err != nil {
+			return fmt.Errorf("migration to version %d: %w", v+1, err)
+		}
+	}
+	if _, err := tx.Exec(`PRAGMA user_version = ` + strconv.Itoa(v)); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
 // Login implements netplay.AccountStore: the first login with a name creates
-// the account with the original's defaults (0x00432E2B) and the chosen hero
-// model; later logins must give the same password. A clan named at login is
-// registered (new names appended, up to MaxClans; empty keeps the
-// account's clan) and becomes the account's clan.
+// the account with the original's defaults (0x00432E2B) and registers its
+// clan (new names appended, up to MaxClans); later logins must give the same
+// password. With NewHero the hero is rebuilt from «Новый герой» (validated
+// by netplay.HeroChoice.Build): class, skills, stats, free points and looks
+// from the choice, level 1, the starting gold, no items; rating and
+// counters stay, and the clan named becomes the account's. Otherwise the
+// clan does not change. The session's hero type (j.Model) sets the model
+// and its look's palette.
 func (s *Store) Login(j netplay.JoinInfo) (*netplay.Hero, bool, error) {
+	var built gamestate.Entity
+	if j.NewHero != nil {
+		var err error
+		if built, err = j.NewHero.Build(); err != nil {
+			return nil, false, fmt.Errorf("%w: %v", netplay.ErrBadHero, err)
+		}
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, false, err
 	}
 	defer tx.Rollback()
 	now := s.now().UTC().Format(time.RFC3339)
+	model := min(max(j.Model, 0), netplay.Models-1)
 
 	var id int64
 	var stored string
@@ -181,9 +205,8 @@ func (s *Store) Login(j netplay.JoinInfo) (*netplay.Hero, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		model := min(max(j.Model, 0), netplay.Models-1)
 		res, err := tx.Exec(`INSERT INTO accounts (name, password, palette, model, created_at, last_login) VALUES (?, ?, ?, ?, ?, ?)`,
-			j.Name, hash, defaultPalette[model], model, now, now)
+			j.Name, hash, gamestate.LANLookPalette(model, 0), model, now, now)
 		if err != nil {
 			return nil, false, err
 		}
@@ -200,7 +223,7 @@ func (s *Store) Login(j netplay.JoinInfo) (*netplay.Hero, bool, error) {
 			return nil, false, err
 		}
 	}
-	if clan := strings.TrimSpace(j.Clan); clan != "" {
+	if clan := strings.TrimSpace(j.Clan); clan != "" && (created || j.NewHero != nil) {
 		cid, err := registerClan(tx, clan)
 		if err != nil {
 			return nil, false, err
@@ -211,6 +234,20 @@ func (s *Store) Login(j netplay.JoinInfo) (*netplay.Hero, bool, error) {
 			}
 		}
 	}
+	if j.NewHero != nil {
+		if err := rebuild(tx, id, built, j.NewHero.Looks); err != nil {
+			return nil, false, err
+		}
+	}
+	// This session's hero type and its look.
+	var looks [3]int
+	if err := tx.QueryRow(`SELECT look0, look1, look2 FROM accounts WHERE id = ?`, id).Scan(&looks[0], &looks[1], &looks[2]); err != nil {
+		return nil, false, err
+	}
+	if _, err := tx.Exec(`UPDATE accounts SET model = ?, palette = ? WHERE id = ?`,
+		model, gamestate.LANLookPalette(model, looks[model]), id); err != nil {
+		return nil, false, err
+	}
 	h, err := hero(tx, id)
 	if err != nil {
 		return nil, false, err
@@ -219,6 +256,44 @@ func (s *Store) Login(j netplay.JoinInfo) (*netplay.Hero, bool, error) {
 		return nil, false, err
 	}
 	return h, created, nil
+}
+
+// rebuild replaces the account's hero with a «Новый герой» build: «Старый
+// персонаж будет удален!» — level, gold, stats, skills, free points and the
+// items go; the rating, the counters and the session points stay.
+func rebuild(tx *sql.Tx, id int64, e gamestate.Entity, looks [3]int) error {
+	_, err := tx.Exec(`UPDATE accounts SET level = 1, gold = 1000, class = ?, free_points = ?,
+		charisma = ?, strength = ?, dexterity = ?, endurance = ?,
+		fencing = ?, archery = ?, herbalism = ?, smithing = ?, trade = ?, carpentry = ?, identification = ?,
+		unknown_4c = 0, unknown_62 = 10, look0 = ?, look1 = ?, look2 = ?
+		WHERE id = ?`,
+		int(e.Flags4&7), e.FreeExp,
+		e.BaseStats[0], e.BaseStats[1], e.BaseStats[2], e.BaseStats[3],
+		e.Fencing, e.Marksmanship, e.Skills[0], e.Skills[1], e.Skills[2], e.Skills[3], e.Skills[4],
+		looks[0], looks[1], looks[2], id)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`DELETE FROM items WHERE account_id = ?`, id)
+	return err
+}
+
+// Clans implements netplay.ClanLister: the clan names in table order.
+func (s *Store) Clans() ([]string, error) {
+	rows, err := s.db.Query(`SELECT name FROM clans ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
 }
 
 // registerClan returns the clan's id, appending it when new; -1 when the
@@ -249,15 +324,15 @@ type querier interface {
 
 func hero(q querier, id int64) (*netplay.Hero, error) {
 	h := &netplay.Hero{}
-	err := q.QueryRow(`SELECT level, class, model, palette, experience, gold,
+	err := q.QueryRow(`SELECT level, class, model, palette, free_points, gold,
 		charisma, strength, dexterity, endurance,
 		fencing, archery, identification, trade, smithing, carpentry, herbalism,
-		rating, kills_heroes, kills_hirelings, kills_monsters, amulets
+		rating, kills_heroes, kills_hirelings, kills_monsters, amulets, look0, look1, look2
 		FROM accounts WHERE id = ?`, id).Scan(
-		&h.Level, &h.Class, &h.Model, &h.Palette, &h.Experience, &h.Gold,
+		&h.Level, &h.Class, &h.Model, &h.Palette, &h.FreePoints, &h.Gold,
 		&h.Charisma, &h.Strength, &h.Dexterity, &h.Endurance,
 		&h.Fencing, &h.Archery, &h.Identification, &h.Trade, &h.Smithing, &h.Carpentry, &h.Herbalism,
-		&h.Rating, &h.KillsHeroes, &h.KillsHirelings, &h.KillsMonsters, &h.Amulets)
+		&h.Rating, &h.KillsHeroes, &h.KillsHirelings, &h.KillsMonsters, &h.Amulets, &h.Looks[0], &h.Looks[1], &h.Looks[2])
 	return h, err
 }
 
@@ -273,12 +348,12 @@ func (s *Store) Hero(name string) (*netplay.Hero, error) {
 // SaveHero stores the hero and counters (0x004475F8, called on logout, quit,
 // every score change and the session's end).
 func (s *Store) SaveHero(name string, h *netplay.Hero) error {
-	res, err := s.db.Exec(`UPDATE accounts SET level = ?, class = ?, model = ?, palette = ?, experience = ?, gold = ?,
+	res, err := s.db.Exec(`UPDATE accounts SET level = ?, class = ?, model = ?, palette = ?, free_points = ?, gold = ?,
 		charisma = ?, strength = ?, dexterity = ?, endurance = ?,
 		fencing = ?, archery = ?, identification = ?, trade = ?, smithing = ?, carpentry = ?, herbalism = ?,
 		rating = ?, kills_heroes = ?, kills_hirelings = ?, kills_monsters = ?, amulets = ?
 		WHERE name = ?`,
-		h.Level, h.Class, h.Model, h.Palette, h.Experience, h.Gold,
+		h.Level, h.Class, h.Model, h.Palette, h.FreePoints, h.Gold,
 		h.Charisma, h.Strength, h.Dexterity, h.Endurance,
 		h.Fencing, h.Archery, h.Identification, h.Trade, h.Smithing, h.Carpentry, h.Herbalism,
 		h.Rating, h.KillsHeroes, h.KillsHirelings, h.KillsMonsters, h.Amulets, name)

@@ -85,7 +85,7 @@ func (a *sceneAssets) lanWorld(gameDir string, exe *gamestate.LANExe, at netplay
 // hero entity: level, gold, experience, the skills and stats, the model and
 // its palette (index × 512 = the palette's byte offset in GRAPH.RES).
 func applyLANHero(e *gamestate.Entity, h *netplay.Hero) {
-	e.Level, e.Gold, e.Experience = h.Level, h.Gold, h.Experience
+	e.Level, e.Gold, e.FreeExp = h.Level, h.Gold, h.FreePoints
 	e.Fencing, e.Marksmanship = h.Fencing, h.Archery
 	e.Skills = [5]int{h.Herbalism, h.Smithing, h.Trade, h.Carpentry, h.Identification}
 	e.BaseStats = [4]int{h.Charisma, h.Strength, h.Dexterity, h.Endurance}

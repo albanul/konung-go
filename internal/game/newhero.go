@@ -52,10 +52,17 @@ type newHeroScreen struct {
 	text int              // description shown (0x00462F3C + text·512), −1 = none
 	ok   bool             // «Ok» pressed: drawn pressed for one frame, then the game starts
 
-	preview    *ebiten.Image
-	previewDX  int // preview image offset from the body's image top-left
-	previewDY  int
-	previewKey previewKey // what the preview was built from
+	preview heroPreview
+}
+
+// heroPreview is a creation screen's hero picture (single-player
+// hotspot 22, LAN hotspot 22): the body with its equipment overlays,
+// rebuilt when what it shows changes.
+type heroPreview struct {
+	img    *ebiten.Image
+	dx, dy int        // image offset from the body's image top-left
+	key    previewKey // what the image was built from
+	built  bool
 }
 
 type previewKey struct {
@@ -231,27 +238,32 @@ func (s *newHeroScreen) drawMarker(dst *ebiten.Image, i int) {
 // drawPreview draws the hero in the stance with the preview gear, its body
 // image top-left at hotspot 22 + (60, 20), clipped to 160×160.
 func (s *newHeroScreen) drawPreview(dst *ebiten.Image) {
-	e := s.hero
+	r := rect800(gamestate.NewHeroPreview)
+	s.preview.draw(dst, s.hero, s.graph, s.items, s.tables, r[0], r[1])
+}
+
+// draw draws e with its body image top-left at (x, y) + (60, 20), clipped
+// to the 160×160 square at (x, y) (0x004303B2–0x00430553; the LAN screen
+// 0x00427D14 the same way). items holds e's equipment items.
+func (p *heroPreview) draw(dst *ebiten.Image, e gamestate.Entity, graph []byte, items *gamestate.Game, t *resfmt.ExeTables, x, y int) {
 	key := previewKey{e.Model, e.PaletteOffset, e.WeaponMode, e.Type, e.Variant, e.Equipment}
-	if s.preview == nil || key != s.previewKey {
-		s.previewKey = key
-		s.preview = nil
+	if !p.built || key != p.key {
+		p.key, p.built, p.img = key, true, nil
 		spec := e.ModelSpec()
-		body, err := resfmt.LoadEntitySprite(nil, s.graph, spec)
+		body, err := resfmt.LoadEntitySprite(nil, graph, spec)
 		if err != nil {
 			return
 		}
-		img, err := resfmt.ComposeEquipment(s.graph, body, spec, s.items.Overlays(e, s.tables), s.tables)
+		img, err := resfmt.ComposeEquipment(graph, body, spec, items.Overlays(e, t), t)
 		if err != nil {
 			return
 		}
-		s.preview = toEbiten(img.Image)
-		s.previewDX, s.previewDY = img.ImageDX-body.ImageDX, img.ImageDY-body.ImageDY
+		p.img = toEbiten(img.Image)
+		p.dx, p.dy = img.ImageDX-body.ImageDX, img.ImageDY-body.ImageDY
 	}
-	if s.preview == nil {
+	if p.img == nil {
 		return
 	}
-	r := rect800(gamestate.NewHeroPreview)
-	clip := dst.SubImage(image.Rect(r[0], r[1], r[0]+previewSize, r[1]+previewSize)).(*ebiten.Image)
-	drawAt(clip, s.preview, r[0]+previewBodyX+s.previewDX, r[1]+previewBodyY+s.previewDY)
+	clip := dst.SubImage(image.Rect(x, y, x+previewSize, y+previewSize)).(*ebiten.Image)
+	drawAt(clip, p.img, x+previewBodyX+p.dx, y+previewBodyY+p.dy)
 }

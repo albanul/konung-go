@@ -20,6 +20,7 @@ const (
 	lanMenuRectsVA  = 0x00479884 // LAN menu (ME800R)
 	lanLoginRectsVA = 0x0047E7A4 // login «Новая игра» (PLAY800R frame 0)
 	lanMsgRectsVA   = 0x00478F90 // message box buttons
+	lanNewRectsVA   = 0x0047DE24 // «Новый герой» (NEW800R), lanhero.go
 	lanMessagesVA   = 0x0047E264 // message texts: 0x80-byte records, line 2 at +0x40
 	lanMessageCount = 9          // ids 0 (none) … 8
 
@@ -55,6 +56,9 @@ func HitRects(rects []Rect, x, y int) int {
 // LANExe holds the LAN screens' layout and texts.
 type LANExe struct {
 	MenuRects, LoginRects, MessageRects []Rect
+	// NewHeroRects are «Новый герой»'s 33 hotspots (NewHeroOK… in
+	// newhero.go name the shared ones; LANNewClan… the LAN's own).
+	NewHeroRects []Rect
 	// Messages[id] are the message box's two CP866 lines (id 1–8; 0 none).
 	Messages [lanMessageCount][2][]byte
 	// Map is the map window's area (800×600) and row runs; a run's region is
@@ -92,7 +96,7 @@ var LoginModels = [3]int{1, 2, 0}
 
 // Message box ids (texts at 0x0047E264).
 const (
-	MsgOldHero      = 1 // the only one with Ok and Отмена
+	MsgOldHero      = 1 // the only one with Ok and Отмена (MessageRects 2 and 3)
 	MsgVersion      = 2
 	MsgTooMany      = 3
 	MsgNoName       = 4
@@ -140,6 +144,12 @@ func ParseLANExe(exe []byte) (*LANExe, error) {
 	}
 	if x.MessageRects, err = rects(lanMsgRectsVA); err != nil {
 		return nil, err
+	}
+	if x.NewHeroRects, err = rects(lanNewRectsVA); err != nil {
+		return nil, err
+	}
+	if len(x.NewHeroRects) != NewHeroHotspots {
+		return nil, fmt.Errorf("LAN_KONG.EXE: %d «Новый герой» hotspots, want %d", len(x.NewHeroRects), NewHeroHotspots)
 	}
 	if len(x.MenuRects) != 5 || len(x.LoginRects) != LoginSavePass+1 {
 		return nil, fmt.Errorf("LAN_KONG.EXE: %d menu and %d login hotspots, want 5 and %d", len(x.MenuRects), len(x.LoginRects), LoginSavePass+1)

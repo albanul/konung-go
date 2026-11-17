@@ -21,13 +21,14 @@ import (
 // The LAN version's screens (LAN_KONG.EXE, docs/konung_lan.md#screens),
 // rebuilt on the port's own network layer (internal/netplay). States follow
 // the exe's [0x009EB9EC]: the LAN menu (3), the rating screen (2) and the
-// login screen «Новая игра» (5) with its message box and the wait for the
-// server to start the game (0).
+// login screen «Новая игра» (5) with its message box, the wait for the
+// server to start the game (0) and «Новый герой» (4, lannewhero.go).
 const (
 	lanMenu = iota
 	lanRating
 	lanLogin
 	lanWaiting
+	lanNewHero
 )
 
 // LAN menu items (hotspots 0x00479884, actions 0x0042E358) and the
@@ -71,21 +72,21 @@ type lanUI struct {
 	play     []*ebiten.Image // PLAY800R frames
 	font     *gameFont       // text (the LAN exe's own fonts are not mapped; the save screen's pair stands in)
 	focusFnt *gameFont       // the focused field
-	msgText  [10][2][]byte   // message box lines by id
+	msgText  [11][2][]byte   // message box lines by id
 
 	state, hover int
 	msg          int // message box id, 0 = none
 
-	// Login fields; focus is the exe's [0x00A6EAE4]: 0 none, 2 name,
-	// 3 password, 6 address.
-	focus             int
-	name, pass, addr  gamestate.TextField
-	savePass          bool
-	model             int // hero model of the selected portrait
-	scroll            int
-	found             []netplay.Found
-	discovering, busy bool
-	tick              int
+	// Login fields; focus is the exe's [0x00A6EAE4]: 0 none, 1 clan
+	// («Новый герой»), 2 name, 3 password, 6 address.
+	focus                  int
+	name, pass, addr, clan gamestate.TextField
+	savePass               bool
+	model                  int // hero model of the selected portrait
+	scroll                 int
+	found                  []netplay.Found
+	discovering, busy      bool
+	tick                   int
 
 	cfg     gamestate.LANConfig
 	cfgPath string
@@ -105,9 +106,24 @@ type lanUI struct {
 	// the LAN world, queued from the wait on (the server sends the heroes
 	// already in the world right after the start); the menu applies them.
 	worldMsgs []*netplay.Message
+
+	// «Новый герой» (lannewhero.go); newFrames nil = NEW800R.RES missing.
+	newFrames  []*ebiten.Image
+	graph      []byte
+	tables     *resfmt.ExeTables
+	items      *gamestate.Game // empty: the LAN template has no equipment
+	nh         gamestate.Entity
+	looks      [3]int   // look per hero type
+	clans      [][]byte // CP866: CLANS.CFG, typed ones, the server's
+	clanScroll int
+	preview    heroPreview
+	// pending is the build «Ok» kept for the next join; pendingRow is the
+	// server row waiting for «Старый персонаж будет удален!».
+	pending    *netplay.HeroChoice
+	pendingRow int
 }
 
-func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath string) (*lanUI, error) {
+func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath, newPath string) (*lanUI, error) {
 	exeData, err := os.ReadFile(filepath.Join(gameDir, "LAN_KONG.EXE"))
 	if err != nil {
 		return nil, err
@@ -145,14 +161,21 @@ func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath string) (*la
 	}
 	copy(u.msgText[:], exe.Messages[:])
 	u.msgText[msgNameTaken] = [2][]byte{cp866("Ошибка: Игрок с таким именем уже в игре"), nil}
+	u.msgText[msgBadHero] = [2][]byte{cp866("Ошибка: Сервер не принял нового героя"), nil}
 
 	data, _ := os.ReadFile(u.cfgPath)
 	u.cfg = gamestate.ParseLANConfig(data)
 	u.name = gamestate.TextField{Text: u.cfg.Name, Max: gamestate.FieldName}
 	u.pass = gamestate.TextField{Text: u.cfg.Password, Max: gamestate.FieldPassword}
 	u.addr = gamestate.TextField{Max: gamestate.FieldAddress}
+	u.clan = gamestate.TextField{Text: u.cfg.Clan, Max: gamestate.FieldClan}
 	u.savePass = u.cfg.SavePassword
 	u.gameDir = gameDir
+	if newPath != "" {
+		if err := u.loadNewHero(newPath, assets); err != nil {
+			log.Printf("«Новый герой» unavailable: %v", err)
+		}
+	}
 	return u, nil
 }
 
@@ -185,7 +208,7 @@ func (u *lanUI) escape() bool {
 	case u.state == lanWaiting:
 		u.disconnect()
 		u.state = lanLogin
-	case u.state == lanRating, u.state == lanLogin:
+	case u.state == lanRating, u.state == lanLogin, u.state == lanNewHero:
 		u.toMenu()
 	default:
 		u.disconnect()
@@ -214,6 +237,8 @@ func (u *lanUI) update() bool {
 		}
 	case lanLogin:
 		u.updateLogin(mx, my, click)
+	case lanNewHero:
+		u.updateNewHero(mx, my, click)
 	case lanWaiting:
 		// The original waits here for the server to start the game
 		// (state 0 → 10); the networked game is not ported yet.
@@ -232,8 +257,10 @@ func (u *lanUI) menuItem(item int) {
 		u.enterLogin()
 	case lanItemExit:
 		u.leaveLAN = true
-	case lanItemSettings, lanItemNewHero:
-		// «Установки» (state 8) and «Новый герой» (state 4) are not ported yet.
+	case lanItemNewHero:
+		u.openNewHero()
+	case lanItemSettings:
+		// «Установки» (state 8) is not ported yet.
 	}
 }
 
@@ -377,6 +404,24 @@ func (u *lanUI) updateLogin(mx, my int, click bool) {
 	if u.focus != 0 {
 		u.typeText()
 	}
+	if u.msg == gamestate.MsgOldHero {
+		// «Старый персонаж будет удален!»: Ok (hotspot 2, 0x0042DBDB) joins
+		// with the build; Отмена (3, 0x0042D9D8) drops it for the LAN menu.
+		if !click {
+			return
+		}
+		switch gamestate.HitRects(u.exe.MessageRects[2:4], mx, my) {
+		case 0:
+			sfx.play(gamestate.SoundClick, 0, 0)
+			u.msg = 0
+			u.join(u.pendingRow, u.pending)
+		case 1:
+			sfx.play(gamestate.SoundClick, 0, 0)
+			u.pending = nil
+			u.toMenu()
+		}
+		return
+	}
 	if u.msg != 0 {
 		// One «Ok» closes the message box (hotspot 4 at (347,347)).
 		if click && gamestate.HitRects(u.exe.MessageRects[4:5], mx, my) == 0 {
@@ -458,26 +503,41 @@ func (u *lanUI) pickRow(row int) {
 		u.msg = gamestate.MsgNoName
 		return
 	}
+	if u.pending != nil {
+		// A build from «Новый герой» replaces the account's hero: warn
+		// first (message 1, 0x0042ED8F).
+		u.pendingRow, u.msg = row, gamestate.MsgOldHero
+		return
+	}
+	u.join(row, nil)
+}
+
+// join logs in to server row, with a «Новый герой» build or without.
+func (u *lanUI) join(row int, build *netplay.HeroChoice) {
+	if row >= len(u.found) || u.busy {
+		return
+	}
 	u.disconnect()
 	u.saveConfig()
 	join := netplay.JoinInfo{
 		Name:     resfmt.CP866ToUTF8(u.name.Text),
 		Password: resfmt.CP866ToUTF8(u.pass.Text),
-		Clan:     resfmt.CP866ToUTF8(u.cfg.Clan),
+		Clan:     resfmt.CP866ToUTF8(u.clan.Text),
 		Model:    u.model,
+		NewHero:  build,
 	}
 	u.busy = true
 	addr := u.found[row].Addr
 	go func() {
 		c, err := netplay.Dial(addr, join, netplay.Options{})
-		u.results <- func() { u.joined(c, err) }
+		u.results <- func() { u.joined(c, err, build != nil) }
 	}()
 }
 
 // joined applies a join result; refusals show the exe's messages (the login
 // answer 0x0042062C: 2 version, 3 too many players, 7 wrong password; 5 when
 // the server cannot be reached).
-func (u *lanUI) joined(c *netplay.Client, err error) {
+func (u *lanUI) joined(c *netplay.Client, err error, rebuilt bool) {
 	u.busy = false
 	if err != nil {
 		log.Printf("LAN: %v", err)
@@ -493,6 +553,8 @@ func (u *lanUI) joined(c *netplay.Client, err error) {
 				u.msg = msgNameTaken
 			case netplay.ErrPassword:
 				u.msg = gamestate.MsgWrongPass
+			case netplay.ErrHero:
+				u.msg, u.pending = msgBadHero, nil
 			}
 		}
 		return
@@ -503,6 +565,15 @@ func (u *lanUI) joined(c *netplay.Client, err error) {
 	}
 	u.client = c
 	u.session, u.hero = c.Session.Name, c.Hero
+	if rebuilt {
+		u.pending = nil // the server rebuilt the hero
+	}
+	if c.Hero != nil {
+		u.looks = c.Hero.Looks
+	}
+	for _, name := range c.Clans {
+		u.addClan(cp866(name))
+	}
 	u.player = ""
 	for _, p := range c.Session.Players {
 		if p.ID == c.PlayerID {
@@ -551,6 +622,8 @@ func (u *lanUI) field() (*gamestate.TextField, int) {
 	var f *gamestate.TextField
 	var r gamestate.Rect
 	switch u.focus {
+	case 1:
+		f, r = &u.clan, u.exe.NewHeroRects[gamestate.LANNewClan]
 	case 2:
 		f, r = &u.name, u.exe.LoginRects[gamestate.LoginName]
 	case 3:
@@ -572,6 +645,7 @@ func (u *lanUI) commitField() {
 
 func (u *lanUI) saveConfig() {
 	u.cfg.Name, u.cfg.Password, u.cfg.SavePassword = u.name.Text, u.pass.Text, u.savePass
+	u.cfg.Clan = u.clan.Text
 	if u.focus != 6 && len(u.addr.Text) > 0 && u.session == "" {
 		u.cfg.Address = u.addr.Text
 	}
@@ -595,6 +669,8 @@ func (u *lanUI) draw(dst *ebiten.Image) {
 		dst.DrawImage(u.play[playRating], nil)
 	case lanLogin, lanWaiting:
 		u.drawLogin(dst)
+	case lanNewHero:
+		u.drawNewHero(dst)
 	}
 }
 
@@ -618,17 +694,7 @@ func (u *lanUI) drawLogin(dst *ebiten.Image) {
 	drawAt(dst, u.play[ok], R[gamestate.LoginOk].X1, R[gamestate.LoginOk].Y1)
 	drawAt(dst, u.play[playCancel], R[gamestate.LoginCancel].X1, R[gamestate.LoginCancel].Y1)
 
-	cursor := []byte{}
-	if u.tick/15%2 == 0 { // the '_' blinks with the tick counter
-		cursor = []byte{'_'}
-	}
-	text := func(focus int, t []byte, r gamestate.Rect) {
-		f := u.font
-		if u.focus == focus {
-			f, t = u.focusFnt, append(append([]byte(nil), t...), cursor...)
-		}
-		f.drawLine(dst, clip(f, t, r.X2-r.X1-10), r.X1+5, r.Y1+5)
-	}
+	text := func(focus int, t []byte, r gamestate.Rect) { u.fieldText(dst, focus, t, r) }
 	text(2, u.name.Text, R[gamestate.LoginName])
 	text(3, u.pass.Text, R[gamestate.LoginPassword])
 	addr := u.addr.Text
@@ -682,8 +748,29 @@ func (u *lanUI) drawMessage(dst *ebiten.Image) {
 			y += 2 * resfmt.LineHeight
 		}
 	}
+	if u.msg == gamestate.MsgOldHero {
+		r := u.exe.MessageRects[2]
+		drawAt(dst, u.play[playOk], r.X1, r.Y1)
+		r = u.exe.MessageRects[3]
+		drawAt(dst, u.play[playCancel], r.X1, r.Y1)
+		return
+	}
 	r := u.exe.MessageRects[4]
 	drawAt(dst, u.play[playOk], r.X1, r.Y1)
+}
+
+// fieldText draws a text field's text at its hotspot's top-left +5,+5;
+// the field being edited in the focus font with the blinking '_'.
+func (u *lanUI) fieldText(dst *ebiten.Image, focus int, t []byte, r gamestate.Rect) {
+	f := u.font
+	if u.focus == focus {
+		t = append([]byte(nil), t...)
+		if u.tick/15%2 == 0 { // the '_' blinks with the tick counter
+			t = append(t, '_')
+		}
+		f = u.focusFnt
+	}
+	f.drawLine(dst, clip(f, t, r.X2-r.X1-10), r.X1+5, r.Y1+5)
 }
 
 // heroValues are the login screen's stat texts after login (0x0042959C),
@@ -691,11 +778,12 @@ func (u *lanUI) drawMessage(dst *ebiten.Image) {
 // Золото, Макс. груз, Макс. отряд; «Навыки» Фехтование, Меткость,
 // Идентификация, Торговля, Кузнечное дело, Плотницкое дело, Знахарство.
 // Фехтование and Меткость are stored ×100. «Макс. груз» and «Макс. отряд»
-// are derived in the original (not stored) and stay empty here.
+// are derived from Вын and Хар with the LAN tables (gamestate/lanhero.go).
 func heroValues(h *netplay.Hero) [14]string {
 	n := strconv.Itoa
+	weight := fmt.Sprintf("%.1f", float64(gamestate.LANMaxWeight(h.Endurance))*0.001)
 	return [14]string{
-		n(h.Charisma), n(h.Strength), n(h.Dexterity), n(h.Endurance), n(h.Gold), "", "",
+		n(h.Charisma), n(h.Strength), n(h.Dexterity), n(h.Endurance), n(h.Gold), weight, n(gamestate.LANMaxParty(byte(h.Class), h.Charisma)),
 		n(h.Fencing / 100), n(h.Archery / 100), n(h.Identification), n(h.Trade), n(h.Smithing), n(h.Carpentry), n(h.Herbalism),
 	}
 }

@@ -1,6 +1,7 @@
 package lanstore
 
 import (
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -217,5 +218,90 @@ func TestServerWithStore(t *testing.T) {
 	var je *netplay.JoinError
 	if _, err := netplay.Dial(srv.Addr().String(), netplay.JoinInfo{Name: "Volk", Password: "bad"}, netplay.Options{}); !errors.As(err, &je) || je.Code != netplay.ErrPassword {
 		t.Errorf("wrong password: %v", err)
+	}
+}
+
+// «Новый герой» rebuilds the hero: the choice's values, level 1, the
+// starting gold, no items; rating and counters stay; the clan changes only
+// here. The session's hero type picks the look's palette.
+func TestNewHero(t *testing.T) {
+	s, _ := open(t)
+	s.Login(netplay.JoinInfo{Name: "Volk", Password: "p", Clan: "Русские", Model: 0})
+	h, _ := s.Hero("Volk")
+	h.Level, h.Gold, h.Rating, h.KillsHeroes = 7, 5000, 1800, 4
+	s.SaveHero("Volk", h)
+	s.SaveItems("Volk", []Item{{Slot: SlotBag, Category: 9, Type: 2}})
+
+	// A plain login does not change the clan.
+	if _, _, err := s.Login(netplay.JoinInfo{Name: "Volk", Password: "p", Clan: "Викинги", Model: 0}); err != nil {
+		t.Fatal(err)
+	}
+	if clanOf(t, s, "Volk") != "Русские" {
+		t.Error("plain login changed the clan")
+	}
+
+	choice := &netplay.HeroChoice{Class: 4, Archery: true, Skill: 1, Stats: [4]int{26, 2, 3, 7}, Looks: [3]int{1, 2, 7}}
+	h, created, err := s.Login(netplay.JoinInfo{Name: "Volk", Password: "p", Clan: "Викинги", Model: 2, NewHero: choice})
+	if err != nil || created {
+		t.Fatalf("rebuild: %v, created %v", err, created)
+	}
+	if h.Level != 1 || h.Gold != 1000 || h.Class != 4 || h.Charisma != 26 || h.Strength != 2 || h.Archery != 100 || h.Fencing != 0 ||
+		h.Trade != 20 || h.FreePoints != 0 || h.Rating != 1800 || h.KillsHeroes != 4 || h.Looks != [3]int{1, 2, 7} ||
+		h.Model != 2 || h.Palette != 112 {
+		t.Errorf("rebuilt hero = %+v", h)
+	}
+	if clanOf(t, s, "Volk") != "Викинги" {
+		t.Error("«Новый герой» did not change the clan")
+	}
+	if items, _ := s.LoadItems("Volk"); len(items) != 0 {
+		t.Errorf("items kept: %+v", items)
+	}
+	// Another session as Волк: that type's look.
+	if h, _, _ := s.Login(netplay.JoinInfo{Name: "Volk", Password: "p", Model: 0}); h.Model != 0 || h.Palette != 71 {
+		t.Errorf("as model 0: model %d palette %d", h.Model, h.Palette)
+	}
+	// A wrong password does not rebuild; an impossible build is refused.
+	if _, _, err := s.Login(netplay.JoinInfo{Name: "Volk", Password: "x", NewHero: choice}); !errors.Is(err, netplay.ErrWrongPassword) {
+		t.Errorf("wrong password: %v", err)
+	}
+	bad := &netplay.HeroChoice{Class: 5, Stats: [4]int{30, 30, 30, 30}}
+	if _, _, err := s.Login(netplay.JoinInfo{Name: "Volk", Password: "p", NewHero: bad}); !errors.Is(err, netplay.ErrBadHero) {
+		t.Errorf("impossible build: %v", err)
+	}
+	if clans, _ := s.Clans(); len(clans) != 3 || clans[2] != "Викинги" {
+		t.Errorf("clans = %v", clans)
+	}
+}
+
+func clanOf(t *testing.T, s *Store, name string) string {
+	t.Helper()
+	var c string
+	if err := s.db.QueryRow(`SELECT c.name FROM accounts a JOIN clans c ON c.id = a.clan_id WHERE a.name = ?`, name).Scan(&c); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// A version-1 database (before the looks) opens with its accounts intact.
+func TestMigrateV1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "konung.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(schema + `INSERT INTO clans VALUES (0, 'Византийцы');
+		INSERT INTO accounts (name, password, palette, model, experience, created_at, last_login) VALUES ('Old', 'x', 28, 1, 42, '', '');
+		PRAGMA user_version = 1;`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	h, err := s.Hero("Old")
+	if err != nil || h.FreePoints != 42 || h.Looks != [3]int{} || h.Palette != 28 {
+		t.Errorf("migrated hero = %+v, %v", h, err)
 	}
 }

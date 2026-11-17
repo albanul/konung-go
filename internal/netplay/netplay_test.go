@@ -618,3 +618,22 @@ func TestWorldRelay(t *testing.T) {
 		}
 	}
 }
+
+// A «Новый герой» build the screen cannot produce is refused at the door.
+func TestJoinRefusesBadHero(t *testing.T) {
+	srv, err := Listen("127.0.0.1:0", ServerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	var je *JoinError
+	_, err = Dial(srv.Addr().String(), JoinInfo{Name: "Volk", NewHero: &HeroChoice{Class: 5, Stats: [4]int{30, 30, 30, 30}}}, Options{})
+	if !errors.As(err, &je) || je.Code != ErrHero {
+		t.Errorf("impossible hero: %v", err)
+	}
+	c, err := Dial(srv.Addr().String(), JoinInfo{Name: "Volk", NewHero: &HeroChoice{Class: 5, Skill: 0, Stats: [4]int{3, 15, 3, 10}}}, Options{})
+	if err != nil {
+		t.Fatalf("template hero: %v", err)
+	}
+	c.Close()
+}

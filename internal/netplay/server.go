@@ -55,8 +55,17 @@ type AccountStore interface {
 	Login(j JoinInfo) (hero *Hero, created bool, err error)
 }
 
+// ClanLister is an AccountStore that also lists its clans for the welcome
+// (the «Новый герой» clan list).
+type ClanLister interface {
+	Clans() ([]string, error)
+}
+
 // ErrWrongPassword is an AccountStore's answer to a wrong password.
 var ErrWrongPassword = errors.New("netplay: wrong password")
+
+// ErrBadHero is an AccountStore's answer to a NewHero it refuses.
+var ErrBadHero = errors.New("netplay: invalid hero")
 
 func (c ServerConfig) withDefaults() ServerConfig {
 	if c.Name == "" {
@@ -356,6 +365,12 @@ func (s *Server) join(conn *Conn) (*serverPlayer, bool) {
 		return refuse(ErrClan, fmt.Sprintf("clan must be at most %d characters", MaxClanLen))
 	}
 
+	if j.NewHero != nil {
+		if _, err := j.NewHero.Build(); err != nil {
+			return refuse(ErrHero, err.Error())
+		}
+	}
+
 	j.Name, j.Clan = name, clan
 	created := false
 	var hero *Hero
@@ -365,9 +380,16 @@ func (s *Server) join(conn *Conn) (*serverPlayer, bool) {
 		switch {
 		case errors.Is(err, ErrWrongPassword):
 			return refuse(ErrPassword, "wrong password")
+		case errors.Is(err, ErrBadHero):
+			return refuse(ErrHero, err.Error())
 		case err != nil:
 			return refuse(ErrServer, "account store unavailable")
 		}
+	}
+
+	var clans []string
+	if l, ok := s.cfg.Accounts.(ClanLister); ok {
+		clans, _ = l.Clans()
 	}
 
 	s.mu.Lock()
@@ -389,7 +411,7 @@ func (s *Server) join(conn *Conn) (*serverPlayer, bool) {
 	p := &serverPlayer{info: PlayerInfo{ID: newID(), Name: name, Clan: clan, Model: j.Model, New: created}, conn: conn, hero: hero}
 	s.players[p.info.ID] = p
 	s.order = append(s.order, p.info.ID)
-	conn.Send(mustMessage(MsgWelcome, WelcomePayload{PlayerID: p.info.ID, Session: s.sessionLocked(), Hero: hero}))
+	conn.Send(mustMessage(MsgWelcome, WelcomePayload{PlayerID: p.info.ID, Session: s.sessionLocked(), Hero: hero, Clans: clans}))
 	s.broadcastLocked(mustMessage(MsgPlayerJoined, p.info), p.info.ID)
 	s.mu.Unlock()
 	if s.cfg.OnJoin != nil {
