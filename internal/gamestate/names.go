@@ -28,6 +28,15 @@ func Name(e Entity, t *resfmt.ExeTables) []byte {
 	return out
 }
 
+// EntityName is e's name: the override in g.Names (a LAN player's
+// account name), else Name.
+func (g *Game) EntityName(e Entity, t *resfmt.ExeTables) []byte {
+	if n, ok := g.Names[e.Index]; ok {
+		return append([]byte(nil), n...)
+	}
+	return Name(e, t)
+}
+
 // levelHealth is 0x0042C9F4: ", Уров:<level>, Здор:<(HP+15)/16>".
 func levelHealth(e Entity, t *resfmt.ExeTables) []byte {
 	out := append([]byte(nil), t.CString(0x00450318)...)
@@ -47,7 +56,7 @@ func levelHealth(e Entity, t *resfmt.ExeTables) []byte {
 //     others: ", враг" if the group is hostile (group +0x1D bit 0x01), else
 //     their settlement role (post slot), else the skill phrases.
 func (g *Game) StatusLine(e Entity, t *resfmt.ExeTables) []byte {
-	out := Name(e, t)
+	out := g.EntityName(e, t)
 	f := int(e.Flags4 & 0x7F)
 	if f&0x40 != 0 {
 		if f <= 0x50 {

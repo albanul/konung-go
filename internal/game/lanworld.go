@@ -18,7 +18,7 @@ import (
 // serves as the template for everything the scene needs from a GAME.N (items,
 // sprites, the HUD's party); the LAN world's own characters (GAME.RES
 // entities) and the other players are not placed yet.
-func (a *sceneAssets) lanWorld(gameDir string, exe *gamestate.LANExe, at netplay.EnterPayload, hero *netplay.Hero, model int) (*startScene, error) {
+func (a *sceneAssets) lanWorld(gameDir string, exe *gamestate.LANExe, at netplay.EnterPayload, hero *netplay.Hero, model int, name string) (*startScene, error) {
 	data, err := readGameFile(gameDir, "MAPS.RES")
 	if err != nil {
 		return nil, err
@@ -74,6 +74,10 @@ func (a *sceneAssets) lanWorld(gameDir string, exe *gamestate.LANExe, at netplay
 		return nil, err
 	}
 	game.EnterLANWorld(at.Map, at.Row, at.Col, at.Facing, exits)
+	// The hero carries the player's name, not the template's (Волк…).
+	if name != "" {
+		game.Names = map[int][]byte{game.Groups[0].First: cp866(name)}
+	}
 	return la.buildScene(game, at.Map, nil, nil)
 }
 

@@ -93,7 +93,7 @@ func (w *tradeWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resf
 	h.draw(view, resfmt.TradeCloseSlot, l.Buttons[0].Min.X, l.Buttons[0].Min.Y)
 	h.draw(view, resfmt.TradeOkSlot, l.Buttons[1].Min.X, l.Buttons[1].Min.Y)
 	if tr.NPC >= 0 {
-		name := gamestate.Name(g.Entities[tr.NPC], t)
+		name := g.EntityName(g.Entities[tr.NPC], t)
 		w.large.drawLine(view, name, (viewLeft+viewRight)/2-w.large.font.Width(name)/2, l.NameY)
 	}
 	shown := g.Entities[tr.Shown]

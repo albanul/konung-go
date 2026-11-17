@@ -139,7 +139,7 @@ func (w *charWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, t *resfm
 	}
 	h.draw(dst, resfmt.CharWindowBackground, viewLeft, viewTop)
 	centre := (viewLeft + viewRight) / 2
-	name := gamestate.Name(e, t)
+	name := g.EntityName(e, t)
 	w.large.drawLine(dst, name, centre-w.large.font.Width(name)/2, l.NameY)
 	if !e.Animated() {
 		title := t.CharWindowTitle(int(e.Flags4 & 7))

@@ -2,6 +2,7 @@ package game
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"konung1.5/internal/gamestate"
@@ -23,7 +24,7 @@ func TestLANWorldWithoutAccount(t *testing.T) {
 		t.Skip("assets missing:", err)
 	}
 	for m, at := range []netplay.EnterPayload{{Map: 1, Row: 110, Col: 32, Facing: 2}, {Map: 4, Row: 66, Col: 57}, {Map: 7, Row: 65, Col: 8, Facing: 4}} {
-		s, err := a.lanWorld(dir, nil, at, nil, m)
+		s, err := a.lanWorld(dir, nil, at, nil, m, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +46,7 @@ func TestLANWorld(t *testing.T) {
 	hero := &netplay.Hero{Level: 3, Model: 2, Palette: 35, Gold: 250, Charisma: 4, Strength: 16, Dexterity: 5, Endurance: 11,
 		Fencing: 150, Archery: 20, Herbalism: 50, Smithing: 10, Trade: 10, Carpentry: 1, Identification: 20}
 	at := netplay.EnterPayload{Map: 7, Row: 65, Col: 8, Facing: 4}
-	s, err := a.lanWorld(dir, nil, at, hero, 0)
+	s, err := a.lanWorld(dir, nil, at, hero, 0, "Снежок")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +56,13 @@ func TestLANWorld(t *testing.T) {
 	e := s.party[0]
 	if e.Model != 2 || e.PaletteOffset != 35*512 || e.Gold != 250 || e.Level != 3 || e.BaseStats != [4]int{4, 16, 5, 11} || e.Fencing != 150 {
 		t.Errorf("hero entity = %+v", e)
+	}
+	// The hero carries the account's name, in the status line too.
+	if got := resfmt.CP866ToUTF8(s.game.EntityName(e, s.tables)); got != "Снежок" {
+		t.Errorf("hero name %q", got)
+	}
+	if got := resfmt.CP866ToUTF8(s.game.StatusLine(e, s.tables)); !strings.HasPrefix(got, "Снежок, ") {
+		t.Errorf("status line %q", got)
 	}
 	if len(s.npcs) != 0 || len(s.party) != 1 {
 		t.Errorf("%d characters besides a party of %d", len(s.npcs), len(s.party))
@@ -83,7 +91,7 @@ func TestLANWorldChangesMap(t *testing.T) {
 	if err != nil {
 		t.Skip("assets missing:", err)
 	}
-	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0)
+	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +187,7 @@ func TestLANRemotePlayers(t *testing.T) {
 	if err != nil {
 		t.Skip("assets missing:", err)
 	}
-	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0)
+	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,6 +206,9 @@ func TestLANRemotePlayers(t *testing.T) {
 		t.Fatalf("remote walker = %+v", n)
 	}
 	e := s.game.Entities[r.entity]
+	if got := resfmt.CP866ToUTF8(s.game.EntityName(e, s.tables)); got != "Ragnar" {
+		t.Errorf("remote name %q", got)
+	}
 	if e.Model != 2 || e.PaletteOffset != 36*512 || e.Level != 4 || e.Group == 0 || s.partyIndex(r.entity) >= 0 {
 		t.Errorf("remote entity: model %d palette %#x level %d group %d", e.Model, e.PaletteOffset, e.Level, e.Group)
 	}
@@ -262,7 +273,7 @@ func TestLANRemoteEquipment(t *testing.T) {
 	if err != nil {
 		t.Skip("assets missing:", err)
 	}
-	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0)
+	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}

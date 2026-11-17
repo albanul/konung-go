@@ -94,6 +94,10 @@ type Game struct {
 	Settlements []Settlement // section 6: villages with their named-character posts
 	Piles       []Pile       // section 3: items lying on the ground
 	Exits       []MapExit    // section 4: map exits (teleports), see exits.go
+	// Names overrides entity names (CP866) by entity index: in a LAN world
+	// the heroes are named by their players' accounts, not the first-name
+	// table. nil = every name from the tables (Name).
+	Names map[int][]byte
 	// Lit is 0x00A3E758: the visible piles glow (resfmt.LightsGlow). Set by
 	// «Чистая слеза» (UseHerb) and the torch (UseMisc); the map loader
 	// clears it (0x0043C11B).

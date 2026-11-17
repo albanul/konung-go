@@ -4,24 +4,29 @@
 #   scripts/konung-server.sh start     build the image if needed, create and start the server
 #   scripts/konung-server.sh update    rebuild the image and restart (accounts are kept)
 #   scripts/konung-server.sh stop      stop the server
-#   scripts/konung-server.sh restart   stop and start again
+#   scripts/konung-server.sh restart   stop and start again (applies changed settings)
 #   scripts/konung-server.sh logs      follow the server log (Ctrl+C to leave)
 #   scripts/konung-server.sh status    show whether it runs, and the data volume
 #   scripts/konung-server.sh build     only build the image
 #   scripts/konung-server.sh reset     delete the server AND its data (all accounts); asks first
 #
-# Settings (environment variables):
+# Settings (environment variables), applied at every start:
+#   KONUNG_NAME=              the server's name in the game's server list, e.g.
+#                             KONUNG_NAME="Мой сервер" scripts/konung-server.sh restart
+#                             (default: line 2 of the SERVER file, else
+#                             «Стандартный Сервер с Командной игрой»)
 #   KONUNG_PORT=7777          host port for the game (TCP) and LAN discovery (UDP)
 #   KONUNG_ASSETS=assets/Konung   folder with GAME.RES (required) and SERVER (optional)
 #   KONUNG_NETWORK=           set to "host" to use the host's network directly; LAN
 #                             discovery (UDP broadcast) may not pass a port mapping
-#   KONUNG_SERVER_ARGS=       extra server flags, e.g. '-name "Мой сервер" -minutes 60'
+#   KONUNG_SERVER_ARGS=       extra server flags, e.g. '-minutes 60 -max 8'
 #   KONUNG_IMAGE=konung-server  KONUNG_CONTAINER=konung-server  KONUNG_VOLUME=konung-data
 #   KONUNG_ENGINE=podman      or docker
 #
 # The data volume holds konung.db (accounts and progress), GAME.RES and SERVER.
 # GAME.RES and SERVER are copied in at every start, so edits to them apply on
 # restart; the database is never touched by this script except by "reset".
+# The container itself holds nothing: it is re-created at every start.
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -68,6 +73,9 @@ create() {
 		net=(--network host)
 		args+=(-port "$port")
 	fi
+	if [[ -n ${KONUNG_NAME:-} ]]; then
+		args+=(-name "$KONUNG_NAME")
+	fi
 	if [[ -n ${KONUNG_SERVER_ARGS:-} ]]; then
 		# shellcheck disable=SC2206 # split like a command line on purpose
 		eval "args+=($KONUNG_SERVER_ARGS)"
@@ -84,10 +92,12 @@ start() {
 		status
 		return
 	fi
-	if ! exists; then
-		say "Creating $container (port $port, data volume $volume) ..."
-		create
+	# Re-create so the settings above apply; the data stays in the volume.
+	if exists; then
+		"$engine" rm -f "$container" >/dev/null
 	fi
+	say "Creating $container (port $port, data volume $volume${KONUNG_NAME:+, name «$KONUNG_NAME»}) ..."
+	create
 	copy_data
 	"$engine" start "$container" >/dev/null
 	sleep 1
@@ -110,9 +120,7 @@ stop() {
 
 update() {
 	build
-	if exists; then
-		"$engine" rm -f "$container" >/dev/null
-	fi
+	stop
 	start
 }
 

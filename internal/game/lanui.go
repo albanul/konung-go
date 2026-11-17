@@ -90,13 +90,10 @@ type lanUI struct {
 	cfg     gamestate.LANConfig
 	cfgPath string
 
-	client  *netplay.Client
-	hero    *netplay.Hero // the account's hero from a server with accounts
-	session string        // joined session's name
-	// players is the number of other players on the server: the login
-	// answer's online count (0x87 → [0x9EBA24], 0x004205B0), taken before
-	// this player counts; the port also follows joins and leaves.
-	players  int
+	client   *netplay.Client
+	hero     *netplay.Hero // the account's hero from a server with accounts
+	session  string        // joined session's name
+	player   string        // the own name as the server knows it (UTF-8)
 	results  chan func()
 	leaveLAN bool // «Выход»: back to the port's main menu
 	// start is set when the server answers «Ok» (MsgEntered): the menu
@@ -298,8 +295,7 @@ func (u *lanUI) applyResults() {
 	}
 }
 
-// readSession follows the joined session's player count (the " [n]" after
-// the address) and notices a lost connection.
+// readSession queues the world messages and notices a lost connection.
 func (u *lanUI) readSession() {
 	if u.client == nil {
 		return
@@ -315,10 +311,7 @@ func (u *lanUI) readSession() {
 				return
 			}
 			switch m.Type {
-			case netplay.MsgPlayerJoined:
-				u.players++
 			case netplay.MsgPlayerLeft:
-				u.players--
 				u.worldMsgs = append(u.worldMsgs, m)
 			case netplay.MsgAppear, netplay.MsgMoved:
 				u.worldMsgs = append(u.worldMsgs, m)
@@ -347,7 +340,7 @@ func (u *lanUI) disconnect() {
 		u.client.Close()
 		u.client = nil
 	}
-	u.session, u.players, u.hero = "", 0, nil
+	u.session, u.hero = "", nil
 	u.worldMsgs = nil
 }
 
@@ -449,10 +442,10 @@ func (u *lanUI) ok() {
 
 // takeStart returns the server's start once («Ok» answered) and the
 // account's hero (nil on a server without accounts).
-func (u *lanUI) takeStart() (*netplay.EnterPayload, *netplay.Hero) {
+func (u *lanUI) takeStart() (*netplay.EnterPayload, *netplay.Hero, string) {
 	at := u.start
 	u.start = nil
-	return at, u.hero
+	return at, u.hero, u.player
 }
 
 // pickRow joins a listed session; it needs a name (message 4).
@@ -509,7 +502,13 @@ func (u *lanUI) joined(c *netplay.Client, err error) {
 		return
 	}
 	u.client = c
-	u.session, u.players, u.hero = c.Session.Name, len(c.Session.Players)-1, c.Hero
+	u.session, u.hero = c.Session.Name, c.Hero
+	u.player = ""
+	for _, p := range c.Session.Players {
+		if p.ID == c.PlayerID {
+			u.player = p.Name
+		}
+	}
 }
 
 // typeText edits the focused field (0x0042CB94): typed characters, Tab
@@ -638,7 +637,7 @@ func (u *lanUI) drawLogin(dst *ebiten.Image) {
 	case u.busy:
 		addr = cp866("...")
 	case u.session != "":
-		addr = sessionLabel(u.session, u.players)
+		addr = cp866(u.session)
 	}
 	text(6, addr, R[gamestate.LoginAddress])
 	rows := u.rows()
@@ -699,13 +698,4 @@ func heroValues(h *netplay.Hero) [14]string {
 		n(h.Charisma), n(h.Strength), n(h.Dexterity), n(h.Endurance), n(h.Gold), "", "",
 		n(h.Fencing / 100), n(h.Archery / 100), n(h.Identification), n(h.Trade), n(h.Smithing), n(h.Carpentry), n(h.Herbalism),
 	}
-}
-
-// sessionLabel is the address line after joining (0x004298E1): the session
-// name, with " [n]" only when n other players are online.
-func sessionLabel(name string, others int) []byte {
-	if others > 0 {
-		name = fmt.Sprintf("%s [%d]", name, others)
-	}
-	return cp866(name)
 }

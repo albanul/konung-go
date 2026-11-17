@@ -125,6 +125,10 @@ func (s *startScene) placeRemote(r *remotePlayer) {
 		e.Index = len(s.game.Entities)
 		s.game.Entities = append(s.game.Entities, e)
 		r.entity = e.Index
+		if s.game.Names == nil {
+			s.game.Names = map[int][]byte{}
+		}
+		s.game.Names[e.Index] = cp866(r.info.Name)
 	}
 	e := &s.game.Entities[r.entity]
 	cell := mapdata.NearestFree(mapdata.Cell{Row: r.pos.Row, Col: r.pos.Col}, func(c mapdata.Cell) bool {
