@@ -42,6 +42,9 @@ type ServerConfig struct {
 	// Accounts checks logins; nil keeps no accounts (any name joins and
 	// nothing is saved), e.g. in tests.
 	Accounts AccountStore
+	// Speed is the world speed for everyone (0 normal … MaxSpeed triple,
+	// the single-player numpad +/−); clients cannot change it.
+	Speed int
 }
 
 // AccountStore keeps the players' accounts on a dedicated server, as the LAN
@@ -53,6 +56,13 @@ type AccountStore interface {
 	// ErrWrongPassword when the name exists with another password; created
 	// reports a new account.
 	Login(j JoinInfo) (hero *Hero, created bool, err error)
+}
+
+// ModelSetter is an AccountStore that keeps the hero type a player enters
+// with (the model and the look's palette, as the original's 0x4C stores
+// the hero's model).
+type ModelSetter interface {
+	SetModel(name string, model int) error
 }
 
 // ClanLister is an AccountStore that also lists its clans for the welcome
@@ -77,6 +87,7 @@ func (c ServerConfig) withDefaults() ServerConfig {
 	if c.Minutes <= 0 {
 		c.Minutes = 180
 	}
+	c.Speed = min(max(c.Speed, 0), MaxSpeed)
 	if c.JoinTimeout <= 0 {
 		c.JoinTimeout = 5 * time.Second
 	}
@@ -108,6 +119,12 @@ type Server struct {
 	order   []string // join order
 	pending map[*Conn]bool
 	closed  bool
+
+	// The world clock (clock.go) and the rating session's end.
+	clockBase  int64
+	clockFrom  time.Time
+	clockOn    bool
+	sessionEnd time.Time
 
 	disc *announcer
 	wg   sync.WaitGroup
@@ -312,7 +329,9 @@ func (s *Server) serve(conn *Conn) {
 				s.cfg.OnGame(m)
 			}
 		case MsgEnter:
-			s.enter(p)
+			req := EnterRequest{Model: -1}
+			m.Decode(&req)
+			s.enter(p, req.Model)
 		case MsgMove:
 			var pos Position
 			if m.Decode(&pos) == nil && pos.Valid() {
@@ -421,10 +440,26 @@ func (s *Server) join(conn *Conn) (*serverPlayer, bool) {
 }
 
 // enter answers a player's MsgEnter with its start (0x0044ADB4 → 0x8C).
-func (s *Server) enter(p *serverPlayer) {
+func (s *Server) enter(p *serverPlayer, model int) {
 	if s.cfg.Start == nil {
 		p.conn.Send(mustMessage(MsgError, ErrorPayload{Code: ErrServer, Message: "this server has no world"}))
 		return
+	}
+	// The hero type picked at «Ok» (an old or invalid one keeps the join's).
+	if model >= 0 && model < Models {
+		s.mu.Lock()
+		p.info.Model = model
+		if p.hero != nil {
+			h := p.hero.WithModel(model)
+			p.hero = &h
+		}
+		s.mu.Unlock()
+		if ms, ok := s.cfg.Accounts.(ModelSetter); ok {
+			if err := ms.SetModel(p.info.Name, model); err != nil {
+				p.conn.Send(mustMessage(MsgError, ErrorPayload{Code: ErrServer, Message: err.Error()}))
+				return
+			}
+		}
 	}
 	at, err := s.cfg.Start(p.info)
 	if err != nil {
@@ -437,6 +472,7 @@ func (s *Server) enter(p *serverPlayer) {
 	s.mu.Lock()
 	p.entered, p.pos = true, at
 	p.conn.Send(mustMessage(MsgEntered, at))
+	s.runClockLocked() // the clock runs with someone in the world
 	for _, id := range s.order {
 		if o := s.players[id]; o != p && o.entered {
 			p.conn.Send(mustMessage(MsgAppear, AppearPayload{Player: o.info, Hero: o.hero, Pos: o.pos}))
@@ -471,6 +507,9 @@ func (s *Server) leave(p *serverPlayer) {
 		}
 	}
 	s.broadcastLocked(mustMessage(MsgPlayerLeft, PlayerLeftPayload{ID: p.info.ID}))
+	if p.entered {
+		s.runClockLocked() // stops when the world is empty
+	}
 	s.mu.Unlock()
 	if s.cfg.OnLeave != nil {
 		s.cfg.OnLeave(p.info)

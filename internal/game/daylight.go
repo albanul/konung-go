@@ -91,7 +91,9 @@ func parseLights(data []byte) (*mapdata.LitCells, *mapdata.TerrainLights, error)
 // ignore the time; with day/night off the world is untinted.
 func (s *startScene) updateLight() {
 	now := s.gameTime()
-	if now%gamestate.DayLength == 0 {
+	if s.lan {
+		s.moon = lanMoon(now / gamestate.DayLength) // the same for every player
+	} else if now%gamestate.DayLength == 0 {
 		s.moon = s.rng.IntN(100) < gamestate.MoonChance
 	}
 	t, night := resfmt.Tint{}, false

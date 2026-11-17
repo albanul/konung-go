@@ -48,6 +48,13 @@ var migrations = []string{
 	ALTER TABLE accounts ADD COLUMN look0 INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE accounts ADD COLUMN look1 INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE accounts ADD COLUMN look2 INTEGER NOT NULL DEFAULT 0;`,
+	// 3: one look index for every hero type, as the original; the look of
+	// the type last played is kept.
+	`ALTER TABLE accounts ADD COLUMN look INTEGER NOT NULL DEFAULT 0;
+	UPDATE accounts SET look = CASE model WHEN 0 THEN look0 WHEN 1 THEN look1 ELSE look2 END;
+	ALTER TABLE accounts DROP COLUMN look0;
+	ALTER TABLE accounts DROP COLUMN look1;
+	ALTER TABLE accounts DROP COLUMN look2;`,
 }
 
 const schema = `
@@ -166,8 +173,8 @@ func (s *Store) migrate() error {
 // the account with the original's defaults (0x00432E2B) and registers its
 // clan (new names appended, up to MaxClans); later logins must give the same
 // password. With NewHero the hero is rebuilt from «Новый герой» (validated
-// by netplay.HeroChoice.Build): class, skills, stats, free points and looks
-// from the choice, level 1, the starting gold, no items; rating and
+// by netplay.HeroChoice.Build): class, skills, stats, free points and the
+// look from the choice, level 1, the starting gold, no items; rating and
 // counters stay, and the clan named becomes the account's. Otherwise the
 // clan does not change. The session's hero type (j.Model) sets the model
 // and its look's palette.
@@ -235,17 +242,12 @@ func (s *Store) Login(j netplay.JoinInfo) (*netplay.Hero, bool, error) {
 		}
 	}
 	if j.NewHero != nil {
-		if err := rebuild(tx, id, built, j.NewHero.Looks); err != nil {
+		if err := rebuild(tx, id, built, j.NewHero.Look); err != nil {
 			return nil, false, err
 		}
 	}
-	// This session's hero type and its look.
-	var looks [3]int
-	if err := tx.QueryRow(`SELECT look0, look1, look2 FROM accounts WHERE id = ?`, id).Scan(&looks[0], &looks[1], &looks[2]); err != nil {
-		return nil, false, err
-	}
-	if _, err := tx.Exec(`UPDATE accounts SET model = ?, palette = ? WHERE id = ?`,
-		model, gamestate.LANLookPalette(model, looks[model]), id); err != nil {
+	// The hero type picked so far (entering may change it, SetModel).
+	if err := setModel(tx, id, model); err != nil {
 		return nil, false, err
 	}
 	h, err := hero(tx, id)
@@ -261,20 +263,48 @@ func (s *Store) Login(j netplay.JoinInfo) (*netplay.Hero, bool, error) {
 // rebuild replaces the account's hero with a «Новый герой» build: «Старый
 // персонаж будет удален!» — level, gold, stats, skills, free points and the
 // items go; the rating, the counters and the session points stay.
-func rebuild(tx *sql.Tx, id int64, e gamestate.Entity, looks [3]int) error {
+func rebuild(tx *sql.Tx, id int64, e gamestate.Entity, look int) error {
 	_, err := tx.Exec(`UPDATE accounts SET level = 1, gold = 1000, class = ?, free_points = ?,
 		charisma = ?, strength = ?, dexterity = ?, endurance = ?,
 		fencing = ?, archery = ?, herbalism = ?, smithing = ?, trade = ?, carpentry = ?, identification = ?,
-		unknown_4c = 0, unknown_62 = 10, look0 = ?, look1 = ?, look2 = ?
+		unknown_4c = 0, unknown_62 = 10, look = ?
 		WHERE id = ?`,
 		int(e.Flags4&7), e.FreeExp,
 		e.BaseStats[0], e.BaseStats[1], e.BaseStats[2], e.BaseStats[3],
 		e.Fencing, e.Marksmanship, e.Skills[0], e.Skills[1], e.Skills[2], e.Skills[3], e.Skills[4],
-		looks[0], looks[1], looks[2], id)
+		look, id)
 	if err != nil {
 		return err
 	}
 	_, err = tx.Exec(`DELETE FROM items WHERE account_id = ?`, id)
+	return err
+}
+
+// SetModel implements netplay.ModelSetter: the hero type the player
+// entered with, and its look's palette.
+func (s *Store) SetModel(name string, model int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var id int64
+	if err := tx.QueryRow(`SELECT id FROM accounts WHERE name = ?`, name).Scan(&id); err != nil {
+		return err
+	}
+	if err := setModel(tx, id, model); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func setModel(tx *sql.Tx, id int64, model int) error {
+	model = min(max(model, 0), netplay.Models-1)
+	var look int
+	if err := tx.QueryRow(`SELECT look FROM accounts WHERE id = ?`, id).Scan(&look); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`UPDATE accounts SET model = ?, palette = ? WHERE id = ?`, model, gamestate.LANLookPalette(model, look), id)
 	return err
 }
 
@@ -327,12 +357,12 @@ func hero(q querier, id int64) (*netplay.Hero, error) {
 	err := q.QueryRow(`SELECT level, class, model, palette, free_points, gold,
 		charisma, strength, dexterity, endurance,
 		fencing, archery, identification, trade, smithing, carpentry, herbalism,
-		rating, kills_heroes, kills_hirelings, kills_monsters, amulets, look0, look1, look2
+		rating, kills_heroes, kills_hirelings, kills_monsters, amulets, look
 		FROM accounts WHERE id = ?`, id).Scan(
 		&h.Level, &h.Class, &h.Model, &h.Palette, &h.FreePoints, &h.Gold,
 		&h.Charisma, &h.Strength, &h.Dexterity, &h.Endurance,
 		&h.Fencing, &h.Archery, &h.Identification, &h.Trade, &h.Smithing, &h.Carpentry, &h.Herbalism,
-		&h.Rating, &h.KillsHeroes, &h.KillsHirelings, &h.KillsMonsters, &h.Amulets, &h.Looks[0], &h.Looks[1], &h.Looks[2])
+		&h.Rating, &h.KillsHeroes, &h.KillsHirelings, &h.KillsMonsters, &h.Amulets, &h.Look)
 	return h, err
 }
 

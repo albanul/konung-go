@@ -44,6 +44,10 @@ const (
 
 var lanMenuFrames = [5]int{5, 11, 7, 9, 13}
 
+// lanGameMenuFrames are the labels while a LAN game runs: «Вернуться в
+// игру» and «Закончить игру» in place of «Рейтинг» and «Установки».
+var lanGameMenuFrames = [5]int{3, 15, 7, 9, 13}
+
 const lanMenuLabelX, lanMenuLabelY = 209, 132
 
 // PLAY800R.RES frames.
@@ -97,6 +101,9 @@ type lanUI struct {
 	player   string        // the own name as the server knows it (UTF-8)
 	results  chan func()
 	leaveLAN bool // «Выход»: back to the port's main menu
+	// inGame: a LAN world runs (the menu was opened by Escape in it).
+	// resume and endGame ask the menu to go back to it or to end it.
+	inGame, resume, endGame bool
 	// start is set when the server answers «Ok» (MsgEntered): the menu
 	// takes it and builds the LAN world (takeStart).
 	start *netplay.EnterPayload
@@ -106,6 +113,8 @@ type lanUI struct {
 	// the LAN world, queued from the wait on (the server sends the heroes
 	// already in the world right after the start); the menu applies them.
 	worldMsgs []*netplay.Message
+	// clock is the server's world clock (MsgClock), nil until it arrives.
+	clock *serverClock
 
 	// «Новый герой» (lannewhero.go); newFrames nil = NEW800R.RES missing.
 	newFrames  []*ebiten.Image
@@ -113,7 +122,7 @@ type lanUI struct {
 	tables     *resfmt.ExeTables
 	items      *gamestate.Game // empty: the LAN template has no equipment
 	nh         gamestate.Entity
-	looks      [3]int   // look per hero type
+	look       int      // the look index 0–7, one for every type ([0xA6EB4C])
 	clans      [][]byte // CP866: CLANS.CFG, typed ones, the server's
 	clanScroll int
 	preview    heroPreview
@@ -195,6 +204,13 @@ func (u *lanUI) open() {
 	u.state, u.msg, u.focus, u.leaveLAN = lanMenu, 0, 0, false
 }
 
+// openInGame is Escape in a LAN world: the LAN menu with «Вернуться в
+// игру» and «Закончить игру»; the hero stays online.
+func (u *lanUI) openInGame() {
+	u.open()
+	u.inGame, u.hover = true, -1
+}
+
 // escape handles Escape and reports whether the LAN screens are left.
 // Escape (0x0042D90D): a text field only ends the edit; the message box and
 // the wait close; the rating screen returns to the menu. In the LAN menu the
@@ -210,6 +226,8 @@ func (u *lanUI) escape() bool {
 		u.state = lanLogin
 	case u.state == lanRating, u.state == lanLogin, u.state == lanNewHero:
 		u.toMenu()
+	case u.inGame:
+		u.resume = true // back to the game
 	default:
 		u.disconnect()
 		return true
@@ -250,6 +268,19 @@ func (u *lanUI) update() bool {
 }
 
 func (u *lanUI) menuItem(item int) {
+	if u.inGame {
+		switch item {
+		case lanItemRating: // «Вернуться в игру»
+			u.resume = true
+			return
+		case lanItemSettings: // «Закончить игру»: logout (0x44)
+			u.endGame = true
+			return
+		}
+		// «Новая игра», «Новый герой» and «Выход» end the game first.
+		u.endGame = true
+		u.disconnect()
+	}
 	switch item {
 	case lanItemRating:
 		u.state = lanRating
@@ -342,6 +373,11 @@ func (u *lanUI) readSession() {
 				u.worldMsgs = append(u.worldMsgs, m)
 			case netplay.MsgAppear, netplay.MsgMoved:
 				u.worldMsgs = append(u.worldMsgs, m)
+			case netplay.MsgClock:
+				var c netplay.ClockPayload
+				if m.Decode(&c) == nil {
+					u.clock = &serverClock{c: c, at: time.Now()}
+				}
 			case netplay.MsgEntered:
 				var at netplay.EnterPayload
 				if m.Decode(&at) == nil && u.state == lanWaiting {
@@ -368,7 +404,7 @@ func (u *lanUI) disconnect() {
 		u.client = nil
 	}
 	u.session, u.hero = "", nil
-	u.worldMsgs = nil
+	u.worldMsgs, u.clock = nil, nil
 }
 
 // rows is the server list: the sessions found, by name as the original
@@ -478,8 +514,13 @@ func (u *lanUI) ok() {
 	default:
 		u.saveConfig()
 		u.state = lanWaiting
-		// The server answers with the start (0x4C → 0x8C, readSession).
-		if err := u.client.Enter(); err != nil {
+		// The portrait picked now is the session's hero type (0x4C carries
+		// the model); the server answers with the start (0x8C, readSession).
+		if u.hero != nil {
+			h := u.hero.WithModel(u.model)
+			u.hero = &h
+		}
+		if err := u.client.Enter(u.model); err != nil {
 			u.state, u.msg = lanLogin, gamestate.MsgUnavailable
 		}
 	}
@@ -569,7 +610,7 @@ func (u *lanUI) joined(c *netplay.Client, err error, rebuilt bool) {
 		u.pending = nil // the server rebuilt the hero
 	}
 	if c.Hero != nil {
-		u.looks = c.Hero.Looks
+		u.look = c.Hero.Look
 	}
 	for _, name := range c.Clans {
 		u.addClan(cp866(name))
@@ -658,7 +699,11 @@ func (u *lanUI) draw(dst *ebiten.Image) {
 	switch u.state {
 	case lanMenu:
 		dst.DrawImage(u.menuBG, nil)
-		for i, f := range lanMenuFrames {
+		frames := lanMenuFrames
+		if u.inGame {
+			frames = lanGameMenuFrames
+		}
+		for i, f := range frames {
 			if i == u.hover {
 				f++
 			}

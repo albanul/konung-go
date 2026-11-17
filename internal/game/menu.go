@@ -294,6 +294,11 @@ func (m *Menu) Update() error {
 		if m.inWorld {
 			if m.world.escape() {
 				m.inWorld = false
+				if m.lanWorld {
+					// A network game has the LAN menu, not the main menu.
+					m.lan.openInGame()
+					m.inLAN = true
+				}
 			}
 			return nil
 		}
@@ -333,6 +338,16 @@ func (m *Menu) Update() error {
 		// connection); unread messages would stall the connection.
 		m.lan.readSession()
 		m.applyLAN()
+		m.world.clock = m.lan.clock
+		if m.lan.client == nil {
+			// The connection is gone: the game is over; the LAN login
+			// shows «Сервер не доступен».
+			m.endLANGame()
+			m.lan.enterLogin()
+			m.lan.msg = gamestate.MsgUnavailable
+			m.inWorld, m.inLAN = false, true
+			return nil
+		}
 	}
 	if m.inWorld {
 		// T (VK 0x54, 0x00436F58) toggles background tiling and writes
@@ -356,8 +371,15 @@ func (m *Menu) Update() error {
 			// 0x004376A8: the hero died; no game is running any more
 			// ([0x00A3E728] = 0), GAMEOVER.FLM plays, then the menu (state 7).
 			m.running = false
+			lan := m.lanWorld
 			m.playFilm(resfmt.FilmGameOver, false, func() {
 				m.inWorld = false
+				if lan { // a network game goes back to the LAN menu
+					m.endLANGame()
+					m.lan.open()
+					m.inLAN = true
+					return
+				}
 				if m.selected < m.firstItem() {
 					m.selected = itemNewGame
 				}
@@ -378,8 +400,21 @@ func (m *Menu) Update() error {
 		return nil
 	}
 	if m.inLAN {
-		if m.lan.update() {
+		left := m.lan.update()
+		if m.lan.endGame {
+			m.endLANGame()
+		}
+		if left {
 			m.inLAN = false
+		}
+		if m.lan.resume {
+			m.lan.resume = false
+			if m.lanWorld && m.lan.client != nil {
+				m.inLAN, m.inWorld = false, true
+			} else {
+				m.endLANGame()
+			}
+			return nil
 		}
 		// The server answered «Ok»: enter the LAN world (state 10 → 1).
 		if at, hero, name := m.lan.takeStart(); at != nil {
@@ -652,6 +687,16 @@ func drawAt(dst, src *ebiten.Image, x, y int) {
 }
 
 func (m *Menu) Layout(_, _ int) (int, int) { return ScreenWidth, ScreenHeight }
+
+// endLANGame is «Закончить игру» (or a lost connection): the LAN world
+// is dropped and the client logged out; the LAN menu stays.
+func (m *Menu) endLANGame() {
+	m.lan.endGame, m.lan.inGame = false, false
+	if m.lanWorld {
+		m.world, m.running, m.inWorld, m.lanWorld = nil, false, false, false
+	}
+	m.lan.disconnect()
+}
 
 // leaveLANWorld ends a LAN game when a single-player game replaces it: the
 // connection (and a session hosted from this game) closes.

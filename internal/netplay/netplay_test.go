@@ -522,7 +522,7 @@ func TestEnter(t *testing.T) {
 		OnEnter: func(p PlayerInfo) { entered <- p.Name },
 	})
 	c := dial(t, s, "Volk", 0)
-	if err := c.Enter(); err != nil {
+	if err := c.Enter(-1); err != nil {
 		t.Fatal(err)
 	}
 	var at EnterPayload
@@ -535,7 +535,7 @@ func TestEnter(t *testing.T) {
 	// A server without a world refuses.
 	s2 := startServer(t, ServerConfig{})
 	c2 := dial(t, s2, "Volk", 0)
-	c2.Enter()
+	c2.Enter(-1)
 	waitFor(t, c2.Conn, MsgError)
 }
 
@@ -562,10 +562,10 @@ func TestWorldRelay(t *testing.T) {
 		return EnterPayload{Map: p.Model*3 + 1, Row: 110, Col: 32, Facing: 2}, nil
 	}})
 	a := dial(t, s, "Volk", 0)
-	a.Enter()
+	a.Enter(-1)
 	waitFor(t, a.Conn, MsgEntered)
 	b := dial(t, s, "Ragnar", 2)
-	b.Enter()
+	b.Enter(-1)
 	waitFor(t, b.Conn, MsgEntered)
 
 	var ap AppearPayload
@@ -585,7 +585,7 @@ func TestWorldRelay(t *testing.T) {
 	}
 	// A third player entering sees Volk where he moved to.
 	c := dial(t, s, "Olaf", 1)
-	c.Enter()
+	c.Enter(-1)
 	waitFor(t, c.Conn, MsgEntered)
 	seen := map[string]Position{}
 	for len(seen) < 2 {
@@ -636,4 +636,62 @@ func TestJoinRefusesBadHero(t *testing.T) {
 		t.Fatalf("template hero: %v", err)
 	}
 	c.Close()
+}
+
+// The hero type is the one picked at «Ok», not at joining: the start, the
+// team the others see and the look's palette follow it.
+func TestEnterPicksModel(t *testing.T) {
+	s := startServer(t, ServerConfig{Start: func(p PlayerInfo) (EnterPayload, error) {
+		return EnterPayload{Map: p.Model*3 + 1, Row: 110, Col: 32, Facing: 2}, nil
+	}})
+	a := dial(t, s, "Volk", 0)
+	a.Enter(-1)
+	waitFor(t, a.Conn, MsgEntered)
+	b := dial(t, s, "Mikhail", 1) // joined as Драгомир, picks Михаил before «Ok»
+	b.Enter(2)
+	var at EnterPayload
+	if waitFor(t, b.Conn, MsgEntered).Decode(&at); at.Map != 7 {
+		t.Errorf("start map %d, want 7 (Михаил's village)", at.Map)
+	}
+	var ap AppearPayload
+	if waitFor(t, a.Conn, MsgAppear).Decode(&ap); ap.Player.Model != 2 {
+		t.Errorf("others see model %d", ap.Player.Model)
+	}
+	if h := (Hero{Look: 3}).WithModel(2); h.Model != 2 || h.Palette != 37 {
+		t.Errorf("WithModel = %+v", h)
+	}
+}
+
+// The clock runs only while someone is in the world, reaches entering
+// players with the speed and the session time left, and stops when the
+// world empties.
+func TestClock(t *testing.T) {
+	s := startServer(t, ServerConfig{Speed: 1, Start: func(p PlayerInfo) (EnterPayload, error) {
+		return EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil
+	}})
+	if c := s.Clock(); c.Running || c.Tick != 0 || c.SessionLeft != -1 {
+		t.Errorf("idle clock = %+v", c)
+	}
+	s.SetSessionEnd(time.Now().Add(90 * time.Second))
+	a := dial(t, s, "Volk", 0)
+	a.Enter(-1)
+	waitFor(t, a.Conn, MsgEntered)
+	var c ClockPayload
+	if waitFor(t, a.Conn, MsgClock).Decode(&c); !c.Running || c.Speed != 1 || c.SessionLeft < 85 || c.SessionLeft > 90 {
+		t.Errorf("clock on entering = %+v", c)
+	}
+	time.Sleep(150 * time.Millisecond) // 2 × 150 / 60 = 5 ticks at double speed
+	if c := s.Clock(); c.Tick < 4 {
+		t.Errorf("clock after 150 ms at double speed = %+v", c)
+	}
+	a.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for s.Clock().Running && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	stopped := s.Clock()
+	time.Sleep(100 * time.Millisecond)
+	if c := s.Clock(); c.Running || c.Tick != stopped.Tick {
+		t.Errorf("clock with nobody in the world = %+v (was %+v)", c, stopped)
+	}
 }

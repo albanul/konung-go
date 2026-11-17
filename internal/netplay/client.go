@@ -76,9 +76,11 @@ func Dial(addr string, j JoinInfo, opts Options) (*Client, error) {
 	}
 }
 
-// Enter asks to enter the world; the server answers with MsgEntered (or
-// MsgError) on Incoming.
-func (c *Client) Enter() error { return c.Send(mustMessage(MsgEnter, nil)) }
+// Enter asks to enter the world as hero type model (the login portrait at
+// «Ok»); the server answers with MsgEntered (or MsgError) on Incoming.
+func (c *Client) Enter(model int) error {
+	return c.Send(mustMessage(MsgEnter, EnterRequest{Model: model}))
+}
 
 // Move reports the own hero's position.
 func (c *Client) Move(p Position) error { return c.Send(mustMessage(MsgMove, p)) }

@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
@@ -22,9 +21,9 @@ import (
 // персонаж будет удален!», sends it (JoinInfo.NewHero) and the server
 // rebuilds the account's hero from it.
 //
-// Port additions: a look is kept per hero type (the original has one look
-// index for whichever type is picked at login), and a right click on the
-// portrait shows the next type so each type's look can be chosen.
+// As the original, the preview is always Михаил (the template's model 2)
+// and the look index is one for every hero type: the type is picked at
+// login, which shows the same look index on that type.
 
 // NEW800R.RES frames (loader 0x00424944, image slots 0x1F9 + i).
 const (
@@ -87,20 +86,21 @@ func (u *lanUI) openNewHero() {
 		return
 	}
 	if u.hero != nil {
-		u.looks = u.hero.Looks // the account's looks, when known
+		u.look = u.hero.Look // the account's look, when known
 	}
 	u.disconnect()
 	u.addr.Text = nil
 	u.nh = gamestate.NewLANHeroTemplate()
-	u.setNewModel(u.model)
+	u.setNewLook()
 	u.state, u.msg, u.focus, u.clanScroll = lanNewHero, 0, 0, 0
 }
 
-// setNewModel shows hero type m with its look.
-func (u *lanUI) setNewModel(m int) {
-	gamestate.SelectHero(&u.nh, m)
+// setNewLook shows the template, Михаил (model 2, 0x0042E0DB), in the
+// current look.
+func (u *lanUI) setNewLook() {
+	gamestate.SelectHero(&u.nh, gamestate.HeroMichail)
 	u.nh.Equipment = [6]int{} // the LAN template has no items (0x0042E0DB)
-	u.nh.PaletteOffset = uint32(gamestate.LANLookPalette(m, u.looks[m])) * 512
+	u.nh.PaletteOffset = uint32(gamestate.LANLookPalette(gamestate.HeroMichail, u.look)) * 512
 }
 
 func (u *lanUI) newRect(i int) gamestate.Rect { return u.exe.NewHeroRects[i] }
@@ -110,17 +110,6 @@ func (u *lanUI) updateNewHero(mx, my int, click bool) {
 		u.typeText()
 	}
 	hit := gamestate.HitRects(u.exe.NewHeroRects, mx, my)
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) && hit == gamestate.LANNewPortrait {
-		// Port addition: the next hero type, in the login portraits' order.
-		for i, m := range gamestate.LoginModels {
-			if m == u.model {
-				u.model = gamestate.LoginModels[(i+1)%len(gamestate.LoginModels)]
-				break
-			}
-		}
-		u.setNewModel(u.model)
-		return
-	}
 	if !click {
 		return
 	}
@@ -149,8 +138,8 @@ func (u *lanUI) updateNewHero(mx, my int, click bool) {
 	case hit == gamestate.NewHeroCancel: // 0x0042E826: the LAN menu
 		u.toMenu()
 	case hit == gamestate.LANNewPortrait:
-		u.looks[u.model] = (u.looks[u.model] + 1) % 8
-		u.setNewModel(u.model)
+		u.look = (u.look + 1) % 8 // [0xA6EB4C]
+		u.setNewLook()
 	case hit == gamestate.LANNewClanList:
 		r := u.newRect(gamestate.LANNewClanList)
 		if k := u.clanScroll + (my-r.Y1-5)/gamestate.LANNewClanRowH; my >= r.Y1+5 && k < len(u.clans) && k-u.clanScroll < u.clanRows() {
@@ -174,7 +163,7 @@ func (u *lanUI) clanRows() int {
 // saved, and the login opens.
 func (u *lanUI) newHeroOK() {
 	c := gamestate.ChoiceOf(u.nh)
-	u.pending = &netplay.HeroChoice{Class: int(c.Class), Archery: c.Archery, Skill: c.Skill, Stats: c.Stats, Looks: u.looks}
+	u.pending = &netplay.HeroChoice{Class: int(c.Class), Archery: c.Archery, Skill: c.Skill, Stats: c.Stats, Look: u.look}
 	u.addClan(u.clan.Text)
 	u.saveConfig()
 	u.enterLogin()

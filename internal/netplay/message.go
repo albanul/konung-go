@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 2
+const ProtocolVersion = 3
 
 // MsgType identifies a message.
 type MsgType int
@@ -51,13 +51,14 @@ const (
 	MsgAppear                          // server → client: AppearPayload, a hero in the world (0x5A)
 	MsgMove                            // client → server: Position, the own hero moved
 	MsgMoved                           // server → client: MovedPayload, another hero moved (0x19)
+	MsgClock                           // server → client: ClockPayload, the world clock (clock.go)
 )
 
 var msgNames = map[MsgType]string{
 	MsgPing: "ping", MsgJoin: "join", MsgWelcome: "welcome", MsgError: "error",
 	MsgPlayerJoined: "player-joined", MsgPlayerLeft: "player-left", MsgSession: "session",
 	MsgChat: "chat", MsgGame: "game", MsgEnter: "enter", MsgEntered: "entered",
-	MsgAppear: "appear", MsgMove: "move", MsgMoved: "moved",
+	MsgAppear: "appear", MsgMove: "move", MsgMoved: "moved", MsgClock: "clock",
 }
 
 func (t MsgType) String() string {
@@ -133,13 +134,14 @@ type JoinInfo struct {
 // HeroChoice is what «Новый герой» picks: class byte 2–5 (Купец, Охотник,
 // Вождь, Воин), the combat skill (Меткость, else Фехтование), the peaceful
 // skill (0 Идентификация, 1 Торговля, 2 Знахарство), the four base stats
-// after trading (Хар, Сил, Лов, Вын) and a look 0–7 per hero type.
+// after trading (Хар, Сил, Лов, Вын) and the look 0–7 (one index for every
+// hero type, as the original's [0xA6EB4C]).
 type HeroChoice struct {
 	Class   int    `json:"class"`
 	Archery bool   `json:"archery"`
 	Skill   int    `json:"skill"`
 	Stats   [4]int `json:"stats"`
-	Looks   [3]int `json:"looks"`
+	Look    int    `json:"look"`
 }
 
 // JoinPayload is the client's first message.
@@ -211,9 +213,9 @@ type Hero struct {
 	KillsMonsters  int `json:"kills_monsters"`
 	Amulets        int `json:"amulets"`
 
-	// Looks is the chosen look (0–7, gamestate.LANLooks) per hero type;
-	// Palette is the one of Model, this session's type.
-	Looks [3]int `json:"looks"`
+	// Look is the chosen look (0–7, gamestate.LANLooks), one index for
+	// every hero type; Palette is its palette for Model, this session's type.
+	Look int `json:"look"`
 }
 
 // ErrorPayload explains a refusal.
@@ -281,13 +283,25 @@ type ChatPayload struct {
 // and returns the level-1 hero it makes, or why the screen could not have
 // produced c.
 func (c HeroChoice) Build() (gamestate.Entity, error) {
-	for m, l := range c.Looks {
-		if l < 0 || l > 7 {
-			return gamestate.Entity{}, fmt.Errorf("look %d of hero type %d", l, m)
-		}
+	if c.Look < 0 || c.Look > 7 {
+		return gamestate.Entity{}, fmt.Errorf("look %d", c.Look)
 	}
 	if c.Class < 0 || c.Class > 255 {
 		return gamestate.Entity{}, fmt.Errorf("class %d", c.Class)
 	}
 	return gamestate.LANHeroChoice{Class: byte(c.Class), Archery: c.Archery, Skill: c.Skill, Stats: c.Stats}.Build()
+}
+
+// EnterRequest is «Ok» on the login screen (the original's 0x4C carries the
+// hero with its model): the hero type for this session, which picks the
+// start village, the team and the look's palette.
+type EnterRequest struct {
+	Model int `json:"model"`
+}
+
+// WithModel is h as hero type model: the model and the look's palette.
+func (h Hero) WithModel(model int) Hero {
+	h.Model = model
+	h.Palette = gamestate.LANLookPalette(model, h.Look)
+	return h
 }

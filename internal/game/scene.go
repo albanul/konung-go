@@ -175,6 +175,9 @@ type startScene struct {
 	onMove        func(netplay.Position)
 	lastMove      netplay.Position
 	hoveredRemote *remotePlayer
+	// clock is the server's clock (lanclock.go), nil until it arrives;
+	// the menu sets it every frame.
+	clock *serverClock
 }
 
 // sceneAssets is what stays loaded across map changes: resource files, exe
@@ -1274,7 +1277,9 @@ func (s *startScene) Update() {
 		if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 			s.hideHelp = !s.hideHelp
 		}
-		s.updateSpeed()
+		if s.clock == nil {
+			s.updateSpeed() // a LAN world has the server's speed
+		}
 		s.updateControls(mx, my)
 	}
 	if s.miscRequests() {
@@ -1294,7 +1299,10 @@ func (s *startScene) Update() {
 	// The game draws a frame every 60 ms (0x00A3E6F4), one per 3.6 updates
 	// at 60 Hz, and each frame runs 1 + speed game ticks
 	// (0x00437849–0x004378CC); the extra ticks stop when the hero is dead.
-	if s.frame*5/18 != (s.frame-1)*5/18 {
+	if s.clock != nil {
+		s.speed = s.clock.c.Speed
+		s.stepToServer()
+	} else if s.frame*5/18 != (s.frame-1)*5/18 {
 		for k := 0; k <= s.speed; k++ {
 			if k > 0 && len(s.party) > 0 && s.party[0].Dead() {
 				break
@@ -1440,6 +1448,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	}
 	if s.hero != nil {
 		s.drawHelp(screen)
+		s.drawSessionLeft(screen)
 	}
 	if len(s.party) > 0 {
 		s.hud.Draw(screen, s.party, *s.buttonEntity(),

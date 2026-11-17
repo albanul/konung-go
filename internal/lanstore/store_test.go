@@ -240,13 +240,13 @@ func TestNewHero(t *testing.T) {
 		t.Error("plain login changed the clan")
 	}
 
-	choice := &netplay.HeroChoice{Class: 4, Archery: true, Skill: 1, Stats: [4]int{26, 2, 3, 7}, Looks: [3]int{1, 2, 7}}
+	choice := &netplay.HeroChoice{Class: 4, Archery: true, Skill: 1, Stats: [4]int{26, 2, 3, 7}, Look: 7}
 	h, created, err := s.Login(netplay.JoinInfo{Name: "Volk", Password: "p", Clan: "Викинги", Model: 2, NewHero: choice})
 	if err != nil || created {
 		t.Fatalf("rebuild: %v, created %v", err, created)
 	}
 	if h.Level != 1 || h.Gold != 1000 || h.Class != 4 || h.Charisma != 26 || h.Strength != 2 || h.Archery != 100 || h.Fencing != 0 ||
-		h.Trade != 20 || h.FreePoints != 0 || h.Rating != 1800 || h.KillsHeroes != 4 || h.Looks != [3]int{1, 2, 7} ||
+		h.Trade != 20 || h.FreePoints != 0 || h.Rating != 1800 || h.KillsHeroes != 4 || h.Look != 7 ||
 		h.Model != 2 || h.Palette != 112 {
 		t.Errorf("rebuilt hero = %+v", h)
 	}
@@ -256,9 +256,16 @@ func TestNewHero(t *testing.T) {
 	if items, _ := s.LoadItems("Volk"); len(items) != 0 {
 		t.Errorf("items kept: %+v", items)
 	}
-	// Another session as Волк: that type's look.
-	if h, _, _ := s.Login(netplay.JoinInfo{Name: "Volk", Password: "p", Model: 0}); h.Model != 0 || h.Palette != 71 {
+	// Another session as Волк: the same look index on that type.
+	if h, _, _ := s.Login(netplay.JoinInfo{Name: "Volk", Password: "p", Model: 0}); h.Model != 0 || h.Palette != 114 {
 		t.Errorf("as model 0: model %d palette %d", h.Model, h.Palette)
+	}
+	// Entering as Драгомир (the portrait at «Ok») is kept.
+	if err := s.SetModel("Volk", 1); err != nil {
+		t.Fatal(err)
+	}
+	if h, _ := s.Hero("Volk"); h.Model != 1 || h.Palette != 110 {
+		t.Errorf("after SetModel: model %d palette %d", h.Model, h.Palette)
 	}
 	// A wrong password does not rebuild; an impossible build is refused.
 	if _, _, err := s.Login(netplay.JoinInfo{Name: "Volk", Password: "x", NewHero: choice}); !errors.Is(err, netplay.ErrWrongPassword) {
@@ -301,7 +308,31 @@ func TestMigrateV1(t *testing.T) {
 	}
 	defer s.Close()
 	h, err := s.Hero("Old")
-	if err != nil || h.FreePoints != 42 || h.Looks != [3]int{} || h.Palette != 28 {
+	if err != nil || h.FreePoints != 42 || h.Look != 0 || h.Palette != 28 {
+		t.Errorf("migrated hero = %+v, %v", h, err)
+	}
+}
+
+// A version-2 database (a look per type) keeps the look of the type last
+// played.
+func TestMigrateV2(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "konung.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(schema + migrations[0] + `INSERT INTO clans VALUES (0, 'Византийцы');
+		INSERT INTO accounts (name, password, palette, model, look1, created_at, last_login) VALUES ('Old', 'x', 33, 1, 5, '', '');
+		PRAGMA user_version = 2;`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if h, err := s.Hero("Old"); err != nil || h.Look != 5 || h.Palette != 33 {
 		t.Errorf("migrated hero = %+v, %v", h, err)
 	}
 }

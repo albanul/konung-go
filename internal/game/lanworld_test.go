@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
@@ -280,5 +281,45 @@ func TestLANRemoteEquipment(t *testing.T) {
 	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "x", Name: "Twin", Model: 0}, Pos: netplay.Position{Map: 1, Row: 100, Col: 32}})
 	if own, other := s.party[0].Equipment, s.game.Entities[s.remotes["x"].entity].Equipment; own != other {
 		t.Errorf("equipment: own %v, remote %v", own, other)
+	}
+}
+
+// In a LAN world the scene follows the server's clock: a far clock is
+// jumped to, a near one is reached by running ticks; the moon is the same
+// for everyone.
+func TestLANClock(t *testing.T) {
+	const dir = "../../assets/Konung/"
+	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
+		t.Skip("MAPS.RES not available:", err)
+	}
+	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
+	if err != nil {
+		t.Skip("assets missing:", err)
+	}
+	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.clock = &serverClock{c: netplay.ClockPayload{Tick: 5000, Speed: 1, SessionLeft: -1}, at: time.Now()}
+	s.stepToServer()
+	if s.tick != 5000 {
+		t.Fatalf("tick %d after a far clock, want 5000", s.tick)
+	}
+	s.clock.c.Tick = 5003
+	s.stepToServer()
+	if s.tick != 5003 {
+		t.Errorf("tick %d after a near clock, want 5003 (three steps)", s.tick)
+	}
+	if left, ok := s.clock.sessionLeft(); ok || left != 0 {
+		t.Error("unknown session time shown")
+	}
+	moonlit := 0
+	for d := range 1000 {
+		if lanMoon(d) {
+			moonlit++
+		}
+	}
+	if moonlit < 850 || moonlit > 950 {
+		t.Errorf("%d of 1000 nights moonlit, want about %d%%", moonlit, gamestate.MoonChance)
 	}
 }

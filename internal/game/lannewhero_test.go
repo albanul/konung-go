@@ -60,8 +60,11 @@ func TestLANNewHero(t *testing.T) {
 	if !gamestate.LANTradeStat(&u.nh, 2, true) {
 		t.Fatalf("raise Лов refused with %d points", u.nh.FreeExp)
 	}
-	u.looks[1] = 5
-	u.setNewModel(1)
+	u.look = 5
+	u.setNewLook()
+	if u.nh.Model != gamestate.HeroMichail || u.nh.PaletteOffset != 39*512 {
+		t.Errorf("preview: model %d palette %d", u.nh.Model, u.nh.PaletteOffset/512)
+	}
 	// The screen draws (the portrait is the hero sprite).
 	img := ebiten.NewImage(ScreenWidth, ScreenHeight)
 	u.drawNewHero(img)
@@ -89,7 +92,7 @@ func TestLANNewHero(t *testing.T) {
 		t.Fatalf("join: msg %d, hero %+v, pending %v", u.msg, h, u.pending)
 	}
 	if h.Class != int(gamestate.ClassHunter) || h.Charisma != 0 || h.Dexterity != 16 || h.Archery != 100 || h.Trade != 20 ||
-		h.Looks[1] != 5 || h.Palette != gamestate.LANLookPalette(1, 5) || h.Level != 1 {
+		h.Look != 5 || h.Palette != gamestate.LANLookPalette(1, 5) || h.Level != 1 {
 		t.Errorf("rebuilt hero = %+v", h)
 	}
 	if v := heroValues(h); v[5] != "13.3" || v[6] != "1" {

@@ -3,14 +3,15 @@
 // version's server kept LANUSERS.DAT and SAVITEMS.DAT, and hosts the session
 // players join from the game's «Сетевая игра» screens.
 //
-//	konung-server [-data DIR] [-port 7777] [-max 16] [-name NAME] [-minutes 180]
+//	konung-server [-data DIR] [-port 7777] [-max 16] [-name NAME] [-minutes 180] [-speed 0]
 //
 // DIR holds konung.db, the LAN version's GAME.RES (the world: players start
 // on their hero model's village map; without it nobody can enter) and,
 // optionally, its SERVER file (session name and length; the flags override
 // it). TCP on the port carries the game;
-// UDP on the same port answers LAN discovery. See Containerfile for running
-// it in a container.
+// UDP on the same port answers LAN discovery. The server owns the world
+// clock (time of day, world speed) for every client. See Containerfile for
+// running it in a container.
 package main
 
 import (
@@ -35,13 +36,14 @@ func main() {
 	maxPlayers := flag.Int("max", 16, "players at once (the original allowed 16)")
 	name := flag.String("name", "", "session name (default: SERVER file line 2, else «Стандартный Сервер с Командной игрой»)")
 	minutes := flag.Int("minutes", 0, "session length in minutes (default: SERVER file, else 180)")
+	speed := flag.Int("speed", 0, "world speed for everyone: 0 normal, 1 double, 2 triple")
 	flag.Parse()
-	if err := run(*dataDir, *port, *maxPlayers, *name, *minutes); err != nil {
+	if err := run(*dataDir, *port, *maxPlayers, *name, *minutes, *speed); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(dataDir string, port, maxPlayers int, name string, minutes int) error {
+func run(dataDir string, port, maxPlayers int, name string, minutes, speed int) error {
 	// The SERVER file names the session (0x00431481); flags override it.
 	sessionName, sessionMinutes := resfmt.CP866ToUTF8(gamestate.DefaultServerName), 180
 	if data, err := os.ReadFile(filepath.Join(dataDir, "SERVER")); err == nil {
@@ -77,6 +79,7 @@ func run(dataDir string, port, maxPlayers int, name string, minutes int) error {
 		Name: sessionName, MaxPlayers: maxPlayers, Minutes: sessionMinutes,
 		Accounts: store,
 		Start:    start,
+		Speed:    speed,
 		OnJoin: func(p netplay.PlayerInfo) {
 			if p.New { // as the original server prints (0x0044B1CE)
 				log.Printf("Новый игрок %s клан %s", p.Name, p.Clan)
@@ -99,18 +102,26 @@ func run(dataDir string, port, maxPlayers int, name string, minutes int) error {
 	if err := srv.ServeDiscovery(addr); err != nil {
 		log.Printf("LAN discovery off: %v", err) // the game still joins by typed address
 	}
-	log.Printf("«%s»: TCP %s, %d players, %d-minute sessions, data in %s",
-		sessionName, srv.Addr(), maxPlayers, sessionMinutes, dataDir)
+	log.Printf("«%s»: TCP %s, %d players, %d-minute sessions, speed %d, data in %s",
+		sessionName, srv.Addr(), maxPlayers, sessionMinutes, srv.Clock().Speed, dataDir)
 
 	// The session clock: at each end the participants' ratings move
-	// (0x00444150) and a new session starts.
-	sessions := time.NewTicker(time.Duration(sessionMinutes) * time.Minute)
+	// (0x00444150) and a new session starts. Players see the time left.
+	length := time.Duration(sessionMinutes) * time.Minute
+	sessions := time.NewTicker(length)
 	defer sessions.Stop()
+	srv.SetSessionEnd(time.Now().Add(length))
+	// The world clock is resent now and then, so clients stay in step.
+	sync := time.NewTicker(30 * time.Second)
+	defer sync.Stop()
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	for {
 		select {
+		case <-sync.C:
+			srv.SyncClock()
 		case <-sessions.C:
+			srv.SetSessionEnd(time.Now().Add(length))
 			if err := store.EndSession(); err != nil {
 				log.Printf("session end: %v", err)
 			} else {
