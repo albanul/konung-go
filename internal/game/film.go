@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"image"
 	"log"
-	"os"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/vorbis"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"konung1.5/internal/gamefs"
 	"konung1.5/internal/resfmt"
 )
 
@@ -26,6 +26,7 @@ import (
 const maxFilmDecodes = 3
 
 type filmPlayer struct {
+	web    *webFilm // the browser plays the film itself (film_js.go); nil natively
 	dec    *resfmt.FilmDecoder
 	fps    float64
 	frame  *image.RGBA
@@ -41,8 +42,11 @@ type filmPlayer struct {
 // when the film is missing or broken, as 0x0042B690 goes straight on to the
 // next state when CreateAviWnd fails.
 func openFilm(gameDir, name string) *filmPlayer {
+	if w := openWebFilm(gameDir, name); w != nil {
+		return &filmPlayer{web: w}
+	}
 	videoPath, audioPath := resfmt.FilmPaths(gameDir, name)
-	data, err := os.ReadFile(videoPath)
+	data, err := gamefs.ReadFile(videoPath)
 	if err != nil {
 		log.Printf("film %s: %v", name, err)
 		return nil
@@ -54,7 +58,7 @@ func openFilm(gameDir, name string) *filmPlayer {
 	}
 	f := &filmPlayer{dec: dec, fps: dec.IVF().FPS(), start: time.Now()}
 	if sfx != nil && sfx.ctx != nil {
-		if ogg, err := os.ReadFile(audioPath); err != nil {
+		if ogg, err := gamefs.ReadFile(audioPath); err != nil {
 			log.Printf("film %s: %v", name, err)
 		} else if stream, err := vorbis.DecodeWithSampleRate(audioRate, bytes.NewReader(ogg)); err != nil {
 			log.Printf("film %s: %v", name, err)
@@ -80,6 +84,9 @@ func (f *filmPlayer) elapsed() time.Duration {
 func (f *filmPlayer) update() bool {
 	if len(inpututil.AppendJustPressedKeys(nil)) > 0 {
 		return true
+	}
+	if f.web != nil {
+		return f.web.ended()
 	}
 	want := int(f.elapsed().Seconds()*f.fps) + 1
 	fresh := false
@@ -114,6 +121,9 @@ func (f *filmPlayer) draw(screen *ebiten.Image) {
 }
 
 func (f *filmPlayer) close() {
+	if f.web != nil {
+		f.web.close()
+	}
 	if f.audio != nil {
 		f.audio.Close()
 	}

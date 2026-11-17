@@ -20,7 +20,7 @@ type flameImages struct {
 }
 
 func loadFlames(path string) (*flameImages, error) {
-	frames, err := resfmt.LoadType5File(path)
+	frames, err := loadType5File(path)
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", path, err)
 	}

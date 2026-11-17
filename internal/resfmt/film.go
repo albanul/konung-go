@@ -39,6 +39,12 @@ func FilmPaths(gameDir, name string) (video, audio string) {
 	return base + ".ivf", base + ".ogg"
 }
 
+// FilmWebM returns the browser build's film: the converted video and audio
+// remuxed into WebM (cmd/web-build), which the browser plays itself.
+func FilmWebM(gameDir, name string) string {
+	return filepath.Join(gameDir, "Video", strings.ToLower(name)+".webm")
+}
+
 // IVF is an IVF container: a 32-byte header ("DKIF", version, header size,
 // codec FourCC, width, height, rate, scale, frame count) and frames of a
 // 12-byte header (size, 64-bit timestamp) plus the payload.
