@@ -11,16 +11,6 @@
 </head>
 <body>
 <div id="status">Loading…</div>
-<script>
-// The canvas is drawn at CSS pixels, not device pixels: Ebitengine sizes
-// it by devicePixelRatio, and for the 800×600 game a HiDPI canvas only
-// makes the final upscale bigger (on a HiDPI Linux laptop 32 → 48 FPS,
-// the browser's own limit). ?hidpi keeps device pixels.
-if (!new URLSearchParams(location.search).has("hidpi")) {
-  Object.defineProperty(window, "devicePixelRatio", { get: () => 1 });
-}
-console.log("devicePixelRatio", window.devicePixelRatio);
-</script>
 <script src="konungfs.js"></script>
 <script src="wasm_exec.js"></script>
 <script>

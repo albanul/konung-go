@@ -38,9 +38,6 @@ All game-file I/O in `internal/game` goes through `gamefs` (`ReadFile`, `WriteFi
 ## Behaviour differences
 
 * There is no fullscreen at start (the browser requires a user gesture). The canvas fills the page and Ebitengine scales the 800×600 screen.
-* The canvas is drawn at CSS pixels: `index.html` overrides `window.devicePixelRatio` to 1 before Ebitengine reads it (`ui_js.go`).
-  * On a HiDPI display a device-pixel canvas only enlarges the final upscale, which cost a third of the frame rate. Observed on a HiDPI Linux laptop: 32 → 48 FPS in-game, with the browser itself capped at about 46 (testufo). On a Mac with a 120 Hz display the game reached 120 FPS.
-  * `?hidpi` keeps device pixels.
 * The page waits for a click or key press before starting the game ("Click to start"; the download continues meanwhile): browsers block sound until the page gets one, and the start-up film plays before any game input.
 * Music is played by the browser.
   * `newWebMusic` (`internal/game/audio_js.go`, `konungMusic` in `konungfs.js`) puts the `MUSICS.RES` track's Ogg into an `<audio>` element.
@@ -71,5 +68,5 @@ All game-file I/O in `internal/game` goes through `gamefs` (`ReadFile`, `WriteFi
 * Compare the browser numbers with the native build.
 * The CPU time of Draw does not include Ebitengine's flush to WebGL, which runs after `Draw`. A low FPS with a small Draw time therefore points at the GPU or WebGL side.
 * `konung.wasm` keeps its name section even with `-ldflags=-s -w`, so a browser profile shows Go function names. Use the Firefox profiler (`about:profiling`) or Chrome DevTools → Performance.
-* In the browser the menu showed 33 FPS / 53 TPS with Update 0.00 ms and Draw 0.88 ms, so the time went outside the game's code. That led to moving the music out of Go (TPS 50 → 60) and drawing the canvas at CSS pixels (FPS 32 → 48).
+* In the browser the menu showed 33 FPS / 53 TPS with Update 0.00 ms and Draw 0.88 ms, so the time went outside the game's code. That led to moving the music out of Go (TPS 50 → 60). The Zen browser (a Firefox fork) on Linux stayed below the display rate (about 46 FPS even on testufo), while Firefox itself ran acceptably on the same machine, Chromium reached about 60 FPS and Zen on a Mac 120: a slow Zen on Linux is that browser's problem, not the game's.
 * One native game tick (`startScene.step` on `KONUNG.1`) took about 0.1 ms (2026-11, measured with a temporary benchmark). The world simulation is not the browser bottleneck.
