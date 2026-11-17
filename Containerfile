@@ -4,8 +4,9 @@
 #   podman run -d --name konung-server -p 7777:7777/tcp -p 7777:7777/udp \
 #       -v konung-data:/data konung-server
 #
-# /data holds the SQLite database and, optionally, the LAN version's SERVER
-# file (session name and length). UDP 7777 answers LAN discovery; on the
+# /data holds the SQLite database, the LAN version's GAME.RES (copy it into
+# the volume; without it players can log in but not enter the world) and,
+# optionally, its SERVER file (session name and length). UDP 7777 answers LAN discovery; on the
 # internet only TCP 7777 is needed (players type the address).
 FROM docker.io/library/golang:1.26 AS build
 WORKDIR /src

@@ -165,6 +165,7 @@ type startScene struct {
 	hoveredBuilding int
 	arrows          []gamestate.Arrow
 	hideHelp        bool // F1 hides the key help (help.go)
+	lan             bool // a LAN world (lanworld.go)
 }
 
 // sceneAssets is what stays loaded across map changes: resource files, exe
@@ -184,6 +185,27 @@ type sceneAssets struct {
 	lightMasks     [][]byte       // LIGHTS.RES light masks for the lit terrain path; nil if missing
 	flames         *flameImages   // FLAMES.RES; nil if missing
 	quests         *resfmt.Quests // QUESTR.RES dialogues; nil if missing (no one talks)
+	// lanMaps, when set, are the LAN version's maps (MAPS.RES; map n =
+	// entry n−1) used instead of KONUNG.N and LIGHTS.N.
+	lanMaps []mapdata.MapsResEntry
+}
+
+// mapFile returns map n's KONUNG.N and LIGHTS.N bytes (nil lights when the
+// file is missing) and a name for messages.
+func (a *sceneAssets) mapFile(n int) (data, lights []byte, name string, err error) {
+	if a.lanMaps != nil {
+		if n < 1 || n > len(a.lanMaps) {
+			return nil, nil, "", fmt.Errorf("MAPS.RES has no map %d", n)
+		}
+		e := a.lanMaps[n-1]
+		return e.Map, e.Lights, fmt.Sprintf("MAPS.RES #%d", n), nil
+	}
+	name = filepath.Join(a.mapDir, fmt.Sprintf("KONUNG.%d", n))
+	if data, err = os.ReadFile(name); err != nil {
+		return nil, nil, "", err
+	}
+	lights, _ = os.ReadFile(filepath.Join(a.mapDir, fmt.Sprintf("LIGHTS.%d", n)))
+	return data, lights, name, nil
 }
 
 // loadSceneAssets loads the resources a game needs (they stay loaded across
@@ -362,8 +384,7 @@ func (s *startScene) storeWorld() {
 // alarm, skips placement and respawn (EnterMap) and takes the active piles,
 // the clock and the arrows in flight from the save.
 func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *startScene, restore *gamestate.SaveState) (*startScene, error) {
-	mapPath := filepath.Join(a.mapDir, fmt.Sprintf("KONUNG.%d", mapNumber))
-	mapData, err := os.ReadFile(mapPath)
+	mapData, lightsData, mapPath, err := a.mapFile(mapNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -405,7 +426,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		pileAt:      map[mapdata.Cell]int{},
 		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
 	}
-	if s.lit, s.terrainLights, err = loadLights(a.mapDir, mapNumber); err != nil {
+	if s.lit, s.terrainLights, err = parseLights(lightsData); err != nil {
 		log.Printf("LIGHTS.%d: %v", mapNumber, err)
 	}
 	if s.tintSh, err = loadTintShader(); err != nil {

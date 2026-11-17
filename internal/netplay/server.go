@@ -34,6 +34,11 @@ type ServerConfig struct {
 	OnJoin func(p PlayerInfo)
 	// OnLeave is called after a player has left (also for kicked players).
 	OnLeave func(p PlayerInfo)
+	// Start places a player who enters the world (MsgEnter, the original's
+	// «Ok» → 0x4C); nil = entering is refused. OnEnter is called after a
+	// player has entered.
+	Start   func(p PlayerInfo) (EnterPayload, error)
+	OnEnter func(p PlayerInfo)
 	// Accounts checks logins; nil keeps no accounts (any name joins and
 	// nothing is saved), as for a session hosted from the game.
 	Accounts AccountStore
@@ -293,6 +298,8 @@ func (s *Server) serve(conn *Conn) {
 				m.From = id
 				s.cfg.OnGame(m)
 			}
+		case MsgEnter:
+			s.enter(p)
 		}
 		// Anything else from a joined client (a second join, pings are
 		// already filtered) is ignored.
@@ -380,6 +387,23 @@ func (s *Server) join(conn *Conn) (*serverPlayer, bool) {
 		s.cfg.OnJoin(p.info)
 	}
 	return p, true
+}
+
+// enter answers a player's MsgEnter with its start (0x0044ADB4 → 0x8C).
+func (s *Server) enter(p *serverPlayer) {
+	if s.cfg.Start == nil {
+		p.conn.Send(mustMessage(MsgError, ErrorPayload{Code: ErrServer, Message: "this server has no world"}))
+		return
+	}
+	at, err := s.cfg.Start(p.info)
+	if err != nil {
+		p.conn.Send(mustMessage(MsgError, ErrorPayload{Code: ErrServer, Message: err.Error()}))
+		return
+	}
+	p.conn.Send(mustMessage(MsgEntered, at))
+	if s.cfg.OnEnter != nil {
+		s.cfg.OnEnter(p.info)
+	}
 }
 
 func (s *Server) leave(p *serverPlayer) {

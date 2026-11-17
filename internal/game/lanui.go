@@ -98,6 +98,13 @@ type lanUI struct {
 	players  int
 	results  chan func()
 	leaveLAN bool // «Выход»: back to the port's main menu
+	// start is set when the server answers «Ok» (MsgEntered): the menu
+	// takes it and builds the LAN world (takeStart).
+	start *netplay.EnterPayload
+	// gameDir holds GAME.RES and MAPS.RES; startFn places heroes on a
+	// session hosted from the game (nil without GAME.RES).
+	gameDir string
+	startFn func(netplay.PlayerInfo) (netplay.EnterPayload, error)
 }
 
 func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath string) (*lanUI, error) {
@@ -155,6 +162,14 @@ func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath string) (*la
 	u.pass = gamestate.TextField{Text: u.cfg.Password, Max: gamestate.FieldPassword}
 	u.addr = gamestate.TextField{Max: gamestate.FieldAddress}
 	u.savePass = u.cfg.SavePassword
+	u.gameDir = gameDir
+	// A session hosted from the game places heroes from GAME.RES like the
+	// dedicated server.
+	if data, err := readGameFile(gameDir, "GAME.RES"); err != nil {
+		log.Printf("GAME.RES: %v", err)
+	} else if u.startFn, err = netplay.StartFromGameRes(data); err != nil {
+		log.Printf("GAME.RES: %v", err)
+	}
 	return u, nil
 }
 
@@ -318,6 +333,19 @@ func (u *lanUI) readSession() {
 				u.players++
 			case netplay.MsgPlayerLeft:
 				u.players--
+			case netplay.MsgEntered:
+				var at netplay.EnterPayload
+				if m.Decode(&at) == nil && u.state == lanWaiting {
+					u.start = &at
+				}
+			case netplay.MsgError:
+				// The server cannot place the hero (e.g. no GAME.RES).
+				var e netplay.ErrorPayload
+				m.Decode(&e)
+				log.Printf("LAN: %s", e.Message)
+				if u.state == lanWaiting {
+					u.state, u.msg = lanLogin, gamestate.MsgUnavailable
+				}
 			}
 		default:
 			return
@@ -425,7 +453,19 @@ func (u *lanUI) ok() {
 	default:
 		u.saveConfig()
 		u.state = lanWaiting
+		// The server answers with the start (0x4C → 0x8C, readSession).
+		if err := u.client.Enter(); err != nil {
+			u.state, u.msg = lanLogin, gamestate.MsgUnavailable
+		}
 	}
+}
+
+// takeStart returns the server's start once («Ok» answered) and the
+// account's hero (nil on a server without accounts).
+func (u *lanUI) takeStart() (*netplay.EnterPayload, *netplay.Hero) {
+	at := u.start
+	u.start = nil
+	return at, u.hero
 }
 
 // pickRow hosts (row 0, «Новый сервер») or joins a session; both need a
@@ -449,7 +489,7 @@ func (u *lanUI) pickRow(row int) {
 	}
 	u.busy = true
 	if row == 0 {
-		cfg := netplay.ServerConfig{Name: resfmt.CP866ToUTF8(u.server.Name), Minutes: u.server.Minutes}
+		cfg := netplay.ServerConfig{Name: resfmt.CP866ToUTF8(u.server.Name), Minutes: u.server.Minutes, Start: u.startFn}
 		go func() {
 			s, c, err := netplay.Host(netplay.DefaultPort, cfg, join, netplay.Options{})
 			u.results <- func() { u.joined(s, c, err) }

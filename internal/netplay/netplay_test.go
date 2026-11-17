@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -509,5 +510,46 @@ func TestAccounts(t *testing.T) {
 	defer again.Close()
 	if again.Session.Players[0].New {
 		t.Error("second login created the account again")
+	}
+}
+
+func TestEnter(t *testing.T) {
+	entered := make(chan string, 1)
+	s := startServer(t, ServerConfig{
+		Start: func(p PlayerInfo) (EnterPayload, error) {
+			return EnterPayload{Map: p.Model*3 + 1, Row: 110, Col: 32, Facing: 2}, nil
+		},
+		OnEnter: func(p PlayerInfo) { entered <- p.Name },
+	})
+	c := dial(t, s, "Volk", 0)
+	if err := c.Enter(); err != nil {
+		t.Fatal(err)
+	}
+	var at EnterPayload
+	if err := waitFor(t, c.Conn, MsgEntered).Decode(&at); err != nil || at != (EnterPayload{1, 110, 32, 2}) {
+		t.Errorf("entered = %+v, %v", at, err)
+	}
+	if name := <-entered; name != "Volk" {
+		t.Errorf("OnEnter(%q)", name)
+	}
+	// A server without a world refuses.
+	s2 := startServer(t, ServerConfig{})
+	c2 := dial(t, s2, "Volk", 0)
+	c2.Enter()
+	waitFor(t, c2.Conn, MsgError)
+}
+
+func TestStartFromGameRes(t *testing.T) {
+	data, err := os.ReadFile("../../assets/Konung/GAME.RES")
+	if err != nil {
+		t.Skip("GAME.RES not available:", err)
+	}
+	start, err := StartFromGameRes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at, err := start(PlayerInfo{Model: 2})
+	if err != nil || at != (EnterPayload{Map: 7, Row: 65, Col: 8, Facing: 4}) {
+		t.Errorf("model 2 start = %+v, %v", at, err)
 	}
 }

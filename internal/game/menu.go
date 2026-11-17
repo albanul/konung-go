@@ -57,6 +57,9 @@ type Menu struct {
 	// the LAN files are missing from the game folder; the item is hidden then).
 	lan   *lanUI
 	inLAN bool
+	// lanWorld: the running game is a LAN world (no saving; leaving it for
+	// a single-player game drops the connection).
+	lanWorld bool
 }
 
 // Main-menu items in the order of the exe layout table (0x0045B314) and the
@@ -90,6 +93,9 @@ func (m *Menu) firstItem() int {
 func (m *Menu) visible(i int) bool {
 	if i == itemNetwork {
 		return !m.running && m.lan != nil
+	}
+	if i == itemSave && m.lanWorld {
+		return false // a LAN world is not saved as a single-player game
 	}
 	return i >= m.firstItem()
 }
@@ -319,6 +325,11 @@ func (m *Menu) Update() error {
 		}
 		return nil
 	}
+	if m.lanWorld {
+		// Keep reading the session in the world (player counts, a lost
+		// connection); unread messages would stall the connection.
+		m.lan.readSession()
+	}
 	if m.inWorld {
 		// T (VK 0x54, 0x00436F58) toggles background tiling and writes
 		// KONUNG.CFG at once.
@@ -347,6 +358,7 @@ func (m *Menu) Update() error {
 					m.selected = itemNewGame
 				}
 				m.world = nil
+				m.leaveLANWorld()
 			})
 		}
 		return nil
@@ -364,6 +376,17 @@ func (m *Menu) Update() error {
 	if m.inLAN {
 		if m.lan.update() {
 			m.inLAN = false
+		}
+		// The server answered «Ok»: enter the LAN world (state 10 → 1).
+		if at, hero := m.lan.takeStart(); at != nil {
+			w, err := m.assets.lanWorld(m.gameDir, *at, hero, m.lan.model)
+			if err != nil {
+				log.Printf("LAN world: %v", err)
+				m.lan.disconnect()
+				m.lan.state, m.lan.msg = lanLogin, gamestate.MsgUnavailable
+				return nil
+			}
+			m.world, m.running, m.inWorld, m.inLAN, m.lanWorld = w, true, true, false, true
 		}
 		return nil
 	}
@@ -469,6 +492,7 @@ func (m *Menu) updateSaves() error {
 			log.Printf("load slot %d: %v", s.selected, err)
 			return nil
 		}
+		m.leaveLANWorld()
 		m.world, m.running, m.inWorld = w, true, true
 		// Loading restores them (0x004249AC); KONUNG.CFG is not rewritten.
 		m.config.DayNight, m.config.Lighting = w.game.Options[0], w.game.Options[1]
@@ -491,6 +515,7 @@ func (m *Menu) updateNewHero() error {
 			m.inNewHero, m.running = false, false
 			return nil
 		}
+		m.leaveLANWorld()
 		m.world, m.inNewHero, m.running, m.inWorld = w, false, true, true
 		return nil
 	}
@@ -616,3 +641,13 @@ func drawAt(dst, src *ebiten.Image, x, y int) {
 }
 
 func (m *Menu) Layout(_, _ int) (int, int) { return ScreenWidth, ScreenHeight }
+
+// leaveLANWorld ends a LAN game when a single-player game replaces it: the
+// connection (and a session hosted from this game) closes.
+func (m *Menu) leaveLANWorld() {
+	if m.lanWorld {
+		m.lanWorld = false
+		m.lan.disconnect()
+		m.lan.state = lanMenu
+	}
+}

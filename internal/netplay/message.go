@@ -44,12 +44,14 @@ const (
 	MsgSession                         // server → all: SessionInfo after a change
 	MsgChat                            // client → server → all: ChatPayload
 	MsgGame                            // gameplay, defined with the traced protocol; routed to Server.OnGame
+	MsgEnter                           // client → server at «Ok»: enter the world (the original's 0x4C)
+	MsgEntered                         // server → client: EnterPayload, where the hero starts (0x8C)
 )
 
 var msgNames = map[MsgType]string{
 	MsgPing: "ping", MsgJoin: "join", MsgWelcome: "welcome", MsgError: "error",
 	MsgPlayerJoined: "player-joined", MsgPlayerLeft: "player-left", MsgSession: "session",
-	MsgChat: "chat", MsgGame: "game",
+	MsgChat: "chat", MsgGame: "game", MsgEnter: "enter", MsgEntered: "entered",
 }
 
 func (t MsgType) String() string {
@@ -202,6 +204,15 @@ const (
 // PlayerLeftPayload names a player who left.
 type PlayerLeftPayload struct {
 	ID string `json:"id"`
+}
+
+// EnterPayload is where an entering hero starts: a MAPS.RES map (1-based)
+// and a fine-grid cell with a facing (0–7).
+type EnterPayload struct {
+	Map    int `json:"map"`
+	Row    int `json:"row"`
+	Col    int `json:"col"`
+	Facing int `json:"facing"`
 }
 
 // ChatPayload is a chat line.

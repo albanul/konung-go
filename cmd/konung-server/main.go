@@ -5,8 +5,10 @@
 //
 //	konung-server [-data DIR] [-port 7777] [-max 16] [-name NAME] [-minutes 180]
 //
-// DIR holds konung.db and, optionally, the LAN version's SERVER file (session
-// name and length; the flags override it). TCP on the port carries the game;
+// DIR holds konung.db, the LAN version's GAME.RES (the world: players start
+// on their hero model's village map; without it nobody can enter) and,
+// optionally, its SERVER file (session name and length; the flags override
+// it). TCP on the port carries the game;
 // UDP on the same port answers LAN discovery. See Containerfile for running
 // it in a container.
 package main
@@ -56,6 +58,14 @@ func run(dataDir string, port, maxPlayers int, name string, minutes int) error {
 		sessionMinutes = minutes
 	}
 
+	// GAME.RES places entering heroes (0x0044ADB4).
+	var start func(netplay.PlayerInfo) (netplay.EnterPayload, error)
+	if data, err := os.ReadFile(filepath.Join(dataDir, "GAME.RES")); err != nil {
+		log.Printf("no GAME.RES in %s: players can log in but not enter the world", dataDir)
+	} else if start, err = netplay.StartFromGameRes(data); err != nil {
+		return err
+	}
+
 	store, err := lanstore.Open(filepath.Join(dataDir, "konung.db"))
 	if err != nil {
 		return err
@@ -66,12 +76,16 @@ func run(dataDir string, port, maxPlayers int, name string, minutes int) error {
 	srv, err := netplay.Listen(addr, netplay.ServerConfig{
 		Name: sessionName, MaxPlayers: maxPlayers, Minutes: sessionMinutes,
 		Accounts: store,
+		Start:    start,
 		OnJoin: func(p netplay.PlayerInfo) {
 			if p.New { // as the original server prints (0x0044B1CE)
 				log.Printf("Новый игрок %s клан %s", p.Name, p.Clan)
 			}
 			log.Printf("joined: %s", p.Name)
-			// A participant of this session, so the session's end rates it.
+		},
+		OnEnter: func(p netplay.PlayerInfo) {
+			log.Printf("entered the world: %s", p.Name)
+			// A participant of this session (0x0044B0EC), so its end rates it.
 			if err := store.JoinSession(p.Name); err != nil {
 				log.Printf("session: %v", err)
 			}

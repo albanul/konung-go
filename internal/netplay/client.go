@@ -75,6 +75,10 @@ func Dial(addr string, j JoinInfo, opts Options) (*Client, error) {
 	}
 }
 
+// Enter asks to enter the world; the server answers with MsgEntered (or
+// MsgError) on Incoming.
+func (c *Client) Enter() error { return c.Send(mustMessage(MsgEnter, nil)) }
+
 // Chat sends a chat line to everyone in the session.
 func (c *Client) Chat(text string) error {
 	return c.Send(mustMessage(MsgChat, ChatPayload{Text: text}))

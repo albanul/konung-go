@@ -3,8 +3,6 @@ package game
 import (
 	"fmt"
 	"image"
-	"os"
-	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/gamestate"
@@ -77,13 +75,9 @@ func tintUniforms(t resfmt.Tint) map[string]any {
 	return map[string]any{"R": table(t.R), "G": table(t.G), "B": table(t.B)}
 }
 
-// loadLights reads LIGHTS.<map> next to KONUNG.<map>; the loader zero-fills
-// both parts when the file is missing (0x0043C23C).
-func loadLights(dir string, mapNumber int) (*mapdata.LitCells, *mapdata.TerrainLights, error) {
-	data, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("LIGHTS.%d", mapNumber)))
-	if err != nil {
-		data = nil
-	}
+// parseLights reads a map's LIGHTS.N bytes; nil (no file) zero-fills both
+// parts, as the loader does (0x0043C23C).
+func parseLights(data []byte) (*mapdata.LitCells, *mapdata.TerrainLights, error) {
 	lit, err := mapdata.ParseLitCells(data)
 	if err != nil {
 		return nil, nil, err

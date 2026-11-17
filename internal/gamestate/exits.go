@@ -32,10 +32,14 @@ func (x MapExit) Contains(row, col int) bool {
 	return row >= x.MinRow && row <= x.MaxRow && col >= x.MinCol && col <= x.MaxCol
 }
 
-func parseExits(data []byte) []MapExit {
+func parseExits(data []byte) []MapExit { return parseExitsAt(data, exitOffset) }
+
+// parseExitsAt reads the 250-record exit table at off (GAME.N 0x29600,
+// the LAN version's GAME.RES 0x41700).
+func parseExitsAt(data []byte, off int) []MapExit {
 	var out []MapExit
 	for i := 0; i < exitCount; i++ {
-		r := data[exitOffset+i*exitStride:][:exitStride]
+		r := data[off+i*exitStride:][:exitStride]
 		if r[4] == 0 {
 			break
 		}
