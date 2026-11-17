@@ -11,6 +11,16 @@
 </head>
 <body>
 <div id="status">Loading…</div>
+<script>
+// The canvas is drawn at CSS pixels, not device pixels: Ebitengine sizes
+// it by devicePixelRatio, and for the 800×600 game a HiDPI canvas only
+// makes the final upscale bigger (on a HiDPI Linux laptop 32 → 48 FPS,
+// the browser's own limit). ?hidpi keeps device pixels.
+if (!new URLSearchParams(location.search).has("hidpi")) {
+  Object.defineProperty(window, "devicePixelRatio", { get: () => 1 });
+}
+console.log("devicePixelRatio", window.devicePixelRatio);
+</script>
 <script src="konungfs.js"></script>
 <script src="wasm_exec.js"></script>
 <script>
@@ -18,7 +28,18 @@
   const status = document.getElementById("status");
   try {
     const go = new Go();
-    const { instance } = await WebAssembly.instantiateStreaming(fetch("konung.wasm"), go.importObject);
+    const loading = WebAssembly.instantiateStreaming(fetch("konung.wasm"), go.importObject);
+    // Browsers block sound until the page gets a click or key press, and the
+    // start-up film plays before any: wait for one first (the download
+    // continues meanwhile).
+    status.textContent = "Нажмите, чтобы начать / Click to start";
+    await new Promise(resolve => {
+      const start = () => { removeEventListener("pointerdown", start); removeEventListener("keydown", start); resolve(); };
+      addEventListener("pointerdown", start);
+      addEventListener("keydown", start);
+    });
+    status.textContent = "Loading…";
+    const { instance } = await loading;
     await go.run(instance);
     status.textContent = "The game has ended. Reload the page to play again.";
   } catch (e) {

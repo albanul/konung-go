@@ -4,6 +4,7 @@
 //	go run ./cmd/web-build                   # -> output/web
 //	go run ./cmd/web-build -serve :8080      # build, then serve http://localhost:8080
 //	web-build -build=false -serve 8080       # serve an earlier build (no Go needed)
+//	web-build                                # without Go on PATH: the same, on :8080
 //
 // The directory holds index.html, konungfs.js, wasm_exec.js, konung.wasm, the
 // game files the port reads (copied from -assets to assets/Konung/, hard
@@ -12,6 +13,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"flag"
 	"fmt"
@@ -25,6 +27,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 //go:embed web/index.html web/konungfs.js
@@ -44,15 +47,26 @@ func main() {
 	out := flag.String("out", "output/web", "output directory")
 	assets := flag.String("assets", "assets/Konung", "game directory")
 	serve := flag.String("serve", "", "after building, serve the output on this address or port (e.g. :8080 or 8080)")
-	doBuild := flag.Bool("build", true, "build before serving; -build=false serves an earlier build without the Go toolchain")
+	doBuild := flag.Bool("build", true, "build before serving; -build=false serves an earlier build without the Go toolchain (the default when Go is not on PATH)")
 	flag.Parse()
+
+	buildSet := false
+	flag.Visit(func(f *flag.Flag) { buildSet = buildSet || f.Name == "build" })
+	if _, err := exec.LookPath("go"); err != nil && !buildSet {
+		// A host without Go can only serve an earlier build.
+		*doBuild = false
+		if *serve == "" {
+			*serve = ":8080"
+		}
+		log.Printf("go not found: serving the earlier build in %s", *out)
+	}
 
 	if *doBuild {
 		if err := build(*out, *assets); err != nil {
 			log.Fatal(err)
 		}
 	} else if _, err := os.Stat(filepath.Join(*out, "konung.wasm")); err != nil {
-		log.Fatalf("no earlier build in %s (run with -build in an environment with Go): %v", *out, err)
+		log.Fatalf("no earlier build in %s (build it where Go is installed): %v", *out, err)
 	}
 	if *serve == "" {
 		return
@@ -62,7 +76,7 @@ func main() {
 		addr = ":" + addr
 	}
 	log.Printf("serving %s on http://localhost%s", *out, addr)
-	log.Fatal(http.ListenAndServe(addr, noCache(http.FileServer(http.Dir(*out)))))
+	log.Fatal(http.ListenAndServe(addr, noCache(webHandler(*out))))
 }
 
 func build(out, assets string) error {
@@ -82,11 +96,8 @@ func build(out, assets string) error {
 	if err := copyFile(filepath.Join(strings.TrimSpace(string(goroot)), "lib", "wasm", "wasm_exec.js"), filepath.Join(out, "wasm_exec.js")); err != nil {
 		return err
 	}
-	for _, name := range []string{"index.html", "konungfs.js"} {
-		data, _ := webFiles.ReadFile("web/" + name)
-		if err := os.WriteFile(filepath.Join(out, name), data, 0o644); err != nil {
-			return err
-		}
+	if err := writeWebFiles(out); err != nil {
+		return err
 	}
 
 	_, lookErr := exec.LookPath("ffmpeg")
@@ -140,6 +151,36 @@ func build(out, assets string) error {
 		return err
 	}
 	log.Printf("built %s: %d game files (%.0f MB)", out, len(manifest), float64(total)/1e6)
+	return nil
+}
+
+// webHandler serves out, but the page files from this binary's embedded
+// copies: a host binary then serves its own page over an earlier build
+// without writing into out (which the container may own).
+func webHandler(out string) http.Handler {
+	files := http.FileServer(http.Dir(out))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		if name == "" {
+			name = "index.html"
+		}
+		if name == "index.html" || name == "konungfs.js" {
+			data, _ := webFiles.ReadFile("web/" + name)
+			http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
+			return
+		}
+		files.ServeHTTP(w, r)
+	})
+}
+
+// writeWebFiles writes the embedded page files into out.
+func writeWebFiles(out string) error {
+	for _, name := range []string{"index.html", "konungfs.js"} {
+		data, _ := webFiles.ReadFile("web/" + name)
+		if err := os.WriteFile(filepath.Join(out, name), data, 0o644); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

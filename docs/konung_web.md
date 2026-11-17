@@ -8,6 +8,7 @@ The game runs in a browser as `GOOS=js GOARCH=wasm`. The game code is the same a
 $C go run ./cmd/web-build                  # -> output/web
 $C go run ./cmd/web-build -serve :8080     # build, then serve http://localhost:8080
 ./web-build -build=false -serve 8080       # host without Go: serve an earlier build (binary built with GOOS/GOARCH of the host)
+./web-build                                # the same: without Go on PATH it serves output/web on :8080 (the page files come from the binary itself)
 ```
 
 `output/web` is a static site. You can host it on any HTTP server that sends `.wasm` as `application/wasm`.
@@ -37,14 +38,22 @@ All game-file I/O in `internal/game` goes through `gamefs` (`ReadFile`, `WriteFi
 ## Behaviour differences
 
 * There is no fullscreen at start (the browser requires a user gesture). The canvas fills the page and Ebitengine scales the 800×600 screen.
-* Audio starts after the first click or key press (browser autoplay policy).
+* The canvas is drawn at CSS pixels: `index.html` overrides `window.devicePixelRatio` to 1 before Ebitengine reads it (`ui_js.go`).
+  * On a HiDPI display a device-pixel canvas only enlarges the final upscale, which cost a third of the frame rate. Observed on a HiDPI Linux laptop: 32 → 48 FPS in-game, with the browser itself capped at about 46 (testufo). On a Mac with a 120 Hz display the game reached 120 FPS.
+  * `?hidpi` keeps device pixels.
+* The page waits for a click or key press before starting the game ("Click to start"; the download continues meanwhile): browsers block sound until the page gets one, and the start-up film plays before any game input.
+* Music is played by the browser.
+  * `newWebMusic` (`internal/game/audio_js.go`, `konungMusic` in `konungfs.js`) puts the `MUSICS.RES` track's Ogg into an `<audio>` element.
+  * The game's rules stay the same (`soundSystem.playTrack`/`update`/`setMusic`): a random track, the next one when it ends, and «Музыка» off only setting the volume.
+  * Decoding Vorbis and resampling 22050 → 44100 Hz in Go ran without a break on the only WASM thread, because the music never stops.
+  * Sound effects are still mixed in Go.
 * Start-up downloads about 105 MB (`OBJECTS`, `SOUNDS`, `GRAPH`, `MUSICS`). `-serve` does no compression; a production host should gzip/brotli the files.
 * The original `.flm` films are not served. Convert them first with `cmd/video-convert`.
 * Films are played by the browser, not decoded in Go.
   * The pure-Go AV1 decoder (`gav1d`) uses SIMD natively, but in WASM it is scalar and single-threaded, which is far too slow.
   * `openWebFilm` (`internal/game/film_js.go`) shows `Video/<name>.webm` in a `<video>` element over `resfmt.FilmRect`, placed like Ebitengine's centred, scaled screen (`konungFilm` in `konungfs.js`). The frozen screen is drawn around it.
   * Any key still ends the film (`filmPlayer.update`).
-  * Before the first user gesture (the start-up poster) the browser blocks sound, so the film plays muted.
+  * Should the browser still block sound (no gesture yet), the film plays muted rather than not at all.
   * Without a `.webm` the Go decoder is used.
 
 ## Verification
@@ -62,4 +71,5 @@ All game-file I/O in `internal/game` goes through `gamefs` (`ReadFile`, `WriteFi
 * Compare the browser numbers with the native build.
 * The CPU time of Draw does not include Ebitengine's flush to WebGL, which runs after `Draw`. A low FPS with a small Draw time therefore points at the GPU or WebGL side.
 * `konung.wasm` keeps its name section even with `-ldflags=-s -w`, so a browser profile shows Go function names. Use the Firefox profiler (`about:profiling`) or Chrome DevTools → Performance.
+* In the browser the menu showed 33 FPS / 53 TPS with Update 0.00 ms and Draw 0.88 ms, so the time went outside the game's code. That led to moving the music out of Go (TPS 50 → 60) and drawing the canvas at CSS pixels (FPS 32 → 48).
 * One native game tick (`startScene.step` on `KONUNG.1`) took about 0.1 ms (2026-11, measured with a temporary benchmark). The world simulation is not the browser bottleneck.

@@ -125,3 +125,67 @@ func LightTerrainCell(dst *image.RGBA, buf *TerrainCellBuffer, mask []byte, t *L
 		pix[o+3] = 0xFF
 	}
 }
+
+// The lit path on the GPU (game.litShaderSrc) reads three 114×64 images
+// that encode LightTerrainCell's inputs as exact bytes: the cell (5-bit
+// red, green, blue in R, G, B; alpha 0 where the buffer is empty), the
+// light mask (light in R) and the tables (LitTablesImage). Only the tables
+// change with the light, so a light change uploads one small image instead
+// of relighting every cell on the CPU.
+
+// LitCellImage encodes a composed cell for the lit shader.
+func LitCellImage(buf *TerrainCellBuffer) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, LightMaskWidth, LightMaskHeight))
+	for i, c := range buf {
+		if c != 0 {
+			copy(img.Pix[4*i:], []uint8{uint8(c >> 10 & 0x1F), uint8(c >> 5 & 0x1F), uint8(c & 0x1F), 0xFF})
+		}
+	}
+	return img
+}
+
+// LitMaskImage encodes a light mask for the lit shader.
+func LitMaskImage(mask []byte) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, LightMaskWidth, LightMaskHeight))
+	for i, l := range mask[:lightMaskSize] {
+		copy(img.Pix[4*i:], []uint8{l & 31, 0, 0, 0xFF})
+	}
+	return img
+}
+
+// Lit table image layout: red at (c, L), green at (32 + c, L), blue at
+// (64 + c, 0), the 8-bit output in every colour channel.
+const (
+	litTableGreenX = 32
+	litTableBlueX  = 64
+)
+
+// LitTablesImage encodes the tables for the lit shader.
+func LitTablesImage(t *LitTables) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, LightMaskWidth, LightMaskHeight))
+	set := func(x, y int, v uint8) { copy(img.Pix[img.PixOffset(x, y):], []uint8{v, v, v, 0xFF}) }
+	for c := range 32 {
+		for l := range 32 {
+			set(c, l, t.r[l][c])
+			set(litTableGreenX+c, l, t.g[l][c])
+		}
+		set(litTableBlueX+c, 0, t.b[c])
+	}
+	return img
+}
+
+// LitShaderReference is game.litShaderSrc in Go, for tests: the lookups
+// the shader makes on the encoded images.
+func LitShaderReference(cell, mask, tables *image.RGBA) *image.RGBA {
+	dst := image.NewRGBA(cell.Rect)
+	for i := 0; i < lightMaskSize; i++ {
+		p := cell.Pix[4*i : 4*i+4]
+		if p[3] == 0 {
+			continue
+		}
+		l := int(mask.Pix[4*i])
+		at := func(x, y int) uint8 { return tables.Pix[tables.PixOffset(x, y)] }
+		copy(dst.Pix[4*i:], []uint8{at(int(p[0]), l), at(litTableGreenX+int(p[1]), l), at(litTableBlueX+int(p[2]), 0), 0xFF})
+	}
+	return dst
+}

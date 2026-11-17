@@ -113,6 +113,9 @@ type startScene struct {
 	tint           resfmt.Tint    // 0x0051EC7C, this frame's light
 	tintU          map[string]any // shader tables for tint
 	tintSh         *ebiten.Shader // nil if the shader failed to compile
+	litSh          *ebiten.Shader // lit terrain shader; nil: the CPU path
+	litLUT         *ebiten.Image  // resfmt.LitTablesImage of the current light
+	litLUTGen      int            // litGen litLUT was written for
 	camX, camY     int
 	tick           int // game ticks (0x00A3E770, one per step, 60 ms each)
 	frame          int // drawn frames (Update calls)
@@ -182,11 +185,12 @@ type sceneAssets struct {
 	largeFont      *gameFont
 	rawTiles       []*image.RGBA
 	tiles          []*ebiten.Image
-	glow           *ebiten.Image  // LIGHTS.RES glow map (resfmt.GlowMask); nil if the file is missing
-	arrowGlow      *ebiten.Image  // LIGHTS.RES incendiary arrow glow (resfmt.ArrowGlow); nil if missing
-	lightMasks     [][]byte       // LIGHTS.RES light masks for the lit terrain path; nil if missing
-	flames         *flameImages   // FLAMES.RES; nil if missing
-	quests         *resfmt.Quests // QUESTR.RES dialogues; nil if missing (no one talks)
+	glow           *ebiten.Image   // LIGHTS.RES glow map (resfmt.GlowMask); nil if the file is missing
+	arrowGlow      *ebiten.Image   // LIGHTS.RES incendiary arrow glow (resfmt.ArrowGlow); nil if missing
+	lightMasks     [][]byte        // LIGHTS.RES light masks for the lit terrain path; nil if missing
+	litMaskImgs    []*ebiten.Image // resfmt.LitMaskImage per light mask, made on first use
+	flames         *flameImages    // FLAMES.RES; nil if missing
+	quests         *resfmt.Quests  // QUESTR.RES dialogues; nil if missing (no one talks)
 }
 
 // loadSceneAssets loads the resources a game needs (they stay loaded across
@@ -412,6 +416,9 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		log.Printf("LIGHTS.%d: %v", mapNumber, err)
 	}
 	if s.tintSh, err = loadTintShader(); err != nil {
+		log.Print(err)
+	}
+	if s.litSh, err = loadLitShader(); err != nil {
 		log.Print(err)
 	}
 	if prev != nil {

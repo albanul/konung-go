@@ -77,6 +77,43 @@ func tintUniforms(t resfmt.Tint) map[string]any {
 	return map[string]any{"R": table(t.R), "G": table(t.G), "B": table(t.B)}
 }
 
+// litShaderSrc is the lit terrain path (resfmt.LightTerrainCell) on the
+// GPU. Image 0 is the encoded cell (resfmt.LitCellImage), 1 its light mask
+// (LitMaskImage), 2 the tables of the current light (LitTablesImage); the
+// encoded values are exact bytes, so the result matches the CPU path
+// (resfmt.LitShaderReference, TestLitShaderEncoding).
+const litShaderSrc = `//kage:unit pixels
+package main
+
+func Fragment(dst vec4, src vec2, color vec4) vec4 {
+	c := imageSrc0UnsafeAt(src)
+	if c.a == 0 {
+		return vec4(0)
+	}
+	i := floor(c.rgb*255 + 0.5)
+	l := floor(imageSrc1UnsafeAtFromSrc0Pos(src).r*255 + 0.5)
+	o := imageSrc0Origin() + 0.5
+	r := imageSrc2UnsafeAtFromSrc0Pos(o + vec2(i.r, l)).r
+	g := imageSrc2UnsafeAtFromSrc0Pos(o + vec2(32+i.g, l)).r
+	b := imageSrc2UnsafeAtFromSrc0Pos(o + vec2(64+i.b, 0)).r
+	return vec4(r, g, b, 1)
+}
+`
+
+var litShader *ebiten.Shader
+
+func loadLitShader() (*ebiten.Shader, error) {
+	if litShader != nil {
+		return litShader, nil
+	}
+	sh, err := ebiten.NewShader([]byte(litShaderSrc))
+	if err != nil {
+		return nil, fmt.Errorf("lit terrain shader: %w", err)
+	}
+	litShader = sh
+	return sh, nil
+}
+
 // loadLights reads LIGHTS.<map> next to KONUNG.<map>; the loader zero-fills
 // both parts when the file is missing (0x0043C23C).
 func loadLights(dir string, mapNumber int) (*mapdata.LitCells, *mapdata.TerrainLights, error) {
@@ -140,8 +177,7 @@ func (s *startScene) drawLitCell(dst *ebiten.Image, r, c, x, y int) bool {
 	if l == 0 || l > len(s.assets.lightMasks) {
 		return false
 	}
-	if s.litBuf == nil {
-		s.litBuf = image.NewRGBA(image.Rect(0, 0, resfmt.LightMaskWidth, resfmt.LightMaskHeight))
+	if s.litCells == nil {
 		s.litCells = map[[2]int]*litCell{}
 	}
 	cell := s.litCells[[2]int{r, c}]
@@ -152,15 +188,25 @@ func (s *startScene) drawLitCell(dst *ebiten.Image, r, c, x, y int) bool {
 				layers[i] = s.assets.rawTiles[b-1]
 			}
 		}
-		cell = &litCell{
-			buf: resfmt.ComposeTerrainCell(layers[0], layers[1]),
-			img: ebiten.NewImage(resfmt.LightMaskWidth, resfmt.LightMaskHeight),
+		cell = &litCell{buf: resfmt.ComposeTerrainCell(layers[0], layers[1])}
+		if s.litSh != nil {
+			cell.enc = ebiten.NewImageFromImage(resfmt.LitCellImage(cell.buf))
+		} else {
+			cell.img = ebiten.NewImage(resfmt.LightMaskWidth, resfmt.LightMaskHeight)
 		}
 		s.litCells[[2]int{r, c}] = cell
 	}
-	// Relight only when the light changed since this cell was last lit (at
-	// most once per 60 ms game frame); WritePixels is a texture upload.
+	if s.litSh != nil {
+		s.drawLitShader(dst, cell, l-1, x, y)
+		return true
+	}
+	// CPU fallback: relight only when the light changed since this cell was
+	// last lit (at most once per 60 ms game frame); WritePixels is a
+	// texture upload.
 	if cell.gen != s.litGen {
+		if s.litBuf == nil {
+			s.litBuf = image.NewRGBA(image.Rect(0, 0, resfmt.LightMaskWidth, resfmt.LightMaskHeight))
+		}
 		if s.litTables == nil {
 			s.litTables = resfmt.NewLitTables(s.flicker)
 		}
@@ -172,12 +218,42 @@ func (s *startScene) drawLitCell(dst *ebiten.Image, r, c, x, y int) bool {
 	return true
 }
 
-// litCell is a lit terrain cell: its composed layers and the image the
+// drawLitShader draws a lit cell with litShaderSrc: the cell and light
+// mask images are uploaded once, the tables image once per light change.
+func (s *startScene) drawLitShader(dst *ebiten.Image, cell *litCell, mask, x, y int) {
+	a := s.assets
+	if a.litMaskImgs == nil {
+		a.litMaskImgs = make([]*ebiten.Image, len(a.lightMasks))
+	}
+	if a.litMaskImgs[mask] == nil {
+		a.litMaskImgs[mask] = ebiten.NewImageFromImage(resfmt.LitMaskImage(a.lightMasks[mask]))
+	}
+	if s.litLUT == nil {
+		s.litLUT = ebiten.NewImage(resfmt.LightMaskWidth, resfmt.LightMaskHeight)
+		s.litLUTGen = s.litGen - 1
+	}
+	if s.litLUTGen != s.litGen {
+		if s.litTables == nil {
+			s.litTables = resfmt.NewLitTables(s.flicker)
+		}
+		s.litLUT.WritePixels(resfmt.LitTablesImage(s.litTables).Pix)
+		s.litLUTGen = s.litGen
+	}
+	perf.draws++
+	op := &ebiten.DrawRectShaderOptions{}
+	op.Images = [4]*ebiten.Image{cell.enc, a.litMaskImgs[mask], s.litLUT}
+	op.GeoM.Translate(float64(x), float64(y))
+	dst.DrawRectShader(resfmt.LightMaskWidth, resfmt.LightMaskHeight, s.litSh, op)
+}
+
+// litCell is a lit terrain cell: its composed layers and either the
+// encoded image for litShaderSrc or, without the shader, the image the CPU
 // lighting is written to when the light changes.
 type litCell struct {
 	buf *resfmt.TerrainCellBuffer
-	img *ebiten.Image
-	gen int // litGen the image was lit with
+	enc *ebiten.Image // resfmt.LitCellImage, uploaded once
+	img *ebiten.Image // CPU fallback
+	gen int           // litGen img was lit with
 }
 
 // drawTinted draws a world image at screen (x, y) through the day/night

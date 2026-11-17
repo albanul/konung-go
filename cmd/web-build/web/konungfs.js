@@ -95,3 +95,34 @@ globalThis.konungFilm = (() => {
     },
   };
 })();
+
+// Music (internal/game/audio_js.go): a MUSICS.RES track (Ogg Vorbis) in an
+// <audio> element. Before the first user gesture the browser blocks
+// playback; the track then starts on the first click or key.
+globalThis.konungMusic = (() => {
+  return {
+    open(bytes) {
+      const url = URL.createObjectURL(new Blob([bytes], { type: "audio/ogg" }));
+      const a = new Audio(url);
+      a.konungURL = url;
+      a.volume = 0;
+      a.addEventListener("error", () => { a.konungFailed = true; });
+      a.konungUnhook = () => { removeEventListener("pointerdown", a.konungStart); removeEventListener("keydown", a.konungStart); };
+      a.konungStart = () => { a.konungUnhook(); a.play().catch(() => {}); };
+      a.play().catch(() => {
+        addEventListener("pointerdown", a.konungStart);
+        addEventListener("keydown", a.konungStart);
+      });
+      return a;
+    },
+    volume(a, v) { a.volume = Math.max(0, Math.min(1, v)); },
+    playing(a) { return !a.ended && !a.konungFailed; },
+    close(a) {
+      a.konungUnhook();
+      a.pause();
+      a.removeAttribute("src");
+      a.load();
+      URL.revokeObjectURL(a.konungURL);
+    },
+  };
+})();
