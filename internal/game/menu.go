@@ -10,6 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
 )
 
@@ -326,9 +327,10 @@ func (m *Menu) Update() error {
 		return nil
 	}
 	if m.lanWorld {
-		// Keep reading the session in the world (player counts, a lost
+		// Keep reading the session in the world (the other heroes, a lost
 		// connection); unread messages would stall the connection.
 		m.lan.readSession()
+		m.applyLAN()
 	}
 	if m.inWorld {
 		// T (VK 0x54, 0x00436F58) toggles background tiling and writes
@@ -387,6 +389,13 @@ func (m *Menu) Update() error {
 				return nil
 			}
 			m.world, m.running, m.inWorld, m.inLAN, m.lanWorld = w, true, true, false, true
+			lan := m.lan
+			w.onMove = func(p netplay.Position) {
+				if lan.client != nil {
+					lan.client.Move(p)
+				}
+			}
+			m.applyLAN()
 		}
 		return nil
 	}
@@ -649,5 +658,34 @@ func (m *Menu) leaveLANWorld() {
 		m.lanWorld = false
 		m.lan.disconnect()
 		m.lan.state = lanMenu
+	}
+}
+
+// applyLAN hands the queued appear, move and leave messages to the LAN
+// world (lanremote.go).
+func (m *Menu) applyLAN() {
+	msgs := m.lan.worldMsgs
+	m.lan.worldMsgs = nil
+	if m.world == nil {
+		return
+	}
+	for _, msg := range msgs {
+		switch msg.Type {
+		case netplay.MsgAppear:
+			var a netplay.AppearPayload
+			if msg.Decode(&a) == nil {
+				m.world.remoteAppear(a)
+			}
+		case netplay.MsgMoved:
+			var mv netplay.MovedPayload
+			if msg.Decode(&mv) == nil {
+				m.world.remoteMove(mv.ID, mv.Pos)
+			}
+		case netplay.MsgPlayerLeft:
+			var l netplay.PlayerLeftPayload
+			if msg.Decode(&l) == nil {
+				m.world.remoteLeave(l.ID)
+			}
+		}
 	}
 }

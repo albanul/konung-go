@@ -46,12 +46,16 @@ const (
 	MsgGame                            // gameplay, defined with the traced protocol; routed to Server.OnGame
 	MsgEnter                           // client → server at «Ok»: enter the world (the original's 0x4C)
 	MsgEntered                         // server → client: EnterPayload, where the hero starts (0x8C)
+	MsgAppear                          // server → client: AppearPayload, a hero in the world (0x5A)
+	MsgMove                            // client → server: Position, the own hero moved
+	MsgMoved                           // server → client: MovedPayload, another hero moved (0x19)
 )
 
 var msgNames = map[MsgType]string{
 	MsgPing: "ping", MsgJoin: "join", MsgWelcome: "welcome", MsgError: "error",
 	MsgPlayerJoined: "player-joined", MsgPlayerLeft: "player-left", MsgSession: "session",
 	MsgChat: "chat", MsgGame: "game", MsgEnter: "enter", MsgEntered: "entered",
+	MsgAppear: "appear", MsgMove: "move", MsgMoved: "moved",
 }
 
 func (t MsgType) String() string {
@@ -206,13 +210,36 @@ type PlayerLeftPayload struct {
 	ID string `json:"id"`
 }
 
-// EnterPayload is where an entering hero starts: a MAPS.RES map (1-based)
-// and a fine-grid cell with a facing (0–7).
-type EnterPayload struct {
+// Position is a hero's place in the world: a MAPS.RES map (1-based) and a
+// fine-grid cell (row 0–319, col 0–159) with a facing (0–7).
+type Position struct {
 	Map    int `json:"map"`
 	Row    int `json:"row"`
 	Col    int `json:"col"`
 	Facing int `json:"facing"`
+}
+
+// Valid reports whether p is inside the fine grid.
+func (p Position) Valid() bool {
+	return p.Map >= 1 && p.Map <= 255 && p.Row >= 0 && p.Row < 320 && p.Col >= 0 && p.Col < 160 && p.Facing >= 0 && p.Facing < 8
+}
+
+// EnterPayload is where an entering hero starts.
+type EnterPayload = Position
+
+// AppearPayload is a hero in the world: the player, its account's hero
+// (appearance, level; nil on a server without accounts) and its position.
+// The original's 0x5A carries the appearance, name and clan.
+type AppearPayload struct {
+	Player PlayerInfo `json:"player"`
+	Hero   *Hero      `json:"hero,omitempty"`
+	Pos    Position   `json:"pos"`
+}
+
+// MovedPayload is another hero's new position (the original's 0x19).
+type MovedPayload struct {
+	ID  string   `json:"id"`
+	Pos Position `json:"pos"`
 }
 
 // ChatPayload is a chat line.

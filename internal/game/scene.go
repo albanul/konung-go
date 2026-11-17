@@ -14,6 +14,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
+	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
 )
 
@@ -166,6 +167,14 @@ type startScene struct {
 	arrows          []gamestate.Arrow
 	hideHelp        bool // F1 hides the key help (help.go)
 	lan             bool // a LAN world (lanworld.go)
+	// LAN world (lanremote.go): the other players' heroes by player ID,
+	// onMove reports the own hero's position to the server, lastMove is the
+	// last one sent; hoveredRemote is the remote hero under the cursor
+	// (never s.hovered: no orders reach it).
+	remotes       map[string]*remotePlayer
+	onMove        func(netplay.Position)
+	lastMove      netplay.Position
+	hoveredRemote *remotePlayer
 }
 
 // sceneAssets is what stays loaded across map changes: resource files, exe
@@ -625,6 +634,10 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		s.restoreSaved(*restore)
 	}
 	s.activatePiles()
+	if prev != nil { // a map change keeps the other players
+		s.remotes, s.onMove = prev.remotes, prev.onMove
+		s.placeRemotes()
+	}
 	s.centerOn(camX, camY)
 	s.centerHero()
 	return s, nil
@@ -971,6 +984,9 @@ func (s *startScene) statusText() []byte {
 		}
 		if s.hovered >= 0 {
 			return s.game.StatusLine(s.entity(s.hovered), s.tables)
+		}
+		if s.hoveredRemote != nil {
+			return remoteStatus(s.hoveredRemote)
 		}
 	}
 	if len(s.party) == 0 {
@@ -1360,6 +1376,8 @@ func (s *startScene) step() {
 	for _, n := range s.npcs {
 		s.idleLoop(&n.walker, s.game.Entities[n.entity].Dead())
 	}
+	s.faceRemotes()
+	s.reportMove()
 }
 
 // idleLoop is the idle case of the action tables (party 0x004223AD,
@@ -1411,6 +1429,10 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	} else {
 		chars, owners := s.drawWorld(screen)
 		s.hovered = s.hitTest(chars, owners)
+		s.hoveredRemote = s.remoteAt(s.hovered)
+		if s.hoveredRemote != nil {
+			s.hovered = -1 // a remote hero takes no orders
+		}
 		s.hoveredBuilding = s.buildingUnderCursor()
 		if window {
 			s.hovered, s.hoveredBuilding = -1, 0 // the window covers the world
@@ -1436,6 +1458,9 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	s.talk.draw(screen, s.hud, s.game, s.tiling, s.inv.strip.y)
 	if s.trade.open() {
 		s.trade.draw(screen, s.hud, s.game, s.tables, s.tiling)
+	}
+	if s.lan && s.wmap.open {
+		s.wmap.counts = s.playerCounts()
 	}
 	s.wmap.draw(screen, s.hud, s.game, s.mapNumber, s.tiling, s.font)
 	if text := s.statusText(); text != nil {

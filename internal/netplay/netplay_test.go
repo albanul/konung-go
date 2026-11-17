@@ -553,3 +553,68 @@ func TestStartFromGameRes(t *testing.T) {
 		t.Errorf("model 2 start = %+v, %v", at, err)
 	}
 }
+
+// Heroes in the world see each other: the newcomer gets those already
+// there, everyone else gets the newcomer, and moves are relayed to the
+// others only.
+func TestWorldRelay(t *testing.T) {
+	s := startServer(t, ServerConfig{Start: func(p PlayerInfo) (EnterPayload, error) {
+		return EnterPayload{Map: p.Model*3 + 1, Row: 110, Col: 32, Facing: 2}, nil
+	}})
+	a := dial(t, s, "Volk", 0)
+	a.Enter()
+	waitFor(t, a.Conn, MsgEntered)
+	b := dial(t, s, "Ragnar", 2)
+	b.Enter()
+	waitFor(t, b.Conn, MsgEntered)
+
+	var ap AppearPayload
+	if waitFor(t, b.Conn, MsgAppear).Decode(&ap); ap.Player.Name != "Volk" || ap.Pos.Map != 1 {
+		t.Errorf("b sees %+v", ap)
+	}
+	if waitFor(t, a.Conn, MsgAppear).Decode(&ap); ap.Player.Name != "Ragnar" || ap.Pos.Map != 7 {
+		t.Errorf("a sees %+v", ap)
+	}
+
+	moved := Position{Map: 1, Row: 100, Col: 30, Facing: 5}
+	a.Move(moved)
+	a.Move(Position{Map: 1, Row: 999}) // off the grid: dropped
+	var mv MovedPayload
+	if waitFor(t, b.Conn, MsgMoved).Decode(&mv); mv.ID != a.PlayerID || mv.Pos != moved {
+		t.Errorf("b got move %+v", mv)
+	}
+	// A third player entering sees Volk where he moved to.
+	c := dial(t, s, "Olaf", 1)
+	c.Enter()
+	waitFor(t, c.Conn, MsgEntered)
+	seen := map[string]Position{}
+	for len(seen) < 2 {
+		waitFor(t, c.Conn, MsgAppear).Decode(&ap)
+		seen[ap.Player.Name] = ap.Pos
+	}
+	if seen["Volk"] != moved {
+		t.Errorf("c sees Volk at %+v", seen["Volk"])
+	}
+	// Moves before entering are ignored: nothing from d reaches b before
+	// b's own chat line comes back.
+	d := dial(t, s, "Late", 0)
+	d.Move(moved)
+	b.Chat("ping")
+	for {
+		select {
+		case m := <-b.Incoming():
+			if m.Type == MsgMoved {
+				var mv MovedPayload
+				m.Decode(&mv)
+				if mv.ID == d.PlayerID {
+					t.Fatal("a move before entering was relayed")
+				}
+			}
+			if m.Type == MsgChat {
+				return
+			}
+		case <-time.After(wait):
+			t.Fatal("no chat")
+		}
+	}
+}

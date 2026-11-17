@@ -7,6 +7,7 @@ import (
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
+	"konung1.5/internal/resfmt"
 )
 
 // Without an account (a server without accounts) the hero is the
@@ -163,5 +164,110 @@ func TestLANWorldMap(t *testing.T) {
 		if (m == 1) != (tinted > drawn/2) {
 			t.Errorf("map %d: %d of %d pixels tinted", m, tinted, drawn)
 		}
+	}
+}
+
+// Another player's hero on the map: it appears as a walker outside the
+// party, walks to reported cells, jumps when far, leaves the map, comes
+// back after a map change, and is removed when the player leaves.
+func TestLANRemotePlayers(t *testing.T) {
+	const dir = "../../assets/Konung/"
+	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
+		t.Skip("MAPS.RES not available:", err)
+	}
+	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
+	if err != nil {
+		t.Skip("assets missing:", err)
+	}
+	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sent []netplay.Position
+	s.onMove = func(p netplay.Position) { sent = append(sent, p) }
+
+	ragnar := netplay.AppearPayload{
+		Player: netplay.PlayerInfo{ID: "r1", Name: "Ragnar", Clan: "Викинги", Model: 2},
+		Hero:   &netplay.Hero{Level: 4, Model: 2, Palette: 36},
+		Pos:    netplay.Position{Map: 1, Row: 100, Col: 32, Facing: 3},
+	}
+	s.remoteAppear(ragnar)
+	r := s.remotes["r1"]
+	n := s.byEntity[r.entity]
+	if n == nil || n.mode != npcRemote || n.cell != (mapdata.Cell{Row: 100, Col: 32}) {
+		t.Fatalf("remote walker = %+v", n)
+	}
+	e := s.game.Entities[r.entity]
+	if e.Model != 2 || e.PaletteOffset != 36*512 || e.Level != 4 || e.Group == 0 || s.partyIndex(r.entity) >= 0 {
+		t.Errorf("remote entity: model %d palette %#x level %d group %d", e.Model, e.PaletteOffset, e.Level, e.Group)
+	}
+	if got := resfmt.CP866ToUTF8(remoteStatus(r)); got != "Ragnar, клан Викинги" {
+		t.Errorf("status %q", got)
+	}
+
+	// A nearby cell: a walk. A far one: a jump.
+	s.remoteMove("r1", netplay.Position{Map: 1, Row: 104, Col: 33, Facing: 1})
+	if n := s.byEntity[r.entity]; n == nil || len(n.path) == 0 && !n.walking {
+		t.Error("no walk to a nearby cell")
+	}
+	s.remoteMove("r1", netplay.Position{Map: 1, Row: 200, Col: 40})
+	if n := s.byEntity[r.entity]; n == nil || chebyshev(n.cell, mapdata.Cell{Row: 200, Col: 40}) > 3 {
+		t.Errorf("no jump: %+v", n)
+	}
+
+	// Off this map: taken off; still known.
+	s.remoteMove("r1", netplay.Position{Map: 15, Row: 66, Col: 57})
+	if s.byEntity[r.entity] != nil || s.remotes["r1"] == nil {
+		t.Error("remote on another map is still drawn here")
+	}
+	// The own hero takes exit 3 to map 15: the remote is there.
+	x, _ := s.game.ExitAt(1, 65, 7)
+	s.changeMap(x)
+	if s.mapNumber != 15 || s.byEntity[s.remotes["r1"].entity] == nil {
+		t.Errorf("after the map change: map %d, remote placed %v", s.mapNumber, s.byEntity[s.remotes["r1"].entity] != nil)
+	}
+
+	// The own position is reported once per change.
+	sent = nil
+	s.reportMove()
+	s.reportMove()
+	if len(sent) != 1 || sent[0].Map != 15 {
+		t.Errorf("sent %+v", sent)
+	}
+
+	// The map window counts the own hero and Ragnar, both on map 15.
+	if c := s.playerCounts(); c[15] != 2 || len(c) != 1 {
+		t.Errorf("player counts %v", c)
+	}
+
+	s.remoteLeave("r1")
+	if len(s.remotes) != 0 {
+		t.Error("the player who left is still known")
+	}
+	for _, n := range s.npcs {
+		if n.mode == npcRemote {
+			t.Error("a remote walker is left on the map")
+		}
+	}
+}
+
+// A remote hero wears what the own hero wears at the start (the GAME.N
+// template's equipment), not the creation screen's preview gear.
+func TestLANRemoteEquipment(t *testing.T) {
+	const dir = "../../assets/Konung/"
+	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
+		t.Skip("MAPS.RES not available:", err)
+	}
+	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
+	if err != nil {
+		t.Skip("assets missing:", err)
+	}
+	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "x", Name: "Twin", Model: 0}, Pos: netplay.Position{Map: 1, Row: 100, Col: 32}})
+	if own, other := s.party[0].Equipment, s.game.Entities[s.remotes["x"].entity].Equipment; own != other {
+		t.Errorf("equipment: own %v, remote %v", own, other)
 	}
 }

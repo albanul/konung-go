@@ -77,6 +77,10 @@ func (c ServerConfig) withDefaults() ServerConfig {
 type serverPlayer struct {
 	info PlayerInfo
 	conn *Conn
+	hero *Hero // the account's hero; nil without accounts
+	// entered: in the world (MsgEnter answered); pos is the last position.
+	entered bool
+	pos     Position
 }
 
 // Server hosts one session: it accepts joins, keeps the player list, relays
@@ -300,6 +304,11 @@ func (s *Server) serve(conn *Conn) {
 			}
 		case MsgEnter:
 			s.enter(p)
+		case MsgMove:
+			var pos Position
+			if m.Decode(&pos) == nil && pos.Valid() {
+				s.move(p, pos)
+			}
 		}
 		// Anything else from a joined client (a second join, pings are
 		// already filtered) is ignored.
@@ -377,7 +386,7 @@ func (s *Server) join(conn *Conn) (*serverPlayer, bool) {
 			return refuse(ErrName, "name is taken")
 		}
 	}
-	p := &serverPlayer{info: PlayerInfo{ID: newID(), Name: name, Clan: clan, Model: j.Model, New: created}, conn: conn}
+	p := &serverPlayer{info: PlayerInfo{ID: newID(), Name: name, Clan: clan, Model: j.Model, New: created}, conn: conn, hero: hero}
 	s.players[p.info.ID] = p
 	s.order = append(s.order, p.info.ID)
 	conn.Send(mustMessage(MsgWelcome, WelcomePayload{PlayerID: p.info.ID, Session: s.sessionLocked(), Hero: hero}))
@@ -400,10 +409,33 @@ func (s *Server) enter(p *serverPlayer) {
 		p.conn.Send(mustMessage(MsgError, ErrorPayload{Code: ErrServer, Message: err.Error()}))
 		return
 	}
+	// Under the lock, so every client sees the heroes appear in one order:
+	// the start to the player, the heroes already in the world to it, and
+	// the new hero to everyone else (0x8C, then 0x5A).
+	s.mu.Lock()
+	p.entered, p.pos = true, at
 	p.conn.Send(mustMessage(MsgEntered, at))
+	for _, id := range s.order {
+		if o := s.players[id]; o != p && o.entered {
+			p.conn.Send(mustMessage(MsgAppear, AppearPayload{Player: o.info, Hero: o.hero, Pos: o.pos}))
+		}
+	}
+	s.broadcastLocked(mustMessage(MsgAppear, AppearPayload{Player: p.info, Hero: p.hero, Pos: at}), p.info.ID)
+	s.mu.Unlock()
 	if s.cfg.OnEnter != nil {
 		s.cfg.OnEnter(p.info)
 	}
+}
+
+// move relays a hero's new position to everyone else (the original's 0x19).
+func (s *Server) move(p *serverPlayer, pos Position) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !p.entered {
+		return
+	}
+	p.pos = pos
+	s.broadcastLocked(mustMessage(MsgMoved, MovedPayload{ID: p.info.ID, Pos: pos}), p.info.ID)
 }
 
 func (s *Server) leave(p *serverPlayer) {

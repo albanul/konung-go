@@ -30,6 +30,9 @@ type worldMapWindow struct {
 	overlay *ebiten.Image
 	known   [resfmt.WorldMapRegions]byte
 	here    int
+	// counts are the players per LAN map (the own hero and the remote
+	// heroes, startScene.playerCounts), set before each draw.
+	counts map[int]int
 	// lan, when set, is the LAN version's map (draw 0x0041E8EC): its own
 	// picture (INTO640R.RES slot 179) and runs, every location shown,
 	// regions = map numbers, no travel by click.
@@ -153,8 +156,8 @@ func (s *startScene) mapClick(hero *gamestate.Entity, mx, my int) {
 
 // drawLAN is the LAN map (0x0041E8EC): every location, the current map
 // tinted, and the number of players on each map at its marker (+3). The
-// counts come from the players' groups; the port knows only its own hero's
-// map until the world is synchronised.
+// counts are the players' groups' maps in the original; here the own hero
+// and the remote heroes the server reported (startScene.playerCounts).
 func (w *worldMapWindow) drawLAN(view *ebiten.Image, mapNumber int, font *gameFont) {
 	l := w.lan
 	if l.reveal == nil {
@@ -170,8 +173,10 @@ func (w *worldMapWindow) drawLAN(view *ebiten.Image, mapNumber int, font *gameFo
 	if font == nil || mapNumber < 1 || mapNumber > gamestate.LANMaps {
 		return
 	}
-	counts := map[int]int{mapNumber: 1}
-	for m, n := range counts {
+	for m, n := range w.counts {
+		if m < 1 || m > gamestate.LANMaps || n == 0 {
+			continue
+		}
 		p := l.markers[m]
 		font.drawLine(view, []byte(strconv.Itoa(n)), ox+p.X+3, oy+p.Y+3)
 	}

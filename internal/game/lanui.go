@@ -104,6 +104,10 @@ type lanUI struct {
 	start *netplay.EnterPayload
 	// gameDir holds MAPS.RES.
 	gameDir string
+	// worldMsgs are the other heroes' appear, move and leave messages for
+	// the LAN world, queued from the wait on (the server sends the heroes
+	// already in the world right after the start); the menu applies them.
+	worldMsgs []*netplay.Message
 }
 
 func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath string) (*lanUI, error) {
@@ -315,6 +319,9 @@ func (u *lanUI) readSession() {
 				u.players++
 			case netplay.MsgPlayerLeft:
 				u.players--
+				u.worldMsgs = append(u.worldMsgs, m)
+			case netplay.MsgAppear, netplay.MsgMoved:
+				u.worldMsgs = append(u.worldMsgs, m)
 			case netplay.MsgEntered:
 				var at netplay.EnterPayload
 				if m.Decode(&at) == nil && u.state == lanWaiting {
@@ -341,6 +348,7 @@ func (u *lanUI) disconnect() {
 		u.client = nil
 	}
 	u.session, u.players, u.hero = "", 0, nil
+	u.worldMsgs = nil
 }
 
 // rows is the server list: the sessions found, by name as the original

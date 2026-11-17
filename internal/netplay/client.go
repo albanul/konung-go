@@ -79,6 +79,9 @@ func Dial(addr string, j JoinInfo, opts Options) (*Client, error) {
 // MsgError) on Incoming.
 func (c *Client) Enter() error { return c.Send(mustMessage(MsgEnter, nil)) }
 
+// Move reports the own hero's position.
+func (c *Client) Move(p Position) error { return c.Send(mustMessage(MsgMove, p)) }
+
 // Chat sends a chat line to everyone in the session.
 func (c *Client) Chat(text string) error {
 	return c.Send(mustMessage(MsgChat, ChatPayload{Text: text}))

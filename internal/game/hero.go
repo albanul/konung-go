@@ -322,6 +322,7 @@ const (
 	npcStill    npcMode = iota // creatures while calm, and groups without a ported AI: stay put
 	npcVillager                // village group (kind 0x80): ported AI 0x00416934
 	npcCreature                // creature group (kind 0x40): combat AI 0x004123BC (combat.go)
+	npcRemote                  // another player's hero in a LAN world: walks where the server says (lanremote.go)
 )
 
 // npc is a non-player character.
