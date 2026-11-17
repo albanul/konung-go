@@ -32,9 +32,6 @@ func TestParseLANExe(t *testing.T) {
 	if got := resfmt.CP866ToUTF8(x.Messages[MsgVersion][1]); got != "Выполните обновление Вашей программы" {
 		t.Errorf("message 2 line 2 = %q", got)
 	}
-	if got := resfmt.CP866ToUTF8(x.NewServer); got != "Новый сервер" {
-		t.Errorf("NewServer = %q", got)
-	}
 	if len(x.MessageRects) != 5 || x.MessageRects[4] != (Rect{347, 347, 452, 393}) {
 		t.Errorf("message rects = %+v", x.MessageRects)
 	}

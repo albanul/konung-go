@@ -40,7 +40,7 @@ type ServerConfig struct {
 	Start   func(p PlayerInfo) (EnterPayload, error)
 	OnEnter func(p PlayerInfo)
 	// Accounts checks logins; nil keeps no accounts (any name joins and
-	// nothing is saved), as for a session hosted from the game.
+	// nothing is saved), e.g. in tests.
 	Accounts AccountStore
 }
 

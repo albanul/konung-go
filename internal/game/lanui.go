@@ -61,7 +61,7 @@ const (
 // a name in a session.
 const msgNameTaken = 9
 
-// lanUI runs the LAN screens. Network work (discovery, hosting, joining)
+// lanUI runs the LAN screens. Network work (discovery, joining)
 // runs in goroutines that hand their results back through results; Update
 // applies them, so all UI state stays on the game goroutine.
 type lanUI struct {
@@ -89,22 +89,18 @@ type lanUI struct {
 
 	cfg     gamestate.LANConfig
 	cfgPath string
-	server  gamestate.ServerFile
 
 	client   *netplay.Client
 	hero     *netplay.Hero // the account's hero from a server with accounts
-	host     *netplay.Server
-	session  string // joined session's name
+	session  string        // joined session's name
 	players  int
 	results  chan func()
 	leaveLAN bool // «Выход»: back to the port's main menu
 	// start is set when the server answers «Ok» (MsgEntered): the menu
 	// takes it and builds the LAN world (takeStart).
 	start *netplay.EnterPayload
-	// gameDir holds GAME.RES and MAPS.RES; startFn places heroes on a
-	// session hosted from the game (nil without GAME.RES).
+	// gameDir holds MAPS.RES.
 	gameDir string
-	startFn func(netplay.PlayerInfo) (netplay.EnterPayload, error)
 }
 
 func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath string) (*lanUI, error) {
@@ -146,16 +142,6 @@ func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath string) (*la
 	copy(u.msgText[:], exe.Messages[:])
 	u.msgText[msgNameTaken] = [2][]byte{cp866("Ошибка: Игрок с таким именем уже в игре"), nil}
 
-	// SERVER names a hosted session (0x00431481); without it the exe's
-	// default name.
-	u.server = gamestate.ServerFile{Name: gamestate.DefaultServerName, Minutes: 180}
-	if data, err := os.ReadFile(filepath.Join(gameDir, "SERVER")); err == nil {
-		if f, err := gamestate.ParseServerFile(data); err == nil {
-			u.server = f
-		} else {
-			log.Printf("SERVER: %v", err)
-		}
-	}
 	data, _ := os.ReadFile(u.cfgPath)
 	u.cfg = gamestate.ParseLANConfig(data)
 	u.name = gamestate.TextField{Text: u.cfg.Name, Max: gamestate.FieldName}
@@ -163,13 +149,6 @@ func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath string) (*la
 	u.addr = gamestate.TextField{Max: gamestate.FieldAddress}
 	u.savePass = u.cfg.SavePassword
 	u.gameDir = gameDir
-	// A session hosted from the game places heroes from GAME.RES like the
-	// dedicated server.
-	if data, err := readGameFile(gameDir, "GAME.RES"); err != nil {
-		log.Printf("GAME.RES: %v", err)
-	} else if u.startFn, err = netplay.StartFromGameRes(data); err != nil {
-		log.Printf("GAME.RES: %v", err)
-	}
 	return u, nil
 }
 
@@ -261,7 +240,7 @@ func (u *lanUI) toMenu() {
 	u.state, u.msg = lanMenu, 0
 }
 
-// enterLogin is state 11 (0x0042F727): not hosting, the list refilled. The
+// enterLogin is state 11 (0x0042F727): the list refilled. The
 // original first lists DirectPlay's connection types; the port has one (its
 // own TCP/IP), so it searches the LAN at once.
 func (u *lanUI) enterLogin() {
@@ -358,18 +337,15 @@ func (u *lanUI) disconnect() {
 		u.client.Close()
 		u.client = nil
 	}
-	if u.host != nil {
-		u.host.Close()
-		u.host = nil
-	}
 	u.session, u.players, u.hero = "", 0, nil
 }
 
-// rows is the server list: «Новый сервер», then the sessions found by
-// name, as the original lists them; sessions sharing a name also show the
-// host's address so they can be told apart.
+// rows is the server list: the sessions found, by name as the original
+// lists them; sessions sharing a name also show the host's address so they
+// can be told apart. The original's row 0 «Новый сервер» (host from the
+// game) is left out: sessions run on the dedicated server (cmd/konung-server).
 func (u *lanUI) rows() [][]byte {
-	rows := [][]byte{u.exe.NewServer}
+	var rows [][]byte
 	count := map[string]int{}
 	for _, f := range u.found {
 		count[f.Session.Name]++
@@ -468,8 +444,7 @@ func (u *lanUI) takeStart() (*netplay.EnterPayload, *netplay.Hero) {
 	return at, u.hero
 }
 
-// pickRow hosts (row 0, «Новый сервер») or joins a session; both need a
-// name (message 4).
+// pickRow joins a listed session; it needs a name (message 4).
 func (u *lanUI) pickRow(row int) {
 	rows := u.rows()
 	if row >= len(rows) || u.busy {
@@ -488,25 +463,17 @@ func (u *lanUI) pickRow(row int) {
 		Model:    u.model,
 	}
 	u.busy = true
-	if row == 0 {
-		cfg := netplay.ServerConfig{Name: resfmt.CP866ToUTF8(u.server.Name), Minutes: u.server.Minutes, Start: u.startFn}
-		go func() {
-			s, c, err := netplay.Host(netplay.DefaultPort, cfg, join, netplay.Options{})
-			u.results <- func() { u.joined(s, c, err) }
-		}()
-		return
-	}
-	addr := u.found[row-1].Addr
+	addr := u.found[row].Addr
 	go func() {
 		c, err := netplay.Dial(addr, join, netplay.Options{})
-		u.results <- func() { u.joined(nil, c, err) }
+		u.results <- func() { u.joined(c, err) }
 	}()
 }
 
-// joined applies a host or join result; refusals show the exe's messages
-// (the login answer 0x0042062C: 2 version, 3 too many players; 5 when the
-// server cannot be reached).
-func (u *lanUI) joined(s *netplay.Server, c *netplay.Client, err error) {
+// joined applies a join result; refusals show the exe's messages (the login
+// answer 0x0042062C: 2 version, 3 too many players, 7 wrong password; 5 when
+// the server cannot be reached).
+func (u *lanUI) joined(c *netplay.Client, err error) {
 	u.busy = false
 	if err != nil {
 		log.Printf("LAN: %v", err)
@@ -528,12 +495,9 @@ func (u *lanUI) joined(s *netplay.Server, c *netplay.Client, err error) {
 	}
 	if u.state != lanLogin { // left the screen meanwhile
 		c.Close()
-		if s != nil {
-			s.Close()
-		}
 		return
 	}
-	u.host, u.client = s, c
+	u.client = c
 	u.session, u.players, u.hero = c.Session.Name, len(c.Session.Players), c.Hero
 }
 

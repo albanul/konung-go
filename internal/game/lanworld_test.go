@@ -9,7 +9,7 @@ import (
 	"konung1.5/internal/netplay"
 )
 
-// Without an account (a session hosted from the game) the hero is the
+// Without an account (a server without accounts) the hero is the
 // model's single-player hero: GAME.N's hero model is a placeholder (1 in all
 // three files) that the start replaces.
 func TestLANWorldWithoutAccount(t *testing.T) {

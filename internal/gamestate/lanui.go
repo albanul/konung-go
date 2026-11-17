@@ -19,7 +19,6 @@ const (
 	lanMsgRectsVA   = 0x00478F90 // message box buttons
 	lanMessagesVA   = 0x0047E264 // message texts: 0x80-byte records, line 2 at +0x40
 	lanMessageCount = 9          // ids 0 (none) … 8
-	lanNewServerVA  = 0x00470695 // «Новый сервер», server list row 0 (0x0043012E)
 )
 
 // Rect is an inclusive 800×600 hotspot.
@@ -43,8 +42,6 @@ type LANExe struct {
 	MenuRects, LoginRects, MessageRects []Rect
 	// Messages[id] are the message box's two CP866 lines (id 1–8; 0 none).
 	Messages [lanMessageCount][2][]byte
-	// NewServer is the server list's first row, «Новый сервер» (CP866).
-	NewServer []byte
 }
 
 // Login screen hotspots (index into LANExe.LoginRects, switch 0x0042F269).
@@ -134,11 +131,6 @@ func ParseLANExe(exe []byte) (*LANExe, error) {
 		r := b[id*0x80:]
 		x.Messages[id] = [2][]byte{cString(r[:0x40]), cString(r[0x40:0x80])}
 	}
-	b, err = at(lanNewServerVA)
-	if err != nil {
-		return nil, err
-	}
-	x.NewServer = cString(b[:min(len(b), 64)])
 	return x, nil
 }
 

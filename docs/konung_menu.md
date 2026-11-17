@@ -115,4 +115,4 @@ The second example only changes the source file; the current fixed 800×600 layo
 
 ## «Сетевая игра» (port addition)
 
-Not in the original menu: a seventh item, drawn with the game font at the top of the stone when no game runs, opens the LAN version's menu (ME800R) and from there its login screen, server list, hosting and joining. See [LAN version](konung_lan.md#screens).
+Not in the original menu: a seventh item, drawn with the game font at the top of the stone when no game runs, opens the LAN version's menu (ME800R) and from there its login screen, server list and joining a dedicated server. See [LAN version](konung_lan.md#screens).
