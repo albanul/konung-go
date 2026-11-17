@@ -196,7 +196,7 @@ Settlement byte `+0x4B2` (`Settlement.Flags`):
 | `0x20` | loan outstanding (dialogue) |
 | `0x80` | surrendered |
 
-* **Load** (`0x0043BD5C`): `0x10`, plus `0x04` for a fenced village (`+1` ≠ 0) of another tribe.
+* **Load** (`0x0043BD5C`): `0x10`, plus `0x04` for a fenced village (`+1` ≠ 0) of another tribe. The tribe is the village group's `+0x1E & 3`, compared with the hero's model. Most fenced villages belong to Volk's tribe 0 (Черный Бор, Борье, Куницын Бор, Родники, Лесовье). So as Volk, only Византийский Лагерь (map 7, tribe 2) and Нижний лагерь (map 37, tribe 1) get `0x04` from the start. Others turn on the hero only once angered.
 * **Anger** `|= 0x15` (hostile + strangers + independent): a villager's hit reaction ending or death (step count − 2), whoever caused it (`0x0041658E`, `0x0041651C`); the party's melee swing at step 2; an arrow hitting a villager or a building; the dialogue's "attack" op (script 274, which sets the flags only for the village group, [dialogues](konung_dialogue.md#script-functions-verified)).
 * **Who counts.** Only members of the village group itself (`+0x1E` bit `0x80`; the swing tests it at `0x00421F39`). Characters with a group of their own on the village map do not count; for example Путята (entity 536 on `KONUNG.1`, a one-member kind-`0x53` group with a dialogue). Hitting them alarms only their own group.
 * **Alarm** `0x004248A0` (hits, the swing's step 2): `+0x1D` = 1. Every member without the melee intent (and not of kind `0x49`) gets `+0x14` = `0xFF`, which ends its walk after the current step, so everyone decides at once (`startScene.alarmGroup`).
