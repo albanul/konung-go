@@ -90,9 +90,12 @@ type lanUI struct {
 	cfg     gamestate.LANConfig
 	cfgPath string
 
-	client   *netplay.Client
-	hero     *netplay.Hero // the account's hero from a server with accounts
-	session  string        // joined session's name
+	client  *netplay.Client
+	hero    *netplay.Hero // the account's hero from a server with accounts
+	session string        // joined session's name
+	// players is the number of other players on the server: the login
+	// answer's online count (0x87 → [0x9EBA24], 0x004205B0), taken before
+	// this player counts; the port also follows joins and leaves.
 	players  int
 	results  chan func()
 	leaveLAN bool // «Выход»: back to the port's main menu
@@ -498,7 +501,7 @@ func (u *lanUI) joined(c *netplay.Client, err error) {
 		return
 	}
 	u.client = c
-	u.session, u.players, u.hero = c.Session.Name, len(c.Session.Players), c.Hero
+	u.session, u.players, u.hero = c.Session.Name, len(c.Session.Players)-1, c.Hero
 }
 
 // typeText edits the focused field (0x0042CB94): typed characters, Tab
@@ -627,7 +630,7 @@ func (u *lanUI) drawLogin(dst *ebiten.Image) {
 	case u.busy:
 		addr = cp866("...")
 	case u.session != "":
-		addr = cp866(fmt.Sprintf("%s [%d]", u.session, u.players))
+		addr = sessionLabel(u.session, u.players)
 	}
 	text(6, addr, R[gamestate.LoginAddress])
 	rows := u.rows()
@@ -688,4 +691,13 @@ func heroValues(h *netplay.Hero) [14]string {
 		n(h.Charisma), n(h.Strength), n(h.Dexterity), n(h.Endurance), n(h.Gold), "", "",
 		n(h.Fencing / 100), n(h.Archery / 100), n(h.Identification), n(h.Trade), n(h.Smithing), n(h.Carpentry), n(h.Herbalism),
 	}
+}
+
+// sessionLabel is the address line after joining (0x004298E1): the session
+// name, with " [n]" only when n other players are online.
+func sessionLabel(name string, others int) []byte {
+	if others > 0 {
+		name = fmt.Sprintf("%s [%d]", name, others)
+	}
+	return cp866(name)
 }

@@ -70,3 +70,14 @@ func TestMenuFramesInstalled(t *testing.T) {
 		t.Error("14 frames accepted")
 	}
 }
+
+// Alone on the server the address line is the name only; « [n]» counts the
+// other players (0x004298EA skips a zero count).
+func TestSessionLabel(t *testing.T) {
+	if got := resfmt.CP866ToUTF8(sessionLabel("Home Server", 0)); got != "Home Server" {
+		t.Errorf("alone: %q", got)
+	}
+	if got := resfmt.CP866ToUTF8(sessionLabel("Home Server", 2)); got != "Home Server [2]" {
+		t.Errorf("two others: %q", got)
+	}
+}
