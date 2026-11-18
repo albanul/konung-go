@@ -20,4 +20,4 @@ ENV PATH=/usr/local/go/bin:/root/go/bin:$PATH
 # Install gopls (Go language server)
 RUN go install golang.org/x/tools/gopls@latest
 
-WORKDIR /workspace
+WORKDIR /workspaces
