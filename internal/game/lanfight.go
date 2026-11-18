@@ -53,7 +53,11 @@ func (s *startScene) remoteHit(h netplay.HitPayload, self string) {
 	// The attacker's swing or shot as seen here (its own client plays it
 	// already).
 	if h.Attacker != self {
-		if aw, _ := s.hitWalker(h.Attacker, self); aw != nil && !aw.Walking && aw.Act == 0 {
+		// Not while it walks on to a further cell or plays a flinch or
+		// death; a swing in progress starts again (the next blow).
+		if aw, _ := s.hitWalker(h.Attacker, self); aw != nil && len(aw.Path) == 0 &&
+			aw.Act != gamestate.ActFlinch && aw.Act != gamestate.ActDeath {
+			aw.Halt()
 			if tw != nil {
 				aw.Dir = world.Facing(aw.Cell, tw.Cell)
 			}

@@ -94,6 +94,13 @@ func (s *startScene) remoteMove(id string, pos netplay.Position) {
 		s.placeRemote(r)
 		return
 	}
+	if n.Cell == cell && !n.Walking {
+		// Already there (a turn, or a report of the cell it holds): a walk
+		// to its own, occupied cell would be planned to the nearest free
+		// one and step it off.
+		n.Path = nil
+		return
+	}
 	n.WalkTo(cell)
 }
 
@@ -211,13 +218,49 @@ func (s *startScene) reportMove() {
 	}
 }
 
-// faceRemotes turns idle remote heroes to their reported facing.
+// faceRemotes plays the remote heroes' swings and shots (MsgHit starts
+// them; no AI of theirs runs here to advance them, as creatures' swings
+// are) one step per tick and ends them in idle, and turns idle remote
+// heroes to their reported facing.
 func (s *startScene) faceRemotes() {
 	for _, r := range s.remotes {
-		if n := s.ByEntity[r.Entity]; n != nil && n.IsIdle() && n.Cell == (mapdata.Cell{Row: r.pos.Row, Col: r.pos.Col}) {
+		n := s.ByEntity[r.Entity]
+		if n == nil {
+			continue
+		}
+		if (n.Act == gamestate.ActAttack || n.Act == gamestate.ActShoot) && !n.AdvanceAct() {
+			n.Act = 0
+		}
+		if n.IsIdle() && n.Cell == (mapdata.Cell{Row: r.pos.Row, Col: r.pos.Col}) {
 			n.Dir = mapdata.Direction(r.pos.Facing & 7)
 		}
 	}
+}
+
+// yieldStart is the own hero entering where another hero already stands
+// (the server gives every hero of a type the same start, GAME.RES's
+// arrival cell): it takes the nearest free cell instead, so the hero there
+// keeps its cell on every screen, and reports it (reportMove). taken are
+// the cells the heroes already in the world reported on this map.
+func (s *startScene) yieldStart(taken []mapdata.Cell) {
+	if s.Hero == nil || len(s.Party) == 0 {
+		return
+	}
+	set := map[mapdata.Cell]bool{}
+	for _, c := range taken {
+		set[c] = true
+	}
+	if !set[s.Hero.Cell] {
+		return
+	}
+	c := mapdata.NearestFree(s.Hero.Cell, func(c mapdata.Cell) bool {
+		return s.Walk.Blocked(c.Row, c.Col) || s.Occ[c] || set[c]
+	}, 6)
+	delete(s.Occ, s.Hero.Cell)
+	s.Occ[c] = true
+	s.Hero.Halt()
+	s.Hero.Cell, s.Hero.From = c, c
+	s.Party[0].Row, s.Party[0].Col = c.Row, c.Col
 }
 
 // remoteStatus is the status line over a remote hero: its name, «, клан»

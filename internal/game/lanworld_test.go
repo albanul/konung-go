@@ -395,3 +395,61 @@ func TestLANTeamSafe(t *testing.T) {
 		t.Errorf("team-safe: nearest %d, want the foe %d", got, foe)
 	}
 }
+
+// A remote hero's swing plays out and ends in idle, and the next blow
+// swings again; a hero entering where another stands yields the cell.
+func TestLANRemoteSwingAndStart(t *testing.T) {
+	const dir = "../../assets/Konung/"
+	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
+		t.Skip("MAPS.RES not available:", err)
+	}
+	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
+	if err != nil {
+		t.Skip("assets missing:", err)
+	}
+	start := netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}
+	s, err := a.lanWorld(dir, nil, start, nil, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Ivar already stands on the start: the own hero yields, Ivar keeps it.
+	there := mapdata.Cell{Row: start.Row, Col: start.Col}
+	s.yieldStart([]mapdata.Cell{there})
+	if s.Hero.Cell == there {
+		t.Fatal("the own hero kept the taken start cell")
+	}
+	look := lanfight.LookOf(s.Game, s.Party[0]) // the same type's gear, in the stance
+	look.Stance = true
+	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "ivar", Name: "Ivar"}, HP: 1600, Look: look,
+		Pos: netplay.Position{Map: 1, Row: start.Row, Col: start.Col, Facing: 2}})
+	n := s.ByEntity[s.remotes["ivar"].Entity]
+	if n == nil || n.Cell != there {
+		t.Fatalf("Ivar placed at %+v, want his cell %+v", n.Cell, there)
+	}
+	// A report of the cell Ivar holds (a turn) does not step him off it.
+	s.remoteMove("ivar", netplay.Position{Map: 1, Row: start.Row, Col: start.Col, Facing: 5})
+	for range 40 {
+		s.Step()
+	}
+	if n.Cell != there {
+		t.Fatalf("Ivar stepped off his reported cell to %+v", n.Cell)
+	}
+	// Ivar's blow at the own hero: the swing plays and ends.
+	hit := netplay.HitPayload{Attacker: "ivar", Target: "me", Result: netplay.HitLight, Damage: 10, HP: 1590}
+	s.remoteHit(hit, "me")
+	if n.Act != gamestate.ActAttack {
+		t.Fatalf("no swing: act %d", n.Act)
+	}
+	steps := 0
+	for n.Act != 0 && steps < 200 {
+		s.faceRemotes()
+		steps++
+	}
+	if n.Act != 0 || steps < 2 {
+		t.Errorf("the swing did not play out: act %d after %d ticks", n.Act, steps)
+	}
+	s.remoteHit(hit, "me")
+	if n.Act != gamestate.ActAttack || n.ActStep != 0 {
+		t.Errorf("the next blow did not swing: act %d step %d", n.Act, n.ActStep)
+	}
+}

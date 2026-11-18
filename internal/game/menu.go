@@ -10,6 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
 )
@@ -443,6 +444,7 @@ func (m *Menu) Update() error {
 					lan.client.Attack(target, ranged)
 				}
 			}
+			w.yieldStart(takenCells(m.lan.worldMsgs, w.MapNumber))
 			m.applyLAN()
 		}
 		return nil
@@ -717,6 +719,40 @@ func (m *Menu) leaveLANWorld() {
 		m.lan.disconnect()
 		m.lan.state = lanMenu
 	}
+}
+
+// takenCells are the cells of the heroes in msgs (appear, then moves) on
+// map m, by their latest report; the dead stand nowhere.
+func takenCells(msgs []*netplay.Message, m int) []mapdata.Cell {
+	at := map[string]netplay.Position{}
+	for _, msg := range msgs {
+		switch msg.Type {
+		case netplay.MsgAppear:
+			var a netplay.AppearPayload
+			if msg.Decode(&a) == nil && !a.Dead {
+				at[a.Player.ID] = a.Pos
+			}
+		case netplay.MsgMoved:
+			var mv netplay.MovedPayload
+			if msg.Decode(&mv) == nil {
+				if _, ok := at[mv.ID]; ok {
+					at[mv.ID] = mv.Pos
+				}
+			}
+		case netplay.MsgPlayerLeft:
+			var l netplay.PlayerLeftPayload
+			if msg.Decode(&l) == nil {
+				delete(at, l.ID)
+			}
+		}
+	}
+	var cells []mapdata.Cell
+	for _, p := range at {
+		if p.Map == m {
+			cells = append(cells, mapdata.Cell{Row: p.Row, Col: p.Col})
+		}
+	}
+	return cells
 }
 
 // applyLAN hands the queued appear, move and leave messages to the LAN
