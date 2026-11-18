@@ -37,10 +37,14 @@ func Hero(tmpl *gamestate.Game, model int, hero *netplay.Hero) gamestate.Entity 
 }
 
 // ApplyHero puts an account's hero (LANUSERS.DAT record) on e: level, gold,
-// free points, the skills and stats, the model and its palette (index × 512
-// = the palette's byte offset in GRAPH.RES), and full HP.
+// free points, the class (entity +4, as SelectClass; record +0x6B), the
+// skills and stats, the model and its palette (index × 512 = the palette's
+// byte offset in GRAPH.RES), and full HP.
 func ApplyHero(e *gamestate.Entity, h *netplay.Hero) {
 	e.Level, e.Gold, e.FreeExp = h.Level, h.Gold, h.FreePoints
+	if h.Class >= gamestate.ClassMerchant && h.Class <= gamestate.ClassWarrior {
+		e.Flags4 = byte(h.Class)
+	}
 	e.Fencing, e.Marksmanship = h.Fencing, h.Archery
 	e.Skills = [5]int{h.Herbalism, h.Smithing, h.Trade, h.Carpentry, h.Identification}
 	e.BaseStats = [4]int{h.Charisma, h.Strength, h.Dexterity, h.Endurance}

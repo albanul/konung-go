@@ -47,6 +47,9 @@ type ServerConfig struct {
 	// killer's hero after the kill (nil without accounts) and both levels.
 	Combat Combat
 	OnKill func(killer, victim PlayerInfo, killerHero *Hero, killerLevel, victimLevel int)
+	// TeamSafe protects a hero from its own team (the same hero type) in
+	// fights; the original has no such rule (0x446264 compares groups only).
+	TeamSafe bool
 	// Speed is the world speed for everyone (0 normal … MaxSpeed triple,
 	// the single-player numpad +/−); clients cannot change it.
 	Speed int
@@ -201,7 +204,7 @@ func (s *Server) Session() SessionInfo {
 }
 
 func (s *Server) sessionLocked() SessionInfo {
-	info := SessionInfo{Name: s.cfg.Name, Port: s.port, MaxPlayers: s.cfg.MaxPlayers, Minutes: s.cfg.Minutes, Players: []PlayerInfo{}}
+	info := SessionInfo{Name: s.cfg.Name, Port: s.port, MaxPlayers: s.cfg.MaxPlayers, Minutes: s.cfg.Minutes, Players: []PlayerInfo{}, TeamSafe: s.cfg.TeamSafe}
 	for _, id := range s.order {
 		info.Players = append(info.Players, s.players[id].info)
 	}

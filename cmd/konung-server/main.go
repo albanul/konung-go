@@ -3,7 +3,10 @@
 // version's server kept LANUSERS.DAT and SAVITEMS.DAT, and hosts the session
 // players join from the game's «Сетевая игра» screens.
 //
-//	konung-server [-data DIR] [-port 7777] [-max 16] [-name NAME] [-minutes 180] [-speed 0]
+//	konung-server [-data DIR] [-config FILE] [-port 7777] [-max 16] [-name NAME] [-minutes 180] [-speed 0] [-team-damage=true]
+//
+// Settings come from DIR/server.conf (or -config FILE; every setting, see
+// konung-server.conf.example), and the flags given override it.
 //
 // DIR holds konung.db, the LAN version's GAME.RES (the world: players start
 // on their hero model's village map; without it nobody can enter),
@@ -18,6 +21,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -30,38 +34,78 @@ import (
 	"konung1.5/internal/lanfight"
 	"konung1.5/internal/lanstore"
 	"konung1.5/internal/netplay"
-	"konung1.5/internal/resfmt"
 )
 
 func main() {
-	dataDir := flag.String("data", ".", "folder for konung.db and the optional SERVER file")
-	port := flag.Int("port", netplay.DefaultPort, "TCP game port; UDP on the same port answers LAN discovery")
-	maxPlayers := flag.Int("max", 16, "players at once (the original allowed 16)")
-	name := flag.String("name", "", "session name (default: SERVER file line 2, else «Стандартный Сервер с Командной игрой»)")
-	minutes := flag.Int("minutes", 0, "session length in minutes (default: SERVER file, else 180)")
-	speed := flag.Int("speed", 0, "world speed for everyone: 0 normal, 1 double, 2 triple")
+	dataDir := flag.String("data", ".", "folder for konung.db, the game files and server.conf")
+	configPath := flag.String("config", "", "settings file (default: DATA/server.conf when it exists; see konung-server.conf.example)")
+	d := defaultSettings()
+	port := flag.Int("port", d.Port, "TCP game port; UDP on the same port answers LAN discovery")
+	maxPlayers := flag.Int("max", d.MaxPlayers, "players at once (the original allowed 16)")
+	name := flag.String("name", "", "session name (default: config, SERVER file line 2, else «Стандартный Сервер с Командной игрой»)")
+	minutes := flag.Int("minutes", d.Minutes, "session length in minutes")
+	speed := flag.Int("speed", d.Speed, "world speed for everyone: 0 normal, 1 double, 2 triple")
+	teamDamage := flag.Bool("team-damage", d.TeamDamage, "heroes of one team (hero type) can hurt each other, as the original; false protects them")
 	flag.Parse()
-	if err := run(*dataDir, *port, *maxPlayers, *name, *minutes, *speed); err != nil {
+
+	st, err := loadSettings(*dataDir, *configPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Flags given on the command line override the files.
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "port":
+			st.Port = *port
+		case "max":
+			st.MaxPlayers = *maxPlayers
+		case "name":
+			if *name != "" {
+				st.Name = *name
+			}
+		case "minutes":
+			st.Minutes = *minutes
+		case "speed":
+			st.Speed = *speed
+		case "team-damage":
+			st.TeamDamage = *teamDamage
+		}
+	})
+	if err := run(*dataDir, st); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(dataDir string, port, maxPlayers int, name string, minutes, speed int) error {
-	// The SERVER file names the session (0x00431481); flags override it.
-	sessionName, sessionMinutes := resfmt.CP866ToUTF8(gamestate.DefaultServerName), 180
+// loadSettings is the defaults, then DIR/SERVER (the original's session
+// name and length), then the config file (configPath, else DIR/server.conf
+// when it exists).
+func loadSettings(dataDir, configPath string) (settings, error) {
+	st := defaultSettings()
 	if data, err := os.ReadFile(filepath.Join(dataDir, "SERVER")); err == nil {
-		f, err := gamestate.ParseServerFile(data)
-		if err != nil {
-			return err
+		if err := st.applyServerFile(data); err != nil {
+			return st, fmt.Errorf("SERVER: %w", err)
 		}
-		sessionName, sessionMinutes = resfmt.CP866ToUTF8(f.Name), f.Minutes
 	}
-	if name != "" {
-		sessionName = name
+	path := configPath
+	if path == "" {
+		path = filepath.Join(dataDir, "server.conf")
 	}
-	if minutes > 0 {
-		sessionMinutes = minutes
+	data, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		if err := st.applyConfig(data); err != nil {
+			return st, fmt.Errorf("%s: %w", path, err)
+		}
+		log.Printf("settings from %s", path)
+	case configPath != "": // asked for but missing
+		return st, err
 	}
+	return st, nil
+}
+
+func run(dataDir string, st settings) error {
+	port, maxPlayers, speed, teamDamage := st.Port, st.MaxPlayers, st.Speed, st.TeamDamage
+	sessionName, sessionMinutes := st.Name, st.Minutes
 
 	// GAME.RES places entering heroes (0x0044ADB4).
 	var start func(netplay.PlayerInfo) (netplay.EnterPayload, error)
@@ -91,6 +135,7 @@ func run(dataDir string, port, maxPlayers int, name string, minutes, speed int) 
 		Accounts: store,
 		Start:    start,
 		Speed:    speed,
+		TeamSafe: !teamDamage,
 		Combat:   combat,
 		OnKill: func(killer, victim netplay.PlayerInfo, killerHero *netplay.Hero, killerLevel, victimLevel int) {
 			points := gamestate.HeroKillPoints(victimLevel, killerLevel, false)
@@ -126,8 +171,8 @@ func run(dataDir string, port, maxPlayers int, name string, minutes, speed int) 
 	if err := srv.ServeDiscovery(addr); err != nil {
 		log.Printf("LAN discovery off: %v", err) // the game still joins by typed address
 	}
-	log.Printf("«%s»: TCP %s, %d players, %d-minute sessions, speed %d, data in %s",
-		sessionName, srv.Addr(), maxPlayers, sessionMinutes, srv.Clock().Speed, dataDir)
+	log.Printf("«%s»: TCP %s, %d players, %d-minute sessions, speed %d, team damage %v, data in %s",
+		sessionName, srv.Addr(), maxPlayers, sessionMinutes, srv.Clock().Speed, teamDamage, dataDir)
 
 	// The session clock: at each end the participants' ratings move
 	// (0x00444150) and a new session starts. Players see the time left.

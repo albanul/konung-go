@@ -368,3 +368,30 @@ func TestLANClock(t *testing.T) {
 		t.Errorf("%d of 1000 nights moonlit, want about %d%%", moonlit, gamestate.MoonChance)
 	}
 }
+
+// On a server that protects teams, a teammate (same hero type) is no
+// target: A picks the foe even when the teammate is closer.
+func TestLANTeamSafe(t *testing.T) {
+	const dir = "../../assets/Konung/"
+	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
+		t.Skip("MAPS.RES not available:", err)
+	}
+	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
+	if err != nil {
+		t.Skip("assets missing:", err)
+	}
+	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "mate", Name: "Mate", Model: 0}, HP: 1600, Pos: netplay.Position{Map: 1, Row: 106, Col: 32}})
+	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "foe", Name: "Foe", Model: 1}, HP: 1600, Pos: netplay.Position{Map: 1, Row: 100, Col: 32}})
+	mate, foe := s.remotes["mate"].entity, s.remotes["foe"].entity
+	if got := s.nearestEnemy(s.hero.cell); got != mate {
+		t.Fatalf("with team damage the nearest is %d, want the teammate %d", got, mate)
+	}
+	s.teamSafe = true
+	if got := s.nearestEnemy(s.hero.cell); got != foe {
+		t.Errorf("team-safe: nearest %d, want the foe %d", got, foe)
+	}
+}

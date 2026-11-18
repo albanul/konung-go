@@ -65,6 +65,17 @@ func TestLANNewHero(t *testing.T) {
 	if u.nh.Model != gamestate.HeroMichail || u.nh.PaletteOffset != 39*512 {
 		t.Errorf("preview: model %d palette %d", u.nh.Model, u.nh.PaletteOffset/512)
 	}
+	// The right click's other type is a demonstration only: the build and
+	// the login's type stay.
+	before := gamestate.ChoiceOf(u.nh)
+	u.previewModel = gamestate.HeroVolk
+	u.setNewLook()
+	if u.nh.Model != gamestate.HeroVolk || u.nh.PaletteOffset != uint32(gamestate.LANLookPalette(gamestate.HeroVolk, 5))*512 {
+		t.Errorf("Волк preview: model %d palette %d", u.nh.Model, u.nh.PaletteOffset/512)
+	}
+	if gamestate.ChoiceOf(u.nh) != before || u.model != 1 {
+		t.Errorf("the preview changed the build or the login type (model %d)", u.model)
+	}
 	// The screen draws (the portrait is the hero sprite).
 	img := ebiten.NewImage(ScreenWidth, ScreenHeight)
 	u.drawNewHero(img)

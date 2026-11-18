@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
@@ -21,9 +22,11 @@ import (
 // персонаж будет удален!», sends it (JoinInfo.NewHero) and the server
 // rebuilds the account's hero from it.
 //
-// As the original, the preview is always Михаил (the template's model 2)
+// As the original, the preview opens on Михаил (the template's model 2)
 // and the look index is one for every hero type: the type is picked at
-// login, which shows the same look index on that type.
+// login, which shows the same look index on that type. Port addition: a
+// right click on the preview shows the look on the next type; it is only
+// a demonstration and changes nothing else (not the login's type).
 
 // NEW800R.RES frames (loader 0x00424944, image slots 0x1F9 + i).
 const (
@@ -91,16 +94,17 @@ func (u *lanUI) openNewHero() {
 	u.disconnect()
 	u.addr.Text = nil
 	u.nh = gamestate.NewLANHeroTemplate()
+	u.previewModel = gamestate.HeroMichail
 	u.setNewLook()
 	u.state, u.msg, u.focus, u.clanScroll = lanNewHero, 0, 0, 0
 }
 
-// setNewLook shows the template, Михаил (model 2, 0x0042E0DB), in the
-// current look.
+// setNewLook shows the template as the previewed type (Михаил, model 2,
+// 0x0042E0DB, unless a right click picked another) in the current look.
 func (u *lanUI) setNewLook() {
-	gamestate.SelectHero(&u.nh, gamestate.HeroMichail)
+	gamestate.SelectHero(&u.nh, u.previewModel)
 	u.nh.Equipment = [6]int{} // the LAN template has no items (0x0042E0DB)
-	u.nh.PaletteOffset = uint32(gamestate.LANLookPalette(gamestate.HeroMichail, u.look)) * 512
+	u.nh.PaletteOffset = uint32(gamestate.LANLookPalette(u.previewModel, u.look)) * 512
 }
 
 func (u *lanUI) newRect(i int) gamestate.Rect { return u.exe.NewHeroRects[i] }
@@ -110,6 +114,13 @@ func (u *lanUI) updateNewHero(mx, my int, click bool) {
 		u.typeText()
 	}
 	hit := gamestate.HitRects(u.exe.NewHeroRects, mx, my)
+	if hit == gamestate.LANNewPortrait && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
+		// Port addition, a demonstration only: the look on the next type
+		// (Михаил → Волк → Драгомир, as the login portraits from the right).
+		u.previewModel = (u.previewModel + 1) % netplay.Models
+		u.setNewLook()
+		return
+	}
 	if !click {
 		return
 	}
@@ -214,7 +225,7 @@ func (u *lanUI) drawNewHero(dst *ebiten.Image) {
 	r = R(gamestate.NewHeroCancel)
 	drawAt(dst, u.newFrames[newCancel], r.X1, r.Y1)
 	r = R(gamestate.LANNewPortrait)
-	u.preview.draw(dst, e, u.graph, u.items, u.tables, r.X1, r.Y1)
+	u.preview.draw(dst, e, u.graph, u.items, u.tables, r.X1, r.Y1, lanPreviewBodyX)
 }
 
 // newMarker centres the marker in the class box's size at hotspot i, like

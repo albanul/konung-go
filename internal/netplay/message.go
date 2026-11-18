@@ -175,6 +175,9 @@ type SessionInfo struct {
 	MaxPlayers int          `json:"max_players"`
 	Minutes    int          `json:"minutes"` // session length
 	Players    []PlayerInfo `json:"players"`
+	// TeamSafe: heroes of one team (hero type) cannot hurt each other
+	// (ServerConfig.TeamSafe; the original lets them).
+	TeamSafe bool `json:"team_safe,omitempty"`
 }
 
 // WelcomePayload answers a successful join. Hero is the account's hero on

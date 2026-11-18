@@ -34,11 +34,14 @@ var newHeroClasses = [4]byte{gamestate.ClassMerchant, gamestate.ClassHunter, gam
 
 // Preview placement (0x004303B2–0x00430553): the body is drawn with its
 // image top-left at (60, 20) in a 160×320 buffer, the buffer is blitted at
-// hotspot 22 and clipped to 160×160.
+// hotspot 22 and clipped to 160×160. The LAN screen draws it at (15, 20)
+// in its buffer (LAN_KONG.EXE 0x004286CA → 0x0044EE76, which places the
+// image's top-left without an anchor).
 const (
-	previewBodyX = 60
-	previewBodyY = 20
-	previewSize  = 160
+	previewBodyX    = 60
+	lanPreviewBodyX = 15
+	previewBodyY    = 20
+	previewSize     = 160
 )
 
 type newHeroScreen struct {
@@ -239,13 +242,14 @@ func (s *newHeroScreen) drawMarker(dst *ebiten.Image, i int) {
 // image top-left at hotspot 22 + (60, 20), clipped to 160×160.
 func (s *newHeroScreen) drawPreview(dst *ebiten.Image) {
 	r := rect800(gamestate.NewHeroPreview)
-	s.preview.draw(dst, s.hero, s.graph, s.items, s.tables, r[0], r[1])
+	s.preview.draw(dst, s.hero, s.graph, s.items, s.tables, r[0], r[1], previewBodyX)
 }
 
-// draw draws e with its body image top-left at (x, y) + (60, 20), clipped
-// to the 160×160 square at (x, y) (0x004303B2–0x00430553; the LAN screen
-// 0x00427D14 the same way). items holds e's equipment items.
-func (p *heroPreview) draw(dst *ebiten.Image, e gamestate.Entity, graph []byte, items *gamestate.Game, t *resfmt.ExeTables, x, y int) {
+// draw draws e with its body image top-left at (x + bodyX, y + 20),
+// clipped to the 160×160 square at (x, y) (0x004303B2–0x00430553; the LAN
+// screen 0x00427D14 the same way with its own bodyX). items holds e's
+// equipment items.
+func (p *heroPreview) draw(dst *ebiten.Image, e gamestate.Entity, graph []byte, items *gamestate.Game, t *resfmt.ExeTables, x, y, bodyX int) {
 	key := previewKey{e.Model, e.PaletteOffset, e.WeaponMode, e.Type, e.Variant, e.Equipment}
 	if !p.built || key != p.key {
 		p.key, p.built, p.img = key, true, nil
@@ -265,5 +269,5 @@ func (p *heroPreview) draw(dst *ebiten.Image, e gamestate.Entity, graph []byte, 
 		return
 	}
 	clip := dst.SubImage(image.Rect(x, y, x+previewSize, y+previewSize)).(*ebiten.Image)
-	drawAt(clip, p.img, x+previewBodyX+p.dx, y+previewBodyY+p.dy)
+	drawAt(clip, p.img, x+bodyX+p.dx, y+previewBodyY+p.dy)
 }

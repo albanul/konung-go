@@ -177,9 +177,12 @@ type startScene struct {
 	// onLook reports the own hero's look (stance, weapon, equipment),
 	// lastLook the last one sent; onAttack a blow or an arrow that reached
 	// a remote hero (lanfight.go); self is the own player ID.
-	onLook        func(netplay.Look)
-	lastLook      netplay.Look
-	onAttack      func(target string, ranged bool)
+	onLook   func(netplay.Look)
+	lastLook netplay.Look
+	onAttack func(target string, ranged bool)
+	// teamSafe: the server protects heroes from their own team
+	// (SessionInfo.TeamSafe); teammates are no targets.
+	teamSafe      bool
 	hoveredRemote *remotePlayer
 	// clock is the server's clock (lanclock.go), nil until it arrives;
 	// the menu sets it every frame.
@@ -646,6 +649,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	if prev != nil { // a map change keeps the other players
 		s.remotes, s.onMove = prev.remotes, prev.onMove
 		s.onLook, s.lastLook, s.onAttack, s.clock = prev.onLook, prev.lastLook, prev.onAttack, prev.clock
+		s.teamSafe = prev.teamSafe
 		s.placeRemotes()
 	}
 	s.centerOn(camX, camY)
@@ -1446,8 +1450,8 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		chars, owners := s.drawWorld(screen)
 		s.hovered = s.hitTest(chars, owners)
 		s.hoveredRemote = s.remoteAt(s.hovered)
-		if s.hoveredRemote != nil && (len(s.party) == 0 || !s.party[0].InStance()) {
-			s.hovered = -1 // out of the stance a remote hero takes no orders
+		if s.hoveredRemote != nil && (len(s.party) == 0 || !s.party[0].InStance() || !s.canTarget(s.hoveredRemote)) {
+			s.hovered = -1 // out of the stance (or a protected teammate) a remote hero takes no orders
 		}
 		s.hoveredBuilding = s.buildingUnderCursor()
 		if window {

@@ -437,6 +437,7 @@ func (m *Menu) Update() error {
 					lan.client.Look(l)
 				}
 			}
+			w.teamSafe = lan.client != nil && lan.client.Session.TeamSafe
 			w.onAttack = func(target string, ranged bool) {
 				if lan.client != nil {
 					lan.client.Attack(target, ranged)

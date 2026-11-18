@@ -25,6 +25,12 @@ func (s *startScene) strikeRemote(attacker *gamestate.Entity, target int, ranged
 	return true
 }
 
+// canTarget reports whether the own hero may attack r's hero: always,
+// unless the server protects teams and r is of the own team (hero type).
+func (s *startScene) canTarget(r *remotePlayer) bool {
+	return !s.teamSafe || len(s.party) == 0 || r.info.Model != s.party[0].Model
+}
+
 // hitWalker is the walker and entity of player id's hero on this map: the
 // own hero when id is self.
 func (s *startScene) hitWalker(id, self string) (*walker, *gamestate.Entity) {

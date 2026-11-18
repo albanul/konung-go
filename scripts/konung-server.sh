@@ -10,27 +10,39 @@
 #   scripts/konung-server.sh build     only build the image
 #   scripts/konung-server.sh reset     delete the server AND its data (all accounts); asks first
 #
-# Settings (environment variables), applied at every start:
-#   KONUNG_NAME=              the server's name in the game's server list, e.g.
+# Server settings (name, port, players, session length, speed, team damage)
+# live in konung-server.conf in the repo root: copy konung-server.conf.example
+# and edit it; it is copied into the server at every start, so "restart"
+# applies changes.
+#
+# Environment variables, applied at every start (they win over the file):
+#   KONUNG_CONFIG=konung-server.conf   the settings file to use
+#   KONUNG_NAME=              the server's name, e.g.
 #                             KONUNG_NAME="Мой сервер" scripts/konung-server.sh restart
-#                             (default: line 2 of the SERVER file, else
-#                             «Стандартный Сервер с Командной игрой»)
-#   KONUNG_PORT=7777          host port for the game (TCP) and LAN discovery (UDP)
+#   KONUNG_PORT=              host port for the game (TCP) and LAN discovery (UDP);
+#                             default: "port" in the settings file, else 7777
 #   KONUNG_ASSETS=assets/Konung   folder with GAME.RES (required), SERVER (optional), and
 #                             konung.exe + GAME.0–GAME.2 (fights between players)
 #   KONUNG_NETWORK=           set to "host" to use the host's network directly; LAN
 #                             discovery (UDP broadcast) may not pass a port mapping
-#   KONUNG_SERVER_ARGS=       extra server flags, e.g. '-minutes 60 -max 8'
+#   KONUNG_SERVER_ARGS=       extra server flags, e.g. '-minutes 60 -max 8 -speed 1 -team-damage=false'
 #   KONUNG_IMAGE=konung-server  KONUNG_CONTAINER=konung-server  KONUNG_VOLUME=konung-data
 #   KONUNG_ENGINE=podman      or docker
 #
 # The data volume holds konung.db (accounts and progress) and the game files
-# above, copied in at every start, so edits to them apply on restart; the database is never touched by this script except by "reset".
+# above, copied in at every start, so edits to them apply on restart; the
+# database is never touched by this script except by "reset".
 # The container itself holds nothing: it is re-created at every start.
 set -euo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-port=${KONUNG_PORT:-7777}
+config=${KONUNG_CONFIG:-$repo/konung-server.conf}
+# The host port: KONUNG_PORT, else the settings file's "port", else 7777.
+port=${KONUNG_PORT:-}
+if [[ -z $port && -f $config ]]; then
+	port=$(sed -n 's/^[[:space:]]*port[[:space:]]*=[[:space:]]*"\{0,1\}\([0-9]*\)"\{0,1\}[[:space:]]*$/\1/p' "$config" | tail -n 1)
+fi
+port=${port:-7777}
 assets=${KONUNG_ASSETS:-$repo/assets/Konung}
 network=${KONUNG_NETWORK:-}
 image=${KONUNG_IMAGE:-konung-server}
@@ -61,6 +73,15 @@ build() {
 copy_data() {
 	[[ -f $assets/GAME.RES ]] || die "$assets/GAME.RES not found (set KONUNG_ASSETS); without it nobody can enter the world"
 	"$engine" cp "$assets/GAME.RES" "$container:/data/GAME.RES"
+	# The settings file, or an empty one so a removed file stops applying.
+	if [[ -f $config ]]; then
+		"$engine" cp "$config" "$container:/data/server.conf"
+	else
+		local empty
+		empty=$(mktemp)
+		"$engine" cp "$empty" "$container:/data/server.conf"
+		rm -f "$empty"
+	fi
 	local f
 	for f in SERVER konung.exe GAME.0 GAME.1 GAME.2; do
 		if [[ -f $assets/$f ]]; then
@@ -72,11 +93,13 @@ copy_data() {
 }
 
 create() {
+	# Inside the container the server always listens on 7777 (mapped to the
+	# host port); with the host's network it listens on the host port.
 	local net=(-p "$port:7777/tcp" -p "$port:7777/udp")
-	local args=()
+	local args=(-port 7777)
 	if [[ $network == host ]]; then
 		net=(--network host)
-		args+=(-port "$port")
+		args=(-port "$port")
 	fi
 	if [[ -n ${KONUNG_NAME:-} ]]; then
 		args+=(-name "$KONUNG_NAME")

@@ -117,15 +117,18 @@ type lanUI struct {
 	clock *serverClock
 
 	// «Новый герой» (lannewhero.go); newFrames nil = NEW800R.RES missing.
-	newFrames  []*ebiten.Image
-	graph      []byte
-	tables     *resfmt.ExeTables
-	items      *gamestate.Game // empty: the LAN template has no equipment
-	nh         gamestate.Entity
-	look       int      // the look index 0–7, one for every type ([0xA6EB4C])
-	clans      [][]byte // CP866: CLANS.CFG, typed ones, the server's
-	clanScroll int
-	preview    heroPreview
+	newFrames []*ebiten.Image
+	graph     []byte
+	tables    *resfmt.ExeTables
+	items     *gamestate.Game // empty: the LAN template has no equipment
+	nh        gamestate.Entity
+	look      int // the look index 0–7, one for every type ([0xA6EB4C])
+	// previewModel is the type «Новый герой»'s preview shows (Михаил;
+	// a right click steps it, for demonstration only).
+	previewModel int
+	clans        [][]byte // CP866: CLANS.CFG, typed ones, the server's
+	clanScroll   int
+	preview      heroPreview
 	// pending is the build «Ok» kept for the next join; pendingRow is the
 	// server row waiting for «Старый персонаж будет удален!».
 	pending    *netplay.HeroChoice

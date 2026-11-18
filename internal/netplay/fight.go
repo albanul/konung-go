@@ -137,7 +137,7 @@ func (s *Server) attack(p *serverPlayer, a AttackPayload) {
 	t := s.players[a.Target]
 	now := time.Now()
 	ok := t != nil && t != p && p.entered && t.entered && !p.dead && !t.dead &&
-		p.pos.Map == t.pos.Map && p.look.Stance &&
+		p.pos.Map == t.pos.Map && p.look.Stance && !(s.cfg.TeamSafe && p.info.Model == t.info.Model) &&
 		now.Sub(p.lastStrike) >= strikeEvery/time.Duration(1+s.cfg.Speed)
 	var req StrikeRequest
 	if ok {

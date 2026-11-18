@@ -72,6 +72,9 @@ func (s *startScene) nearestEnemy(h mapdata.Cell) int {
 		if e.Group <= 0 || !alive(&n.walker, e) {
 			continue
 		}
+		if r := s.remoteAt(n.entity); r != nil && !s.canTarget(r) {
+			continue // a protected teammate
+		}
 		g := s.game.Groups[e.Group]
 		if (g.Kind&0x80 != 0 && g.Alarm != gamestate.AlarmAttack) || g.Kind == 0x53 {
 			continue

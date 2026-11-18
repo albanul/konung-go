@@ -780,3 +780,34 @@ func TestAttack(t *testing.T) {
 		t.Errorf("%d strikes reached the combat, want 2", fc.strikes)
 	}
 }
+
+// With TeamSafe a hero cannot hurt its own team (the same hero type); the
+// session tells clients.
+func TestTeamSafe(t *testing.T) {
+	fc := &fakeCombat{}
+	s := startServer(t, ServerConfig{TeamSafe: true, Combat: fc,
+		Start: func(p PlayerInfo) (EnterPayload, error) {
+			return EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil
+		}})
+	a := dial(t, s, "Volk", 1)
+	if !a.Session.TeamSafe {
+		t.Error("the session does not say TeamSafe")
+	}
+	a.Enter(-1)
+	waitFor(t, a.Conn, MsgEntered)
+	mate := dial(t, s, "Mate", 1)
+	mate.Enter(-1)
+	waitFor(t, mate.Conn, MsgEntered)
+	foe := dial(t, s, "Foe", 2)
+	foe.Enter(-1)
+	waitFor(t, foe.Conn, MsgEntered)
+	a.Look(Look{Stance: true, Weapon: 2})
+	waitFor(t, a.Conn, MsgLook)
+	a.Attack(mate.PlayerID, false)
+	time.Sleep(strikeEvery)
+	a.Attack(foe.PlayerID, false)
+	var h HitPayload
+	if waitFor(t, a.Conn, MsgHit).Decode(&h); h.Target != foe.PlayerID {
+		t.Errorf("first verdict on %s, want the foe (the teammate is protected)", h.Target)
+	}
+}

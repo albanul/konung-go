@@ -80,8 +80,11 @@ func TestFight(t *testing.T) {
 // values, the type's model and look.
 func TestHero(t *testing.T) {
 	w := world(t)
-	h := &netplay.Hero{Level: 5, Model: 2, Palette: 37, Strength: 20, Endurance: 12}
+	h := &netplay.Hero{Level: 5, Class: gamestate.ClassHunter, Model: 2, Palette: 37, Strength: 20, Endurance: 12}
 	e := Hero(w.tmpl[2], 2, h)
+	if e.Flags4&7 != gamestate.ClassHunter {
+		t.Errorf("class %d, want Охотник (%d)", e.Flags4&7, gamestate.ClassHunter)
+	}
 	if e.Model != 2 || e.PaletteOffset != 37*512 || e.Level != 5 || e.BaseStats[1] != 20 || e.HP != gamestate.HPFull {
 		t.Errorf("hero = %+v", e)
 	}
