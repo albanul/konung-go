@@ -182,23 +182,7 @@ func Parse(data []byte) (*Game, error) {
 	g := &Game{items: data[itemOffset : itemOffset+0x20000], data: data, Options: [2]int32{1, 1}}
 	owner := map[int]int{}
 	for i := 0; i < groupCount; i++ {
-		r := data[groupOffset+i*groupStride:][:groupStride]
-		gr := Group{
-			Index:     i,
-			First:     int(int16(binary.LittleEndian.Uint16(r))),
-			Row:       int(binary.LittleEndian.Uint16(r[0x08:])),
-			Col:       int(binary.LittleEndian.Uint16(r[0x10:])),
-			Map:       int(r[0x1B]),
-			Count:     int(r[0x1C]),
-			Kind:      r[0x1E],
-			Enemy:     int(int8(r[0x1A])),
-			Debt:      int(int32(binary.LittleEndian.Uint32(r[2:]))),
-			Countdown: int(int16(binary.LittleEndian.Uint16(r[6:]))),
-			Target:    int(int8(r[0x18])),
-			MaxPop:    int(int8(r[0x19])),
-			Alarm:     int(r[0x1D]),
-		}
-		copy(gr.Raw[:], r)
+		gr := parseGroup(i, data[groupOffset+i*groupStride:][:groupStride])
 		g.Groups = append(g.Groups, gr)
 		if i == 0 || gr.Kind != 0 {
 			for k := 0; k < gr.Count; k++ {
@@ -260,6 +244,28 @@ func Parse(data []byte) (*Game, error) {
 	g.Piles = parsePiles(data)
 	g.Exits = parseExits(data)
 	return g, nil
+}
+
+// parseGroup decodes group record r (GAME.N and the LAN GAME.RES share
+// the 32-byte layout).
+func parseGroup(i int, r []byte) Group {
+	gr := Group{
+		Index:     i,
+		First:     int(int16(binary.LittleEndian.Uint16(r))),
+		Row:       int(binary.LittleEndian.Uint16(r[0x08:])),
+		Col:       int(binary.LittleEndian.Uint16(r[0x10:])),
+		Map:       int(r[0x1B]),
+		Count:     int(r[0x1C]),
+		Kind:      r[0x1E],
+		Enemy:     int(int8(r[0x1A])),
+		Debt:      int(int32(binary.LittleEndian.Uint32(r[2:]))),
+		Countdown: int(int16(binary.LittleEndian.Uint16(r[6:]))),
+		Target:    int(int8(r[0x18])),
+		MaxPop:    int(int8(r[0x19])),
+		Alarm:     int(r[0x1D]),
+	}
+	copy(gr.Raw[:], r)
+	return gr
 }
 
 // NoDialogue is the +0xD0 value of entities that cannot be talked to.

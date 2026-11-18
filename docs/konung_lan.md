@@ -24,7 +24,7 @@ The LAN files live in the game folder (`assets/Konung`) next to the single-playe
 * LAN mode (`game/menu.go`, `lanui.go`): «Сетевая игра» opens the LAN menu, which stays until «Выход»; Escape in a LAN world opens it with «Вернуться в игру» and «Закончить игру» (ME800R frames 3 and 15, as the original in a game), the hero staying online meanwhile; «Закончить игру» logs out to the LAN menu; «Новая игра», «Новый герой» and «Выход» end the game first. A lost connection and the hero's death also return to the LAN screens. No single-player menu items are reachable from a LAN game.
 * The hero type is the login portrait at «Ok» (`Client.Enter(model)`, as the original's `0x4C` carries the model), not at the server pick: it sets the start village, the team and the look's palette, and the server keeps it (`ModelSetter`).
 * World clock (`netplay/clock.go`, `game/lanclock.go`; port rule — the original's clients each ran their own): the server counts game ticks (60 ms, 1 + speed per 60 ms) while anybody is in the world and stops when it is empty; it sends the clock (`MsgClock`: tick, speed, session seconds left) on every entry, when the world empties or fills, at each session start and every 30 s. A client's scene runs ticks to keep up with it and jumps when more than 40 ticks off, so time of day and AI timers agree; the world speed is the server's (`-speed`, numpad +/− do nothing); the moonlit night is decided from the day number, the same everywhere; the session's time left is shown in the view's top-left corner («До конца сессии»). Verified under Xvfb with the dedicated server, together with the hero type at «Ok» and the LAN menu.
-* Not ported: arrows between players drawn in flight on the other clients (the shooter's client draws its arrow), hit and death for heroes off the own map, items changing hands, healing synced to the server (the server's HP is the truth: a potion drunk between hits is undone by the next hit), `GAME.RES`'s villagers and creatures (the LAN entity layout), the account's items in the world (`SAVITEMS.DAT` → bag), the LAN HUD (`INTO640R`; the single-player HUD stands in), per-map single-player tables keyed by map number (fixed light, location names) applied to LAN maps, the rating rows on «Рейтинг» (the store has them: `lanstore.Store.Ratings`), «Установки» (state 8), in-game chat, gameplay — so no kills, amulets or items are produced yet; the store's `Score`, `SaveItems` and `LoadItems` wait for it.
+* Not ported: arrows between players drawn in flight on the other clients (the shooter's client draws its arrow), hit and death for heroes off the own map, items changing hands, healing synced to the server (the server's HP is the truth: a potion drunk between hits is undone by the next hit), `GAME.RES`'s villagers and creatures in the world (decoded: `gamestate.ParseLANWorld`; the server does not run them yet), the account's items in the world (`SAVITEMS.DAT` → bag), the LAN HUD (`INTO640R`; the single-player HUD stands in), per-map single-player tables keyed by map number (fixed light, location names) applied to LAN maps, the rating rows on «Рейтинг» (the store has them: `lanstore.Store.Ratings`), «Установки» (state 8), in-game chat, gameplay — so no kills, amulets or items are produced yet; the store's `Score`, `SaveItems` and `LoadItems` wait for it.
 
 ## Files
 
@@ -38,7 +38,7 @@ All text files are CP866. VAs below are in `LAN_KONG.EXE` (`BEGTEXT` at `0x41000
 | `INTO640R.RES` | Interface layout (`resfmt.ParseInterface`), 275 images: HUD frame, panels, item icons, portraits; drawn with the single-player `GRAPH.RES` palettes | decoded |
 | `MAPS.RES` | 20 × (`KONUNG.N` + `LIGHTS.N`), map n at `(n−1) × 0x2F120` (loader `0x00417DB0`); none matches a single-player map ([map format](konung_map_format.md#lan-version-mapsres-verified)) | verified |
 | `SOUNDS_.RES` | Same layout as `SOUNDS.RES` (`resfmt.LoadSoundEntries`): 244 sounds; 145 identical to single-player, 52 differ, 47 new | decoded |
-| `LIGHTS.RES`, `GAME.RES` | One copy shared with the single-player files (the LAN copies were byte-identical); `GAME.RES` is the LAN world file, unused by `konung.exe` | verified by compare; `GAME.RES` layout open |
+| `LIGHTS.RES`, `GAME.RES` | One copy shared with the single-player files (the LAN copies were byte-identical); `GAME.RES` is the LAN world file, unused by `konung.exe` | verified by compare; `GAME.RES` layout verified ([world](#world-gameres)) |
 | `Quest_r.res` | Differs from `questr.RES`; the exe opens `QUESTR.RES` | open |
 | `SPEECHS_.RES` | Voices (Type 1 header) | open |
 | `MP3_SND.DLL` | `MP3_init`, `MP3_converttoWAV22M`, `MP3_close` | not analysed |
@@ -173,16 +173,48 @@ Draw `0x0041E8EC`, the single-player window's scheme with LAN tables (`gamestate
 
 ## World (`GAME.RES`)
 
-Client loader `0x0041DC84` («File with game resources not found»); `gamestate.LANExits`. Six blocks in `GAME.N`'s order, 365,509 bytes:
+The LAN world file, read by the server at `0x00449451` (and again at a session's end, `0x00446900`: everything but the map exits and the player entities 0–15, skipped with a seek of `0x209A`), by the client at `0x0041DC84` («File with game resources not found»). Six sections in `GAME.N`'s order; they add up to the file's 365,509 bytes. Decoder: `gamestate.ParseLANWorld` (`lanres.go`), which converts every record into the `GAME.N` types (`Game`: items, groups, entities, piles, exits, settlements) so the game's rules run on them; tests `TestLANWorld*`.
 
-| Offset | Size | Content |
+| Offset | Size | Server buffer | Content |
+|---|---|---|---|
+| `0x00000` | `0x20000` | `0xC4E1B8` | 8192 × 16-byte items, as `GAME.N` |
+| `0x20000` | `0xA00` | `0xC6E1B8` | 80 × 32-byte groups, as `GAME.N` (`+0x1F` = own index) |
+| `0x20A00` | `0x20D00` | `0xC216B0` | 2100 × 64-byte piles: 21 blocks of 100, record = map · 100 + k (`0x00434AEF`, `0x00448058`: map · `0x1900`); block 0 unused |
+| `0x41700` | `0x109A` | `0xE24724` | 250 × 17-byte map exits, as `GAME.N` (192 used) |
+| `0x4279A` | `0x14000` | `0xE0BFE0` | 320 × 256-byte entities, LAN layout (below) |
+| `0x5679A` | `0x2C2B` | `0xE20C60` | 3 × `0xEB9` settlements, LAN layout (below) |
+
+**Groups** (as `GAME.N`): 0–15 the player slots (one entity each, entity = slot, kind `0x20`); 16–18 the villages on maps 7, 4, 1 (kind `0x80` + the village side: map 1 `0x80`, map 4 `0x81`, map 7 `0x82`, = the hero model whose village it is); 19–21 kind `0x53` on maps 11, 14, 19 (one animated object each, model 16, dialogue 6); 22–24 kind `0x44`, one creature each on maps 9, 11, 13; 25–78 creature groups (kinds `0x41`–`0x50`, 3–5 members, 2–5 per map) on maps 2, 3, 5, 6, 8–20. Each group reserves `+0x19` (MaxPop) consecutive entities from `+0x00` (creature groups keep a spare for respawns): entities 0–318, 285 in use; record 319 is outside every group and empty. Entities in the file: 95 villagers, 3 objects, 3 lone creatures, 184 creatures; 101 have a cell, the rest (all creatures) are placed in their group's rectangle at run time.
+
+**Entities** (LAN layout): `GAME.N`'s fields in the same order, packed, with the base stats moved to the end. Every byte the file holds is one of these (the others are 0 in all 320 records: run-time state):
+
+| LAN | `GAME.N` | Field |
 |---|---|---|
-| `0x00000` | `0x20000` | 8192 × 16-byte items, as `GAME.N` |
-| `0x20000` | `0xA00` | 80 × 32-byte groups, as `GAME.N`; `+0x1F` = group index. Groups 0–15 are the player slots (one entity each, entity index = slot); 16–18 the villages on maps 7, 4, 1; 19–24 lone characters; 25–78 creature groups on maps 2–20 |
-| `0x20A00` | `0x20D00` | 2100 ground piles of `0x40` bytes (size inferred) |
-| `0x41700` | `0x109A` | 250 × `0x11` map exits, as `GAME.N` (192 used); the client skips them, the server keeps them |
-| `0x4279A` | `0x14000` | 320 × 256-byte entities, a LAN layout: `+0x05` group, `+0x06`/`+0x08` row/col, `+0x0D` level, `+0x0E` gold, `+0x1A`… skills, `+0x2E`/`+0x30`/`+0x34`/`+0x36` Ловкость/Харизма/Сила/Выносливость, `+0x32` HP, `+0x3F` hero model (the team), `+0x41` palette offset, `+0x45`/`+0x51`/`+0x91` equipment/bag/jewellery, `+0xBD` own index, `+0xE5`/`+0xED` world pixel x/y |
-| `0x5679A` | `0x2C2B` | 3 × `0xEB9` settlements (maps 7, 4, 1) |
+| `+0x00`–`+0x04` | same | type, facing, `+2`/`+3`/`+4` flags (`+4` class or creature kind; `+3` & 4 stance) |
+| `+0x05` | — | owning group (`GAME.N` derives it from the groups) |
+| `+0x06`, `+0x08` | `+0x08`, `+0x0A` | row, col (u16) |
+| `+0x0A`, `+0x0B` | `+0x10`, `+0x11` | animation step, walk throttle (run time; by order, guess) |
+| `+0x0C` | `+0x12` | weapon mode (CanShoot `0x0044660D`, draw `0x004197A2`; animated creatures keep 0–5 there, as in `GAME.N`) |
+| `+0x0D` | `+0x33` | level |
+| `+0x0E`, `+0x12`, `+0x16` | `+0x34`, `+0x38`, `+0x3C` | gold, free experience, experience (i32) |
+| `+0x1A`…`+0x26` | `+0x40`…`+0x4C` | Фехтование, Торговля, Меткость, Плотницкое дело, Знахарство, Идентификация, Кузнечное дело (u16) |
+| `+0x28`, `+0x2A`, `+0x2C` | `+0x4E`, `+0x50`, `+0x52` | armour, poison, poison dealt (i16) |
+| `+0x2E`, `+0x30`, `+0x32`, `+0x34`, `+0x36` | `+0x54`, `+0x58`, `+0x5C`, `+0x5E`, `+0x62` | Ловкость, Харизма, HP, Сила, Выносливость |
+| `+0x38` | `+0xCC` | quiver item (CanShoot `0x0044662A`; `0x5A` sends it) |
+| `+0x3A`, `+0x3B`, `+0x3C` | `+0xD0`, `+0xD2`, `+0xD3` | dialogue (`0xFF` none), the two enchantments (−1 none) |
+| `+0x3D`, `+0x3E`, `+0x3F` | `+0xD4`, `+0xD5`, `+0xD6` | first name, nickname, model |
+| `+0x41` | `+0xD8` | palette offset (u32, index · 512) |
+| `+0x45`, `+0x51`, `+0x91` | `+0x66`, `+0x72`, `+0xB2` | equipment 6, bag 32, jewellery 5 (u16 item indices; `GAME.N`'s `Extra` are the jewellery boxes) |
+| `+0xBB` | — | order target, index + 1 (run time, `0x00446264`) |
+| `+0xBD` | — | own index (u16) |
+| `+0xC5`, `+0xC7`, `+0xC9`, `+0xCB` | `+0x56`, `+0x5A`, `+0x60`, `+0x64` | base Ловкость, Харизма, Сила, Выносливость |
+| `+0xE5`, `+0xED` | — | world pixel x, y (run time) |
+
+Not placed yet: the run-time fields of `GAME.N` between `+0x13` and `+0x32` and from `+0xBC` (potion timer, bonuses, saved bases), which sit somewhere in `+0x9B`–`+0xBA`, `+0xBF`–`+0xC4` and `+0xCD`–`+0xFF` (0 in the file).
+
+**Piles**: `+0x00` i32 gold (a non-zero value draws the pile icon, `0x00444058`), `+0x0C`/`+0x0E` row/col, `+0x10` the ground image (recomputed from the items by `0x00444058`: `0xA3` for several things, else the first item's), `+0x12` map (0 = unused), `+0x13` bit 0 emptied record (reusable, `0x00448096`), `+0x14` 22 item indices (as `GAME.N`). `GAME.N` keeps the cell at `+0x08`/`+0x0A` and the gold at `+0x10`. In the file: 120 piles, 7 on most maps, 1 (5 items) in each village.
+
+**Settlements** (LAN layout): `GAME.N`'s record with a longer header and the shops kept per player slot. `+0` extra buildings, `+1` fence pieces, `+2` village group, `+3` map (as `GAME.N`); `+0x04`–`+0x53` run time (timers and tribute; `+0x4E` u16 the player slots that attacked the village, cleared at the session's end `0x00446AC1`); `+0x54` 119 × 8-byte building records (`GAME.N` `+0x18`); `+0x40C` 5 × 8-byte posts (`+0x3D0`); `+0x434` apprentice times (`+0x3F8`); `+0x448` 16 × `0x38` healer flags and stock, `+0x7C8` 16 × `0x40` merchant stock, `+0xBC8` 16 × `0x2E` smith stock — one each per player slot (`+0x40C`, `+0x444`, `+0x484`; cleared at the session's end `0x00446AD1`); `+0xEA8` flags (`+0x4B2`; `0x10` in the file and after a session's end); `+0xEA9` 16 smith jobs, one per player slot (`+0x4B4`; `0xFF` none). The posts hold the villages' elder and role characters; their cells match the entities' and lie inside the buildings' footprints (walk-grid byte `0x4F`), unlike `GAME.N`'s posts, which stand outside. Every other character and pile with a cell stands on a walkable cell of its `MAPS.RES` map (84 + 120, `TestLANWorldOnWalkableCells`).
 
 ## Game start
 
@@ -196,7 +228,7 @@ The original's server runs the whole world (tick `0x445988` over all 80 groups: 
 
 * A world click sends `0x55` (builder `0x418E90`, server `0x449B24` → `0x446264`, sub-command 0): `+0xC`/`+0xD` row/col, `+0xE` target index + 1, `+0x10` map. A right click on an entity opens trade (`0x43`) only out of the stance, for a group ≥ 16, without Ctrl; otherwise it is an order. With a target in the stance the server shoots (bow `+0x0C` = 1 with arrows) or fights in melee, target in `+0xBB` (index + 1); targets in the own group are ignored.
 * Hit `0x43E33C`, damage `0x43E968` on the server; a heavy hit plays the flinch (2 in the stance, 8 out of it), a kill experience `0x43E394` and the death (3/9, `0x4386A0`); the attacker gets xp/4 in `+0x12`. A player attacker scores `0x43B67C(attacker, victim, 0)` (melee `0x445D18`, arrows `0x444FF2`), then `0x5C` to it (`0x448970`, its stats; the account is saved), then loot `0x43BD54` (creatures drop their gold; players keep theirs).
-* `0x19` action nibble: 0 idle, 1 walk, 2 flinch, 3 death, 4 shoot, 5 melee in the stance, + 6 out of it; the client starts the action (`0x412450`). `0x1A`/`0x5A` (`0x448524` → `0x422C9C`): entity word, HP/16, (model << 4) | class, level, palette/512, 2 bytes of `+0x38`, equipment 12 bytes, jewellery 10, bag 64, then name 32 and clan 32 for players (`0xA1` bytes, else `0x61`). The draw (`0x4197A2`) reads `+0x0C` as the weapon slot.
+* `0x19` action nibble: 0 idle, 1 walk, 2 flinch, 3 death, 4 shoot, 5 melee in the stance, + 6 out of it; the client starts the action (`0x412450`). `0x1A`/`0x5A` (`0x448524` → `0x422C9C`): entity word, HP/16, (model << 4) | class, level, palette/512, the quiver `+0x38`, equipment 12 bytes, jewellery 10, bag 64, then name 32 and clan 32 for players (`0xA1` bytes, else `0x61`). The draw (`0x4197A2`) reads `+0x0C` as the weapon slot.
 * Same team (model) heroes can hurt each other: only the group is compared. No safe areas. A hit on a player marks the attacker in the map record's `+0x4E` when the map's village side (`+0x1E & 3`) is the target's model (orders) or always (arrows) — read as the village's aggressor list (guess).
 * Death: at the end of the death action (`0x436A46`) `+4 |= 0x80` and the hero leaves the grid. No respawn: HP 1600 is written on entry (`0x44B263`), at the session's end (`0x448BB8`: every hero back to its village, full HP, out of the stance), and by heals and items.
 
@@ -229,4 +261,4 @@ Messages client → server (type | `0x40`, table `0x482914`): `0x4B`/`0x55` orde
 * The settings screen (state 8); the LAN fonts `0x7A5142`/`0x7AB36F`; the hero fields `+0x16`, `+0x28` (record `+0x4C`, `+0x62`) and `+0x3E`.
 * The message types and payloads (callers of `0x0042FDE4`: `0x417CD2`, `0x41FFD5`, `0x42E054`, `0x42E0D1`, `0x42E147`, `0x42E34C`, `0x42F09C`, `0x42F1EF`, `0x42F8CF`; receive dispatch from `0x42F8A1`).
 * Server rules still open: the `0x53` broadcast, the `0x1B` move message, how a client entering gets the others' positions, the free-cell search at entry, respawn, row/col sent as single bytes although rows reach 319, the saves at `0x00448A6A` and `0x0044CCF3`, the account fields `+0x4C` and `+0x62`.
-* Which `MAPS.RES` map is which cell of the a1–d5 grid; the six `SERVER` lines; `GAME.RES`; `Quest_r.res`; item differences from single-player.
+* Which `MAPS.RES` map is which cell of the a1–d5 grid; the six `SERVER` lines; `GAME.RES`'s run-time entity fields (potion timer, bonuses: [world](#world-gameres)) and settlement header (`+0x04`–`+0x53`); `Quest_r.res`; item differences from single-player.

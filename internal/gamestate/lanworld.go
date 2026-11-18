@@ -2,11 +2,10 @@ package gamestate
 
 import "fmt"
 
-// The LAN version's world file GAME.RES (client loader 0x0041DC84): GAME.N's
-// six blocks in the same order, smaller (docs/konung_lan.md#world-gameres):
-// 8192 items (as GAME.N), 80 groups (as GAME.N; groups 0–15 are the player
-// slots), 2100 ground piles (0x40 bytes, a guess by size), 250 map exits
-// (as GAME.N), 320 entities (a LAN layout of its own) and 3 settlements.
+// The LAN version's world file GAME.RES (client loader 0x0041DC84, server
+// 0x00449451): GAME.N's six blocks in the same order, smaller; decoded by
+// ParseLANWorld (lanres.go, docs/konung_lan.md#world-gameres). LANExits
+// reads only the map exits.
 const (
 	LANWorldSize  = 365509
 	lanExitOffset = 0x41700

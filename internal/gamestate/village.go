@@ -52,23 +52,27 @@ type Settlement struct {
 func parseSettlements(data []byte) []Settlement {
 	var out []Settlement
 	for i := 0; i < settlementCount; i++ {
-		r := data[settlementOffset+i*settlementStride:][:settlementStride]
-		s := Settlement{Index: i, Group: int(r[2]), Map: int(r[3]), Fence: int(r[1]), Flags: r[0x4B2]}
-		copy(s.Raw[:], r)
-		for k := range s.Posts {
-			p := r[postOffset+k*8:]
-			s.Posts[k] = Post{
-				Slot:     k + 1,
-				Facing:   int(p[0]),
-				Dialogue: int(p[1]),
-				Entity:   int(binary.LittleEndian.Uint16(p[2:])),
-				Row:      int(binary.LittleEndian.Uint16(p[4:])),
-				Col:      int(binary.LittleEndian.Uint16(p[6:])),
-			}
-		}
-		out = append(out, s)
+		out = append(out, settlementFrom(i, data[settlementOffset+i*settlementStride:][:settlementStride]))
 	}
 	return out
+}
+
+// settlementFrom decodes a GAME.N-layout settlement record r.
+func settlementFrom(i int, r []byte) Settlement {
+	s := Settlement{Index: i, Group: int(r[2]), Map: int(r[3]), Fence: int(r[1]), Flags: r[0x4B2]}
+	copy(s.Raw[:], r)
+	for k := range s.Posts {
+		p := r[postOffset+k*8:]
+		s.Posts[k] = Post{
+			Slot:     k + 1,
+			Facing:   int(p[0]),
+			Dialogue: int(p[1]),
+			Entity:   int(binary.LittleEndian.Uint16(p[2:])),
+			Row:      int(binary.LittleEndian.Uint16(p[4:])),
+			Col:      int(binary.LittleEndian.Uint16(p[6:])),
+		}
+	}
+	return s
 }
 
 // VillageGroup reports whether group g runs the village AI (kind bit 0x80
