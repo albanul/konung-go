@@ -336,3 +336,76 @@ func TestMigrateV2(t *testing.T) {
 		t.Errorf("migrated hero = %+v, %v", h, err)
 	}
 }
+
+// The original server's item rules in the store: the starting knife once
+// for a new or rebuilt hero; a death keeps the worn items with the dead
+// flag; entering again while dead empties them; a session's end revives.
+func TestStarterAndDeath(t *testing.T) {
+	s, _ := open(t)
+	s.Login(netplay.JoinInfo{Name: "Volk", Password: "p"})
+	if ok, err := s.TakeStarter("Volk"); err != nil || !ok {
+		t.Fatalf("new account: starter %v, %v", ok, err)
+	}
+	if ok, _ := s.TakeStarter("Volk"); ok {
+		t.Error("the starter twice")
+	}
+	sword := Item{Slot: SlotEquip, Index: 2, Category: 2, Enchantment: -1, Type: 3, Condition: 40, MaxCondition: 50}
+	if err := s.Died("Volk", []Item{sword}); err != nil {
+		t.Fatal(err)
+	}
+	if was, err := s.Revive("Volk"); err != nil || !was {
+		t.Fatalf("revive: %v, %v", was, err)
+	}
+	if items, _ := s.LoadItems("Volk"); len(items) != 0 {
+		t.Errorf("entered again after death with %+v", items)
+	}
+	if was, _ := s.Revive("Volk"); was {
+		t.Error("still dead after entering again")
+	}
+	s.Died("Volk", []Item{sword})
+	if err := s.EndSession(); err != nil {
+		t.Fatal(err)
+	}
+	if was, _ := s.Revive("Volk"); was {
+		t.Error("the session's end did not revive")
+	}
+	if items, _ := s.LoadItems("Volk"); len(items) != 1 || items[0] != sword {
+		t.Errorf("after the session's end: %+v, want the sword", items)
+	}
+	s.Login(netplay.JoinInfo{Name: "Volk", Password: "p", NewHero: &netplay.HeroChoice{Class: 5, Stats: [4]int{3, 15, 3, 10}}})
+	if ok, _ := s.TakeStarter("Volk"); !ok {
+		t.Error("a rebuilt hero has no starter")
+	}
+}
+
+// Version 3 → 4: accounts that never saved items get the knife once,
+// accounts with items keep them.
+func TestMigrateV3(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "konung.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(schema + migrations[0] + migrations[1] + `INSERT INTO clans VALUES (0, 'Византийцы');
+		INSERT INTO accounts (id, name, password, palette, model, created_at, last_login) VALUES (1, 'Empty', 'x', 28, 1, '', '');
+		INSERT INTO accounts (id, name, password, palette, model, created_at, last_login) VALUES (2, 'Rich', 'x', 28, 1, '', '');
+		INSERT INTO items VALUES (2, 'equip', 2, 2, -1, 3, 0, 40, 50, 0);
+		PRAGMA user_version = 3;`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if ok, _ := s.TakeStarter("Empty"); !ok {
+		t.Error("an account without items gets no knife")
+	}
+	if ok, _ := s.TakeStarter("Rich"); ok {
+		t.Error("an account with items gets the knife")
+	}
+	if items, _ := s.LoadItems("Rich"); len(items) != 1 {
+		t.Errorf("Rich's items %+v", items)
+	}
+}

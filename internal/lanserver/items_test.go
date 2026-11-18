@@ -48,15 +48,16 @@ func TestItemsOverNetwork(t *testing.T) {
 		saved[p.Name] = items
 		mu.Unlock()
 	}
-	ss.host.Load = func(p netplay.PlayerInfo) []Item {
+	ss.host.Load = func(p netplay.PlayerInfo) ([]Item, bool) {
 		mu.Lock()
 		defer mu.Unlock()
-		return saved[p.Name]
+		items, ok := saved[p.Name]
+		return items, !ok // never saved: a new hero with the knife
 	}
 	a := enter(t, ss, "Ivar", 1)
 	b := enter(t, ss, "Olaf", 1)
 
-	// The inventory arrives with the type's starting gear.
+	// The inventory arrives with the starting knife.
 	weapon := 0
 	waitUntil(t, "the inventory", func() bool {
 		inv, _, _ := a.items()
@@ -194,8 +195,10 @@ func TestSavedItemsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := w.SavedItems(0)
-	if len(before) == 0 {
-		t.Fatal("the starting gear saved nothing")
+	// A new hero carries only the knife (the original server).
+	if len(before) != 1 || before[0].Slot != SlotEquip || before[0].Index != gamestate.WeaponBlade ||
+		before[0].Category != gamestate.CatBlade || before[0].Type != 18 {
+		t.Fatalf("starting gear %+v, want only the knife", before)
 	}
 	arrows := Item{Slot: SlotArrows, Category: gamestate.CatArrows, Type: 1, Count: 37}
 	w.LoadItems(0, append(append([]Item{}, before...), arrows))
@@ -212,14 +215,10 @@ func TestSavedItemsRoundTrip(t *testing.T) {
 		t.Errorf("arrows: %+v", got)
 	}
 	// A gap the store's drop rules leave closes up.
-	var bag []Item
-	for _, it := range before {
-		if it.Slot == SlotBag {
-			bag = append(bag, it)
-		}
-	}
-	if len(bag) < 3 {
-		t.Fatalf("starting bag %+v", bag)
+	bag := []Item{
+		{Slot: SlotBag, Index: 0, Category: gamestate.CatHerb, Type: 1},
+		{Slot: SlotBag, Index: 1, Category: gamestate.CatHerb, Type: 2},
+		{Slot: SlotBag, Index: 2, Category: gamestate.CatHerb, Type: 3},
 	}
 	w.LoadItems(0, []Item{bag[0], bag[2]})
 	if e, _ := w.Hero(0); e.Bag[0] == 0 || e.Bag[1] == 0 || e.Bag[2] != 0 {

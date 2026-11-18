@@ -1,6 +1,9 @@
 package lanstore
 
-import "fmt"
+import (
+	"database/sql"
+	"fmt"
+)
 
 // Item slots of a SAVITEMS.DAT record (0x200 bytes per account; written by
 // 0x00444918, read by 0x0044444C): 6 equipment slots and 5 jewellery boxes,
@@ -68,6 +71,14 @@ func (s *Store) SaveItems(name string, items []Item) error {
 	if err := tx.QueryRow(`SELECT id FROM accounts WHERE name = ?`, name).Scan(&id); err != nil {
 		return fmt.Errorf("lanstore: account %q: %w", name, err)
 	}
+	if err := replaceItems(tx, id, items); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// replaceItems replaces account id's saved items.
+func replaceItems(tx *sql.Tx, id int64, items []Item) error {
 	if _, err := tx.Exec(`DELETE FROM items WHERE account_id = ?`, id); err != nil {
 		return err
 	}
@@ -81,7 +92,7 @@ func (s *Store) SaveItems(name string, items []Item) error {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // LoadItems returns an account's items for entering the game, without the

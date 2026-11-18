@@ -30,12 +30,20 @@ type Host struct {
 	// victim. The dedicated server scores and saves (0x0043B67C).
 	OnKill func(k Kill)
 	// Load gives an entering player's saved items (SAVITEMS.DAT,
-	// 0x0044444C; called under the lock); none: the hero keeps its type's
-	// starting gear. Save keeps a player's hero (its account values, nil
-	// without accounts) and items (0x00444918; called without the lock)
-	// when it leaves the world, dies, and at SaveAll (the session's end).
-	Load func(p netplay.PlayerInfo) []Item
+	// 0x0044444C; called under the lock), or starter: a new or rebuilt
+	// hero, which keeps the starting knife (AddPlayer). Without Load every
+	// hero starts with the knife. Save keeps a player's hero (its account
+	// values, nil without accounts) and items (0x00444918; called without
+	// the lock) when it leaves the world and at SaveAll (the session's
+	// end). Died keeps a hero that died (HP 0, whoever or whatever killed
+	// it): its account values and the items it wore (equipment,
+	// jewellery, arrows; the bag lies in the pile at the death spot, open
+	// to anyone, the owner too). The original server: re-entering after
+	// death, the hero comes naked; a session ending while it is dead
+	// revives it with the worn items and an empty bag.
+	Load func(p netplay.PlayerInfo) (items []Item, starter bool)
 	Save func(p netplay.PlayerInfo, hero *netplay.Hero, items []Item)
+	Died func(p netplay.PlayerInfo, hero *netplay.Hero, worn []Item)
 }
 
 // save is a Save call to make after the lock.
@@ -43,6 +51,7 @@ type save struct {
 	p     netplay.PlayerInfo
 	hero  *netplay.Hero
 	items []Item
+	died  bool // Died, not Save
 }
 
 // Kill is a kill by a player's hero.
@@ -59,6 +68,7 @@ type hostPlayer struct {
 	info  netplay.PlayerInfo
 	hero  *netplay.Hero
 	slot  int
+	dead  bool // died; kept by Died, not saved again
 	view  Viewer
 	looks map[int]netplay.Look // players' heroes sent to this player, as sent
 	// The items, piles and pile window as last sent (JSON), so only
@@ -92,7 +102,7 @@ func (h *Host) Start(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPay
 		hp = &hostPlayer{slot: slot}
 		h.players[p.ID], h.bySlot[slot] = hp, hp
 	}
-	hp.info, hp.hero = p, hero
+	hp.info, hp.hero, hp.dead = p, hero, false
 	hp.view, hp.looks = Viewer{}, map[int]netplay.Look{}
 	hp.inv, hp.piles, hp.pileWin = nil, nil, nil
 	m, c, err := h.W.AddPlayer(hp.slot, p.Model, hero)
@@ -102,8 +112,8 @@ func (h *Host) Start(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPay
 		return netplay.EnterPayload{}, err
 	}
 	if h.Load != nil {
-		if items := h.Load(p); len(items) > 0 {
-			h.W.LoadItems(hp.slot, items)
+		if items, starter := h.Load(p); !starter {
+			h.W.LoadItems(hp.slot, items) // none: naked
 		}
 	}
 	e, _ := h.W.Hero(hp.slot)
@@ -125,7 +135,9 @@ func (h *Host) Leave(id string) {
 	h.mu.Lock()
 	var saves []save
 	if hp := h.players[id]; hp != nil {
-		saves = append(saves, h.saveOf(hp))
+		if !hp.dead {
+			saves = append(saves, h.saveOf(hp))
+		}
 		h.W.RemovePlayer(hp.slot)
 		delete(h.players, id)
 		delete(h.bySlot, hp.slot)
@@ -140,7 +152,9 @@ func (h *Host) SaveAll() {
 	h.mu.Lock()
 	var saves []save
 	for _, hp := range h.players {
-		saves = append(saves, h.saveOf(hp))
+		if !hp.dead {
+			saves = append(saves, h.saveOf(hp))
+		}
 	}
 	h.mu.Unlock()
 	h.save(saves)
@@ -158,12 +172,42 @@ func (h *Host) saveOf(hp *hostPlayer) save {
 }
 
 func (h *Host) save(saves []save) {
-	if h.Save == nil {
-		return
-	}
 	for _, s := range saves {
-		h.Save(s.p, s.hero, s.items)
+		switch {
+		case s.died && h.Died != nil:
+			h.Died(s.p, s.hero, s.items)
+		case !s.died && h.Save != nil:
+			h.Save(s.p, s.hero, s.items)
+		}
 	}
+}
+
+// deaths finds the players' heroes that died since the last tick (HP 0,
+// whoever or whatever killed them) and returns their Died saves: the worn
+// items only (DropLoot put the bag into the pile); h.mu held.
+func (h *Host) deaths() []save {
+	var out []save
+	for _, hp := range h.players {
+		if hp.dead {
+			continue
+		}
+		if e, ok := h.W.Hero(hp.slot); !ok || e.HP > 0 {
+			continue
+		}
+		hp.dead = true
+		h.W.closeItems(hp.slot)
+		s := h.saveOf(hp)
+		s.died = true
+		worn := s.items[:0:0]
+		for _, it := range s.items {
+			if it.Slot != SlotBag {
+				worn = append(worn, it)
+			}
+		}
+		s.items = worn
+		out = append(out, s)
+	}
+	return out
 }
 
 // Order is ServerConfig.OnOrder: an order for p's hero.
@@ -222,6 +266,7 @@ func (h *Host) Advance(target, max int) int {
 		h.W.Step()
 	}
 	kills, saves := h.report()
+	saves = append(saves, h.deaths()...)
 	h.mu.Unlock()
 	if h.OnKill != nil {
 		for _, k := range kills {
@@ -263,12 +308,7 @@ func (h *Host) report() ([]Kill, []save) {
 				h.sendTo(hp, netplay.MsgHero, hero)
 			}
 			if v := h.bySlot[ev.Victim]; v != nil && ev.VictimPlayer {
-				k.Victim, k.VictimPlayer = v.info, true
-				// The dead hero is kept as it fell: its bag lies in the
-				// pile (DropLoot), equipment, jewellery, arrows and gold
-				// stay with the account.
-				h.W.closeItems(v.slot)
-				saves = append(saves, h.saveOf(v))
+				k.Victim, k.VictimPlayer = v.info, true // its death: deaths
 			}
 			kills = append(kills, k)
 		}

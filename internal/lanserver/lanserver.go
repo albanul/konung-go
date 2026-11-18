@@ -201,8 +201,11 @@ func (w *World) Start(model int) (gamestate.MapExit, error) {
 
 // AddPlayer puts slot's hero into the world: the hero type's GAME.N hero
 // with the account's values (lanfight.Hero; hero nil: the type's default),
-// its gear copied into the world's items, out of the stance, full HP, on
-// the type's start (the nearest free cell). It returns the map and cell.
+// out of the stance, full HP, on the type's start (the nearest free cell),
+// carrying a new hero's starting gear: only the knife, the item the
+// template carries in the blade slot (category 2, type 18 in all three
+// GAME.N; the original server: a new hero gets a knife). A player with saved
+// items gets them instead (LoadItems). It returns the map and cell.
 func (w *World) AddPlayer(slot, model int, hero *netplay.Hero) (int, mapdata.Cell, error) {
 	if slot < 0 || slot >= world.LANPlayers {
 		return 0, mapdata.Cell{}, fmt.Errorf("player slot %d", slot)
@@ -215,13 +218,10 @@ func (w *World) AddPlayer(slot, model int, hero *netplay.Hero) (int, mapdata.Cel
 	w.RemovePlayer(slot)
 	src := w.tmpl[model]
 	e := lanfight.Hero(src, model, hero)
-	for k, i := range e.Equipment {
-		e.Equipment[k] = w.Game.CopyItemFrom(src, i)
-	}
-	e.Quiver = w.Game.CopyItemFrom(src, e.Quiver)
-	for k, i := range e.Bag {
-		e.Bag[k] = w.Game.CopyItemFrom(src, i)
-	}
+	knife := e.Equipment[gamestate.WeaponBlade]
+	e.Equipment, e.Extra, e.Bag, e.Quiver = [6]int{}, [5]int{}, [32]int{}, 0
+	e.Equipment[gamestate.WeaponBlade] = w.Game.CopyItemFrom(src, knife)
+	e.WeaponMode = gamestate.WeaponBlade
 	gamestate.LeaveStance(&e)
 	e.Flags4 &^= 0x80
 	e.Flags3 &^= 0x80

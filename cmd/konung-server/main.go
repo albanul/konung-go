@@ -153,9 +153,13 @@ func run(dataDir string, st settings) error {
 		sw.w.TeamSafe = !teamDamage
 		sw.host = lanserver.NewHost(sw.w, func(id string, m *netplay.Message) error { return srv.Send(id, m) })
 		sw.host.OnKill = func(k lanserver.Kill) { scoreKill(store, k) }
-		sw.host.Load = func(p netplay.PlayerInfo) []lanserver.Item { return loadItems(store, p.Name) }
+		sw.host.Load = func(p netplay.PlayerInfo) ([]lanserver.Item, bool) { return loadItems(store, p.Name) }
 		sw.host.Save = func(p netplay.PlayerInfo, hero *netplay.Hero, items []lanserver.Item) {
 			saveHero(store, p.Name, hero, items)
+		}
+		sw.host.Died = func(p netplay.PlayerInfo, hero *netplay.Hero, worn []lanserver.Item) {
+			log.Printf("%s died", p.Name)
+			heroDied(store, p.Name, hero, worn)
 		}
 		cfg.Start = func(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPayload, error) {
 			at, err := sw.host.Start(p, hero)
@@ -241,20 +245,48 @@ func scoreKill(store *lanstore.Store, k lanserver.Kill) {
 	}
 }
 
-// loadItems is an account's saved items (lanstore, after SAVITEMS.DAT's
-// drop rules); none for an account that never saved any (its hero keeps
-// its type's starting gear).
-func loadItems(store *lanstore.Store, name string) []lanserver.Item {
+// loadItems is an entering hero's items (the original server's rules,
+// docs/konung_lan.md#items): a new or rebuilt hero gets its starting knife
+// (starter); one that died comes naked; else its saved items (lanstore,
+// after SAVITEMS.DAT's drop rules), none when it has none.
+func loadItems(store *lanstore.Store, name string) ([]lanserver.Item, bool) {
+	if dead, err := store.Revive(name); err != nil {
+		log.Printf("items of %s: %v", name, err)
+	} else if dead {
+		log.Printf("%s enters again after death: naked", name)
+	}
+	if starter, err := store.TakeStarter(name); err != nil {
+		log.Printf("items of %s: %v", name, err)
+	} else if starter {
+		return nil, true
+	}
 	saved, err := store.LoadItems(name)
 	if err != nil {
 		log.Printf("items of %s: %v", name, err)
-		return nil
+		return nil, false
 	}
 	out := make([]lanserver.Item, len(saved))
 	for i, it := range saved {
 		out[i] = lanserver.Item(it)
 	}
-	return out
+	return out, false
+}
+
+// heroDied keeps a hero that died: its values and the worn items, with the
+// dead flag (lanstore.Died).
+func heroDied(store *lanstore.Store, name string, hero *netplay.Hero, worn []lanserver.Item) {
+	if hero != nil {
+		if err := store.SaveProgress(name, hero); err != nil {
+			log.Printf("save %s: %v", name, err)
+		}
+	}
+	saved := make([]lanstore.Item, len(worn))
+	for i, it := range worn {
+		saved[i] = lanstore.Item(it)
+	}
+	if err := store.Died(name, saved); err != nil {
+		log.Printf("death of %s: %v", name, err)
+	}
 }
 
 // saveHero keeps a player's hero (level, gold, stats, skills, experience)

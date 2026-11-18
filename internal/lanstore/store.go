@@ -55,6 +55,14 @@ var migrations = []string{
 	ALTER TABLE accounts DROP COLUMN look0;
 	ALTER TABLE accounts DROP COLUMN look1;
 	ALTER TABLE accounts DROP COLUMN look2;`,
+	// 4: the original server's item rules (docs/konung_lan.md#items):
+	// starter = a new or rebuilt hero still to get its knife; dead = the
+	// hero died (its worn items saved; re-entering comes naked, a session
+	// end revives it with them). Accounts that never saved items get the
+	// knife once.
+	`ALTER TABLE accounts ADD COLUMN starter INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE accounts ADD COLUMN dead INTEGER NOT NULL DEFAULT 0;
+	UPDATE accounts SET starter = 1 WHERE id NOT IN (SELECT DISTINCT account_id FROM items);`,
 }
 
 const schema = `
@@ -212,7 +220,7 @@ func (s *Store) Login(j netplay.JoinInfo) (*netplay.Hero, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		res, err := tx.Exec(`INSERT INTO accounts (name, password, palette, model, created_at, last_login) VALUES (?, ?, ?, ?, ?, ?)`,
+		res, err := tx.Exec(`INSERT INTO accounts (name, password, palette, model, starter, created_at, last_login) VALUES (?, ?, ?, ?, 1, ?, ?)`,
 			j.Name, hash, gamestate.LANLookPalette(model, 0), model, now, now)
 		if err != nil {
 			return nil, false, err
@@ -267,7 +275,7 @@ func rebuild(tx *sql.Tx, id int64, e gamestate.Entity, look int) error {
 	_, err := tx.Exec(`UPDATE accounts SET level = 1, gold = 1000, class = ?, free_points = ?,
 		charisma = ?, strength = ?, dexterity = ?, endurance = ?,
 		fencing = ?, archery = ?, herbalism = ?, smithing = ?, trade = ?, carpentry = ?, identification = ?,
-		unknown_4c = 0, unknown_62 = 10, look = ?
+		unknown_4c = 0, unknown_62 = 10, look = ?, starter = 1, dead = 0
 		WHERE id = ?`,
 		int(e.Flags4&7), e.FreeExp,
 		e.BaseStats[0], e.BaseStats[1], e.BaseStats[2], e.BaseStats[3],
@@ -475,7 +483,75 @@ func (s *Store) EndSession() error {
 			return err
 		}
 	}
+	// The dead come back with their worn items and an empty bag (the
+	// original server at a session's end).
+	if _, err := tx.Exec(`UPDATE accounts SET dead = 0 WHERE dead != 0`); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// TakeStarter reports whether name's hero is new or rebuilt and still to
+// get its starting knife, and clears that (once).
+func (s *Store) TakeStarter(name string) (bool, error) {
+	res, err := s.db.Exec(`UPDATE accounts SET starter = 0 WHERE name = ? AND starter != 0`, name)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// Died keeps name's hero that died: the worn items (equipment,
+// jewellery, arrows; its bag lies at the death spot) and the dead flag.
+func (s *Store) Died(name string, worn []Item) error {
+	for _, it := range worn {
+		if err := validSlot(it); err != nil {
+			return err
+		}
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var id int64
+	if err := tx.QueryRow(`SELECT id FROM accounts WHERE name = ?`, name).Scan(&id); err != nil {
+		return err
+	}
+	if err := replaceItems(tx, id, worn); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE accounts SET dead = 1 WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Revive is name's hero entering the world: a dead one comes naked (the
+// worn items it died with are gone, the original's «в страну поющих
+// вещей») and is alive again. It reports whether it was dead.
+func (s *Store) Revive(name string) (bool, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	var id int64
+	var dead int
+	if err := tx.QueryRow(`SELECT id, dead FROM accounts WHERE name = ?`, name).Scan(&id, &dead); err != nil {
+		return false, err
+	}
+	if dead == 0 {
+		return false, nil
+	}
+	if _, err := tx.Exec(`DELETE FROM items WHERE account_id = ?`, id); err != nil {
+		return false, err
+	}
+	if _, err := tx.Exec(`UPDATE accounts SET dead = 0 WHERE id = ?`, id); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 // RatingRow is one row of the «Рейтинг» table (0x00446FA0).
