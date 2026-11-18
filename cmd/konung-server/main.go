@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"konung1.5/internal/gamestate"
-	"konung1.5/internal/lanfight"
 	"konung1.5/internal/lanserver"
 	"konung1.5/internal/lanstore"
 	"konung1.5/internal/netplay"
@@ -108,26 +107,12 @@ func run(dataDir string, st settings) error {
 	port, maxPlayers, speed, teamDamage := st.Port, st.MaxPlayers, st.Speed, st.TeamDamage
 	sessionName, sessionMinutes := st.Name, st.Minutes
 
-	// GAME.RES places entering heroes (0x0044ADB4).
-	var start func(netplay.PlayerInfo) (netplay.EnterPayload, error)
-	if data, err := os.ReadFile(filepath.Join(dataDir, "GAME.RES")); err != nil {
-		log.Printf("no GAME.RES in %s: players can log in but not enter the world", dataDir)
-	} else if start, err = netplay.StartFromGameRes(data); err != nil {
-		return err
-	}
-
-	// Fights between players: decided here with the game's rules.
-	var combat netplay.Combat
-	if w, err := loadFights(dataDir); err != nil {
-		log.Printf("fights between players off: %v", err)
-	} else {
-		combat = w
-	}
-
-	// The whole world (docs/konung_lan.md#server-world): every map runs here.
+	// The whole world (docs/konung_lan.md#server-world): every map runs
+	// here; players see their hero's map. Without its files players can
+	// log in but not enter (the server answers «Ok» with an error).
 	sw, err := loadWorld(dataDir)
 	if err != nil {
-		log.Printf("world not running (players' games still run their own): %v", err)
+		log.Printf("world not running, players cannot enter: %v", err)
 		sw = nil
 	}
 
@@ -138,25 +123,12 @@ func run(dataDir string, st settings) error {
 	defer store.Close()
 
 	addr := ":" + strconv.Itoa(port)
-	srv, err := netplay.Listen(addr, netplay.ServerConfig{
+	var srv *netplay.Server
+	cfg := netplay.ServerConfig{
 		Name: sessionName, MaxPlayers: maxPlayers, Minutes: sessionMinutes,
 		Accounts: store,
-		Start:    start,
 		Speed:    speed,
 		TeamSafe: !teamDamage,
-		Combat:   combat,
-		OnKill: func(killer, victim netplay.PlayerInfo, killerHero *netplay.Hero, killerLevel, victimLevel int) {
-			points := gamestate.HeroKillPoints(victimLevel, killerLevel, false)
-			log.Printf("%s killed %s: %d points", killer.Name, victim.Name, points)
-			if err := store.Score(killer.Name, lanstore.KillHero, points); err != nil {
-				log.Printf("score: %v", err)
-			}
-			if killerHero != nil {
-				if err := store.SaveProgress(killer.Name, killerHero); err != nil {
-					log.Printf("save %s: %v", killer.Name, err)
-				}
-			}
-		},
 		OnJoin: func(p netplay.PlayerInfo) {
 			if p.New { // as the original server prints (0x0044B1CE)
 				log.Printf("Новый игрок %s клан %s", p.Name, p.Clan)
@@ -169,21 +141,28 @@ func run(dataDir string, st settings) error {
 			if err := store.JoinSession(p.Name); err != nil {
 				log.Printf("session: %v", err)
 			}
-			if sw != nil {
-				hero, err := store.Hero(p.Name)
-				if err != nil {
-					hero = nil // the type's default hero
-				}
-				sw.enter(p, hero)
-			}
 		},
 		OnLeave: func(p netplay.PlayerInfo) {
 			log.Printf("left: %s", p.Name)
 			if sw != nil {
-				sw.leave(p.ID)
+				sw.host.Leave(p.ID)
 			}
 		},
-	})
+	}
+	if sw != nil {
+		sw.w.TeamSafe = !teamDamage
+		sw.host = lanserver.NewHost(sw.w, func(id string, m *netplay.Message) error { return srv.Send(id, m) })
+		sw.host.OnKill = func(k lanserver.Kill) { scoreKill(store, k) }
+		cfg.Start = func(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPayload, error) {
+			at, err := sw.host.Start(p, hero)
+			if err == nil {
+				log.Printf("world: %s is hero %d on map %d (%d, %d)", p.Name, at.Slot, at.Map, at.Row, at.Col)
+			}
+			return at, err
+		}
+		cfg.OnOrder = sw.host.Order
+	}
+	srv, err = netplay.Listen(addr, cfg)
 	if err != nil {
 		return err
 	}
@@ -232,17 +211,22 @@ func run(dataDir string, st settings) error {
 	}
 }
 
-// loadFights reads konung.exe and GAME.0–GAME.2 from dir for lanfight.
-func loadFights(dir string) (*lanfight.World, error) {
-	exe, err := os.ReadFile(filepath.Join(dir, "konung.exe"))
-	if err != nil {
-		return nil, err
+// scoreKill scores a player's kill (0x0043B67C): a player victim gives
+// HeroKillPoints, a creature or villager is counted with 0 points; the
+// killer's experience is saved (0x00448970).
+func scoreKill(store *lanstore.Store, k lanserver.Kill) {
+	if k.VictimPlayer {
+		points := gamestate.HeroKillPoints(k.VictimLevel, k.KillerLevel, false)
+		log.Printf("%s killed %s: %d points", k.Killer.Name, k.Victim.Name, points)
+		if err := store.Score(k.Killer.Name, lanstore.KillHero, points); err != nil {
+			log.Printf("score: %v", err)
+		}
+	} else if err := store.Score(k.Killer.Name, lanstore.KillMonster, 0); err != nil {
+		log.Printf("score: %v", err)
 	}
-	var games [netplay.Models][]byte
-	for m := range games {
-		if games[m], err = os.ReadFile(filepath.Join(dir, "GAME."+strconv.Itoa(m))); err != nil {
-			return nil, err
+	if k.KillerHero != nil {
+		if err := store.SaveProgress(k.Killer.Name, k.KillerHero); err != nil {
+			log.Printf("save %s: %v", k.Killer.Name, err)
 		}
 	}
-	return lanfight.New(exe, games)
 }

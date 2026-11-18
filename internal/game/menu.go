@@ -10,7 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"konung1.5/internal/gamestate"
-	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
 )
@@ -419,7 +418,7 @@ func (m *Menu) Update() error {
 		}
 		// The server answered «Ok»: enter the LAN world (state 10 → 1).
 		if at, hero, name := m.lan.takeStart(); at != nil {
-			w, err := m.assets.lanWorld(m.gameDir, m.lan.exe, *at, hero, m.lan.model, name)
+			w, err := m.assets.lanView(m.gameDir, m.lan.exe, *at, hero, m.lan.model, name)
 			if err != nil {
 				log.Printf("LAN world: %v", err)
 				m.lan.disconnect()
@@ -428,23 +427,11 @@ func (m *Menu) Update() error {
 			}
 			m.world, m.running, m.inWorld, m.inLAN, m.lanWorld = w, true, true, false, true
 			lan := m.lan
-			w.onMove = func(p netplay.Position) {
+			w.view.order = func(o netplay.OrderPayload) {
 				if lan.client != nil {
-					lan.client.Move(p)
+					lan.client.Order(o)
 				}
 			}
-			w.onLook = func(l netplay.Look) {
-				if lan.client != nil {
-					lan.client.Look(l)
-				}
-			}
-			w.teamSafe = lan.client != nil && lan.client.Session.TeamSafe
-			w.onAttack = func(target string, ranged bool) {
-				if lan.client != nil {
-					lan.client.Attack(target, ranged)
-				}
-			}
-			w.yieldStart(takenCells(m.lan.worldMsgs, w.MapNumber))
 			m.applyLAN()
 		}
 		return nil
@@ -721,83 +708,42 @@ func (m *Menu) leaveLANWorld() {
 	}
 }
 
-// takenCells are the cells of the heroes in msgs (appear, then moves) on
-// map m, by their latest report; the dead stand nowhere.
-func takenCells(msgs []*netplay.Message, m int) []mapdata.Cell {
-	at := map[string]netplay.Position{}
-	for _, msg := range msgs {
-		switch msg.Type {
-		case netplay.MsgAppear:
-			var a netplay.AppearPayload
-			if msg.Decode(&a) == nil && !a.Dead {
-				at[a.Player.ID] = a.Pos
-			}
-		case netplay.MsgMoved:
-			var mv netplay.MovedPayload
-			if msg.Decode(&mv) == nil {
-				if _, ok := at[mv.ID]; ok {
-					at[mv.ID] = mv.Pos
-				}
-			}
-		case netplay.MsgPlayerLeft:
-			var l netplay.PlayerLeftPayload
-			if msg.Decode(&l) == nil {
-				delete(at, l.ID)
-			}
-		}
-	}
-	var cells []mapdata.Cell
-	for _, p := range at {
-		if p.Map == m {
-			cells = append(cells, mapdata.Cell{Row: p.Row, Col: p.Col})
-		}
-	}
-	return cells
-}
-
-// applyLAN hands the queued appear, move and leave messages to the LAN
-// world (lanremote.go).
+// applyLAN hands the queued server messages to the LAN viewer
+// (lanview.go): views, players' heroes, sounds, the own map change and the
+// own hero's values.
 func (m *Menu) applyLAN() {
 	msgs := m.lan.worldMsgs
 	m.lan.worldMsgs = nil
-	if m.world == nil {
+	if m.world == nil || m.world.view == nil {
 		return
 	}
-	self := ""
-	if m.lan.client != nil {
-		self = m.lan.client.PlayerID
-	}
+	w := m.world
 	for _, msg := range msgs {
 		switch msg.Type {
-		case netplay.MsgAppear:
-			var a netplay.AppearPayload
-			if msg.Decode(&a) == nil {
-				m.world.remoteAppear(a)
+		case netplay.MsgPlayer:
+			var p netplay.PlayerPayload
+			if msg.Decode(&p) == nil {
+				w.applyPlayer(p)
 			}
-		case netplay.MsgMoved:
-			var mv netplay.MovedPayload
-			if msg.Decode(&mv) == nil {
-				m.world.remoteMove(mv.ID, mv.Pos)
+		case netplay.MsgView:
+			var v netplay.ViewPayload
+			if msg.Decode(&v) == nil {
+				w.applyView(v)
 			}
-		case netplay.MsgPlayerLeft:
-			var l netplay.PlayerLeftPayload
-			if msg.Decode(&l) == nil {
-				m.world.remoteLeave(l.ID)
+		case netplay.MsgEvents:
+			var e netplay.EventsPayload
+			if msg.Decode(&e) == nil {
+				w.applyEvents(e.Events)
 			}
-		case netplay.MsgLook:
-			var l netplay.LookPayload
-			if msg.Decode(&l) == nil && l.ID != self {
-				m.world.remoteLook(l)
-			}
-		case netplay.MsgHit:
-			var h netplay.HitPayload
-			if msg.Decode(&h) == nil {
-				m.world.remoteHit(h, self)
+		case netplay.MsgMapChange:
+			var at netplay.EnterPayload
+			if msg.Decode(&at) == nil {
+				w.viewChangeMap(at)
 			}
 		case netplay.MsgHero:
 			var h netplay.Hero
 			if msg.Decode(&h) == nil {
-				m.world.ownHero(h)
+				w.ownHero(h)
 			}
 		}
 	}

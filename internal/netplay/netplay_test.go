@@ -516,8 +516,8 @@ func TestAccounts(t *testing.T) {
 func TestEnter(t *testing.T) {
 	entered := make(chan string, 1)
 	s := startServer(t, ServerConfig{
-		Start: func(p PlayerInfo) (EnterPayload, error) {
-			return EnterPayload{Map: p.Model*3 + 1, Row: 110, Col: 32, Facing: 2}, nil
+		Start: func(p PlayerInfo, _ *Hero) (EnterPayload, error) {
+			return EnterPayload{Position: Position{Map: p.Model*3 + 1, Row: 110, Col: 32, Facing: 2}}, nil
 		},
 		OnEnter: func(p PlayerInfo) { entered <- p.Name },
 	})
@@ -526,7 +526,7 @@ func TestEnter(t *testing.T) {
 		t.Fatal(err)
 	}
 	var at EnterPayload
-	if err := waitFor(t, c.Conn, MsgEntered).Decode(&at); err != nil || at != (EnterPayload{1, 110, 32, 2}) {
+	if err := waitFor(t, c.Conn, MsgEntered).Decode(&at); err != nil || at != (EnterPayload{Position: Position{1, 110, 32, 2}}) {
 		t.Errorf("entered = %+v, %v", at, err)
 	}
 	if name := <-entered; name != "Volk" {
@@ -548,74 +548,9 @@ func TestStartFromGameRes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	at, err := start(PlayerInfo{Model: 2})
-	if err != nil || at != (EnterPayload{Map: 7, Row: 65, Col: 8, Facing: 4}) {
+	at, err := start(PlayerInfo{Model: 2}, nil)
+	if err != nil || at != (EnterPayload{Position: Position{Map: 7, Row: 65, Col: 8, Facing: 4}}) {
 		t.Errorf("model 2 start = %+v, %v", at, err)
-	}
-}
-
-// Heroes in the world see each other: the newcomer gets those already
-// there, everyone else gets the newcomer, and moves are relayed to the
-// others only.
-func TestWorldRelay(t *testing.T) {
-	s := startServer(t, ServerConfig{Start: func(p PlayerInfo) (EnterPayload, error) {
-		return EnterPayload{Map: p.Model*3 + 1, Row: 110, Col: 32, Facing: 2}, nil
-	}})
-	a := dial(t, s, "Volk", 0)
-	a.Enter(-1)
-	waitFor(t, a.Conn, MsgEntered)
-	b := dial(t, s, "Ragnar", 2)
-	b.Enter(-1)
-	waitFor(t, b.Conn, MsgEntered)
-
-	var ap AppearPayload
-	if waitFor(t, b.Conn, MsgAppear).Decode(&ap); ap.Player.Name != "Volk" || ap.Pos.Map != 1 {
-		t.Errorf("b sees %+v", ap)
-	}
-	if waitFor(t, a.Conn, MsgAppear).Decode(&ap); ap.Player.Name != "Ragnar" || ap.Pos.Map != 7 {
-		t.Errorf("a sees %+v", ap)
-	}
-
-	moved := Position{Map: 1, Row: 100, Col: 30, Facing: 5}
-	a.Move(moved)
-	a.Move(Position{Map: 1, Row: 999}) // off the grid: dropped
-	var mv MovedPayload
-	if waitFor(t, b.Conn, MsgMoved).Decode(&mv); mv.ID != a.PlayerID || mv.Pos != moved {
-		t.Errorf("b got move %+v", mv)
-	}
-	// A third player entering sees Volk where he moved to.
-	c := dial(t, s, "Olaf", 1)
-	c.Enter(-1)
-	waitFor(t, c.Conn, MsgEntered)
-	seen := map[string]Position{}
-	for len(seen) < 2 {
-		waitFor(t, c.Conn, MsgAppear).Decode(&ap)
-		seen[ap.Player.Name] = ap.Pos
-	}
-	if seen["Volk"] != moved {
-		t.Errorf("c sees Volk at %+v", seen["Volk"])
-	}
-	// Moves before entering are ignored: nothing from d reaches b before
-	// b's own chat line comes back.
-	d := dial(t, s, "Late", 0)
-	d.Move(moved)
-	b.Chat("ping")
-	for {
-		select {
-		case m := <-b.Incoming():
-			if m.Type == MsgMoved {
-				var mv MovedPayload
-				m.Decode(&mv)
-				if mv.ID == d.PlayerID {
-					t.Fatal("a move before entering was relayed")
-				}
-			}
-			if m.Type == MsgChat {
-				return
-			}
-		case <-time.After(wait):
-			t.Fatal("no chat")
-		}
 	}
 }
 
@@ -641,8 +576,8 @@ func TestJoinRefusesBadHero(t *testing.T) {
 // The hero type is the one picked at «Ok», not at joining: the start, the
 // team the others see and the look's palette follow it.
 func TestEnterPicksModel(t *testing.T) {
-	s := startServer(t, ServerConfig{Start: func(p PlayerInfo) (EnterPayload, error) {
-		return EnterPayload{Map: p.Model*3 + 1, Row: 110, Col: 32, Facing: 2}, nil
+	s := startServer(t, ServerConfig{Start: func(p PlayerInfo, _ *Hero) (EnterPayload, error) {
+		return EnterPayload{Position: Position{Map: p.Model*3 + 1, Row: 110, Col: 32, Facing: 2}}, nil
 	}})
 	a := dial(t, s, "Volk", 0)
 	a.Enter(-1)
@@ -653,9 +588,8 @@ func TestEnterPicksModel(t *testing.T) {
 	if waitFor(t, b.Conn, MsgEntered).Decode(&at); at.Map != 7 {
 		t.Errorf("start map %d, want 7 (Михаил's village)", at.Map)
 	}
-	var ap AppearPayload
-	if waitFor(t, a.Conn, MsgAppear).Decode(&ap); ap.Player.Model != 2 {
-		t.Errorf("others see model %d", ap.Player.Model)
+	if p := s.Session().Players; len(p) != 2 || p[1].Model != 2 {
+		t.Errorf("session players %+v, want Mikhail as model 2", p)
 	}
 	if h := (Hero{Look: 3}).WithModel(2); h.Model != 2 || h.Palette != 37 {
 		t.Errorf("WithModel = %+v", h)
@@ -666,8 +600,8 @@ func TestEnterPicksModel(t *testing.T) {
 // players with the speed and the session time left, and stops when the
 // world empties.
 func TestClock(t *testing.T) {
-	s := startServer(t, ServerConfig{Speed: 1, Start: func(p PlayerInfo) (EnterPayload, error) {
-		return EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil
+	s := startServer(t, ServerConfig{Speed: 1, Start: func(p PlayerInfo, _ *Hero) (EnterPayload, error) {
+		return EnterPayload{Position: Position{Map: 1, Row: 110, Col: 32, Facing: 2}}, nil
 	}})
 	if c := s.Clock(); c.Running || c.Tick != 0 || c.SessionLeft != -1 {
 		t.Errorf("idle clock = %+v", c)
@@ -696,118 +630,38 @@ func TestClock(t *testing.T) {
 	}
 }
 
-// fakeCombat kills with every second strike.
-type fakeCombat struct {
-	mu      sync.Mutex
-	strikes int
-}
-
-func (f *fakeCombat) Enter(id string, model int, h *Hero) (Look, int) { return Look{Weapon: 2}, 1600 }
-func (f *fakeCombat) Leave(id string)                                 {}
-func (f *fakeCombat) Stance(id string, stance bool, weapon int) Look {
-	return Look{Stance: stance, Weapon: weapon}
-}
-func (f *fakeCombat) Strike(r StrikeRequest) Strike {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.strikes++
-	if f.strikes%2 == 0 {
-		return Strike{Result: HitKill}
-	}
-	return Strike{Result: HitHeavy, Damage: 100, HP: 1500}
-}
-
-// Attacks: the stance and the reach are checked, everyone in the world gets
-// the verdict, a kill scores and the dead are not struck again.
-func TestAttack(t *testing.T) {
-	kills := make(chan string, 4)
-	fc := &fakeCombat{}
+// Orders reach OnOrder only after entering, with the player.
+func TestOrders(t *testing.T) {
+	got := make(chan OrderPayload, 4)
 	s := startServer(t, ServerConfig{
-		Start: func(p PlayerInfo) (EnterPayload, error) {
-			return EnterPayload{Map: 1, Row: 110, Col: 32 + 2*p.Model, Facing: 2}, nil
+		Start: func(p PlayerInfo, _ *Hero) (EnterPayload, error) {
+			return EnterPayload{Position: Position{Map: 4, Row: 66, Col: 57}, Slot: 3}, nil
 		},
-		Combat: fc,
-		OnKill: func(k, v PlayerInfo, _ *Hero, kl, vl int) { kills <- k.Name + ">" + v.Name },
+		OnOrder: func(p PlayerInfo, o OrderPayload) {
+			if p.Name == "Volk" {
+				got <- o
+			}
+		},
 	})
-	a := dial(t, s, "Volk", 0)
+	a := dial(t, s, "Volk", 1)
+	a.Order(OrderPayload{Kind: OrderWalk, Row: 1, Col: 2}) // not entered: dropped
 	a.Enter(-1)
-	waitFor(t, a.Conn, MsgEntered)
-	b := dial(t, s, "Ragnar", 1)
-	b.Enter(-1)
-	waitFor(t, b.Conn, MsgEntered)
-	attack := func() { a.Send(mustMessage(MsgAttack, AttackPayload{Target: b.PlayerID})) }
-
-	attack() // out of the stance: nothing; the chat line below arrives first
-	a.Send(mustMessage(MsgLook, LookPayload{Look: Look{Stance: true, Weapon: 2}}))
-	var l LookPayload
-	if waitFor(t, b.Conn, MsgLook).Decode(&l); l.ID != a.PlayerID || !l.Stance {
-		t.Fatalf("b sees look %+v", l)
+	var at EnterPayload
+	if waitFor(t, a.Conn, MsgEntered).Decode(&at); at.Slot != 3 || at.Map != 4 {
+		t.Errorf("entered %+v", at)
 	}
-	attack()
-	var h HitPayload
-	if waitFor(t, b.Conn, MsgHit).Decode(&h); h.Attacker != a.PlayerID || h.Target != b.PlayerID || h.Result != HitHeavy || h.HP != 1500 {
-		t.Errorf("hit = %+v", h)
-	}
-	waitFor(t, a.Conn, MsgHit) // the attacker gets it too
-	time.Sleep(strikeEvery)
-	attack()
-	if waitFor(t, b.Conn, MsgHit).Decode(&h); !h.Killed {
-		t.Errorf("kill = %+v", h)
-	}
-	if k := <-kills; k != "Volk>Ragnar" {
-		t.Errorf("OnKill %s", k)
-	}
-	// Out of reach: Ragnar's next spot is 30 cells off (and dead anyway).
-	time.Sleep(strikeEvery)
-	attack()
-	a.Chat("done")
-	for {
-		m := waitFor(t, b.Conn, MsgChat)
-		var c ChatPayload
-		m.Decode(&c)
-		if c.Text == "done" {
-			break
+	a.Order(OrderPayload{Kind: OrderRight, Target: 17, Row: 60, Col: 50})
+	select {
+	case o := <-got:
+		if o.Kind != OrderRight || o.Target != 17 || o.Row != 60 {
+			t.Errorf("order %+v", o)
 		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no order")
 	}
 	select {
-	case k := <-kills:
-		t.Errorf("a dead hero was killed again: %s", k)
-	default:
-	}
-	fc.mu.Lock()
-	defer fc.mu.Unlock()
-	if fc.strikes != 2 { // not the one out of the stance, not the dead
-		t.Errorf("%d strikes reached the combat, want 2", fc.strikes)
-	}
-}
-
-// With TeamSafe a hero cannot hurt its own team (the same hero type); the
-// session tells clients.
-func TestTeamSafe(t *testing.T) {
-	fc := &fakeCombat{}
-	s := startServer(t, ServerConfig{TeamSafe: true, Combat: fc,
-		Start: func(p PlayerInfo) (EnterPayload, error) {
-			return EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil
-		}})
-	a := dial(t, s, "Volk", 1)
-	if !a.Session.TeamSafe {
-		t.Error("the session does not say TeamSafe")
-	}
-	a.Enter(-1)
-	waitFor(t, a.Conn, MsgEntered)
-	mate := dial(t, s, "Mate", 1)
-	mate.Enter(-1)
-	waitFor(t, mate.Conn, MsgEntered)
-	foe := dial(t, s, "Foe", 2)
-	foe.Enter(-1)
-	waitFor(t, foe.Conn, MsgEntered)
-	a.Look(Look{Stance: true, Weapon: 2})
-	waitFor(t, a.Conn, MsgLook)
-	a.Attack(mate.PlayerID, false)
-	time.Sleep(strikeEvery)
-	a.Attack(foe.PlayerID, false)
-	var h HitPayload
-	if waitFor(t, a.Conn, MsgHit).Decode(&h); h.Target != foe.PlayerID {
-		t.Errorf("first verdict on %s, want the foe (the teammate is protected)", h.Target)
+	case o := <-got:
+		t.Errorf("a second order %+v (the one before entering was not dropped)", o)
+	case <-time.After(100 * time.Millisecond):
 	}
 }

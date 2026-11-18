@@ -13,9 +13,10 @@ import (
 )
 
 // In a LAN world the server owns the clock (netplay/clock.go): the scene's
-// tick (0x00A3E770, time of day and AI timers) follows it, the world speed
-// is the server's (numpad +/− do nothing), the moon is the same for
-// everyone, and the session's time left is shown on screen.
+// tick (0x00A3E770, the time of day) is the server's world tick (each view
+// carries it, lanview.go), the world speed is the server's (numpad +/− do
+// nothing), the moon is the same for everyone, and the session's time left
+// is shown on screen.
 
 // serverClock is the last clock the server sent and when it arrived.
 type serverClock struct {
@@ -34,25 +35,6 @@ func (k serverClock) sessionLeft() (time.Duration, bool) {
 		return 0, false
 	}
 	return max(0, time.Duration(k.c.SessionLeft)*time.Second-time.Since(k.at)), true
-}
-
-// clockSnap: further than this from the server's tick (a menu opened, a
-// slow machine) the scene jumps to it instead of running ticks to catch up.
-const clockSnap = 40
-
-// clockMaxSteps is the most ticks one update runs to catch up.
-const clockMaxSteps = 4
-
-// stepToServer runs the ticks that keep the scene with the server's clock.
-func (s *startScene) stepToServer() {
-	target := s.clock.tick()
-	if d := target - s.Tick; d > clockSnap || d < -clockSnap {
-		s.Tick = target
-		return
-	}
-	for n := 0; s.Tick < target && n < clockMaxSteps; n++ {
-		s.Step()
-	}
 }
 
 // lanMoon is whether day's night is moonlit: the single-player roll

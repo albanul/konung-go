@@ -52,6 +52,7 @@ type Char struct {
 	FromRow int // while walking: the cell being left
 	FromCol int
 	Walking bool
+	Step    int // walk step of the cell step in progress
 	Facing  int
 	Act     int // action animation (gamestate.Act*), 0 = idle or walking
 	ActStep int
@@ -79,7 +80,7 @@ func (w *World) Snapshot(m int) MapState {
 	add := func(wk *world.Walker, e *gamestate.Entity, player bool) {
 		out.Chars = append(out.Chars, Char{
 			Entity: wk.Entity, Player: player, Row: wk.Cell.Row, Col: wk.Cell.Col,
-			FromRow: wk.From.Row, FromCol: wk.From.Col, Walking: wk.Walking, Facing: int(wk.Dir),
+			FromRow: wk.From.Row, FromCol: wk.From.Col, Walking: wk.Walking, Step: wk.StepT, Facing: int(wk.Dir),
 			Act: wk.Act, ActStep: wk.ActStep, HP: e.HP, Dead: e.Dead(), Stance: e.InStance(), Weapon: e.WeaponMode,
 		})
 	}
@@ -99,6 +100,7 @@ const (
 	EventSound     EventKind = iota + 1 // a sound at a cell (Sound)
 	EventAction                         // a character started an action (Act; its sound is the client's choice)
 	EventMapChange                      // a player's hero (Entity = slot) took an exit from map From to Map
+	EventKill                           // a player's hero (Entity = slot) killed Victim (VictimPlayer: another player's hero)
 )
 
 // Event is something that happened in a tick, for the clients on Map.
@@ -111,4 +113,8 @@ type Event struct {
 	Sound    int
 	Act      int
 	Row, Col int
+	Facing   int
+
+	Victim       int
+	VictimPlayer bool
 }

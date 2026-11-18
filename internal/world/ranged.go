@@ -233,16 +233,13 @@ func (s *World) ArrowOnBuilding(a *gamestate.Arrow) {
 
 // arrowHit applies an arrow to entity v (0x0041ACE0, 0x0041C29C).
 func (s *World) ArrowHit(a gamestate.Arrow, v int) {
-	if s.isRemote(v) { // another player's hero: the server decides
-		if _, sh := s.Combatant(a.Shooter); sh != nil {
-			s.strikeRemote(sh, v, true)
-		}
-		return
-	}
 	vw, ve := s.Combatant(v)
 	_, shooter := s.Combatant(a.Shooter)
 	if shooter == nil {
 		shooter = &s.Game.Entities[a.Shooter]
+	}
+	if s.protected(shooter, ve) {
+		return // a teammate the server protects: no harm
 	}
 	attack := s.Game.ArrowAttack(a, *shooter, *ve, s.Tables)
 	switch r, _ := s.Game.ArrowDamage(ve, a, attack, s.Tables, s.Rng.IntN); r {

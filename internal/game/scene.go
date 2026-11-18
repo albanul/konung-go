@@ -141,24 +141,10 @@ type startScene struct {
 	// pass), 0 = none.
 	hoveredBuilding int
 	hideHelp        bool // F1 hides the key help (help.go)
-	lan             bool // a LAN world (lanworld.go)
-	// LAN world (lanremote.go): the other players' heroes by player ID,
-	// onMove reports the own hero's position to the server, lastMove is the
-	// last one sent; hoveredRemote is the remote hero under the cursor
-	// (never s.hovered: no orders reach it).
-	remotes  map[string]*remotePlayer
-	onMove   func(netplay.Position)
-	lastMove netplay.Position
-	// onLook reports the own hero's look (stance, weapon, equipment),
-	// lastLook the last one sent; onAttack a blow or an arrow that reached
-	// a remote hero (lanfight.go); self is the own player ID.
-	onLook   func(netplay.Look)
-	lastLook netplay.Look
-	onAttack func(target string, ranged bool)
-	// teamSafe: the server protects heroes from their own team
-	// (SessionInfo.TeamSafe); teammates are no targets.
-	teamSafe      bool
-	hoveredRemote *remotePlayer
+	lan             bool // a LAN world (lanview.go)
+	// view is a LAN world's link to the server (lanview.go): the scene
+	// shows the server's world and simulates nothing.
+	view *lanView
 	// clock is the server's clock (lanclock.go), nil until it arrives;
 	// the menu sets it every frame.
 	clock *serverClock
@@ -184,7 +170,11 @@ type sceneAssets struct {
 	// lanMaps, when set, are the LAN version's maps (MAPS.RES; map n =
 	// entry n−1) used instead of KONUNG.N and LIGHTS.N.
 	lanMaps []mapdata.MapsResEntry
-	lanMap  *lanWorldMap // the LAN map window (M); nil in single player
+	// view: scenes are LAN viewers (lanview.go); viewState is the link the
+	// first one starts with.
+	view      bool
+	viewState *lanView
+	lanMap    *lanWorldMap // the LAN map window (M); nil in single player
 }
 
 // mapFile returns map n's KONUNG.N and LIGHTS.N bytes (nil lights when the
@@ -442,9 +432,19 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	camX, camY := s.WorldW/2, s.WorldH/2
 	uploadSprite := func(sp *resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image) { return upload(sp.Image, sp.Shadow) }
 	logErr := func(err error) { log.Printf("%s: %v", gamePath, err) }
-	s.Populate(restore != nil, func(w *walker, p gamestate.Placed, live func() gamestate.Entity) {
+	attach := func(w *walker, p gamestate.Placed, live func() gamestate.Entity) {
 		withSprites(w, entityLoader(game, p, live, objectsData, graphData, tables, uploadSprite, logErr))
-	})
+	}
+	if a.view {
+		// A LAN viewer: only the own hero; the server reports the rest.
+		s.view = a.viewState
+		if prev != nil {
+			s.view = prev.view
+		}
+		s.placeOwn(attach)
+	} else {
+		s.Populate(restore != nil, attach)
+	}
 	if s.Hero != nil {
 		camX, camY = gamestate.WorldPos(s.Hero.Cell.Row, s.Hero.Cell.Col)
 	}
@@ -457,18 +457,15 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	s.installHooks()
 	// 0x0043CB8B: the map's settlement restocks (healer jars, merchant);
 	// the loader does this on every load, a restored save included.
-	if prev == nil || prev.MapNumber != mapNumber {
+	if (prev == nil || prev.MapNumber != mapNumber) && !a.view {
 		game.Restock(mapNumber, game.Groups[0].First, tables, s.Rng.IntN)
 	}
 	if restore != nil {
 		s.restoreSaved(*restore)
 	}
 	s.ActivatePiles()
-	if prev != nil { // a map change keeps the other players
-		s.remotes, s.onMove = prev.remotes, prev.onMove
-		s.onLook, s.lastLook, s.onAttack, s.clock = prev.onLook, prev.lastLook, prev.onAttack, prev.clock
-		s.teamSafe = prev.teamSafe
-		s.placeRemotes()
+	if prev != nil {
+		s.clock = prev.clock
 	}
 	s.centerOn(camX, camY)
 	s.centerHero()
@@ -536,13 +533,21 @@ func (s *startScene) updateControls(mx, my int) {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
 		s.hand.Return(cur)
-		s.ToggleSelectionStance()
+		if s.view != nil {
+			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderStance, On: !s.Party[0].InStance()})
+		} else {
+			s.ToggleSelectionStance()
+		}
 		s.hud.press(hudStanceButton, gamestate.HUDButtonSlots(*s.ButtonEntity())[hudStanceButton])
 	}
 	weapon := func(mode int) {
 		s.hand.Return(cur)
 		before := gamestate.HUDButtonSlots(*s.ButtonEntity())[hudWeaponButton]
-		s.selectWeapon(mode)
+		if s.view != nil {
+			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderWeapon, Mode: mode})
+		} else {
+			s.selectWeapon(mode)
+		}
 		s.hud.press(hudWeaponButton, before) // 0x00421B9D presses the image shown so far
 	}
 	for key, mode := range map[ebiten.Key]int{
@@ -555,11 +560,16 @@ func (s *startScene) updateControls(mx, my int) {
 	if button == hudWeaponButton {
 		weapon(gamestate.WeaponCycle)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF) || button == hudGatherButton {
-		s.gatherOrder()
+	if (inpututil.IsKeyJustPressed(ebiten.KeyF) || button == hudGatherButton) && s.view == nil {
+		s.gatherOrder() // a LAN hero has no party to gather
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyA) || button == hudAttackButton {
-		s.attackOrder()
+		if s.view != nil {
+			s.hud.press(hudAttackButton, hudAttackImage)
+			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderAttack})
+		} else {
+			s.attackOrder()
+		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) || button == hudMapButton {
 		s.toggleMap(cur) // 0x00436EB9, 0x00422C01
@@ -620,6 +630,14 @@ func (s *startScene) click(cur *gamestate.Entity, mx, my, spot int, right bool) 
 	}
 	if right && s.hand.Holding() {
 		s.hand.Return(cur) // 0x00423919
+		return
+	}
+	if s.view != nil {
+		// A LAN viewer: items, dialogues and trade are not synchronised
+		// (read-only); on the map clicks are orders.
+		if inView(mx, my) && !s.inv.open && !(s.inv.showStrip() && s.inv.strip.hit(mx, my)) {
+			s.viewClick(mx, my, right)
+		}
 		return
 	}
 	msg := 0
@@ -784,8 +802,8 @@ func (s *startScene) statusText() []byte {
 		if _, ok := s.pileUnderCursor(); ok {
 			return s.Tables.CString(gamestate.MsgSomethingOnGround)
 		}
-		if s.hoveredRemote != nil {
-			return remoteStatus(s.hoveredRemote)
+		if t, ok := s.viewStatus(s.hovered); ok {
+			return t
 		}
 		if s.hovered >= 0 {
 			return s.Game.StatusLine(s.Entity(s.hovered), s.Tables)
@@ -1088,9 +1106,15 @@ func (s *startScene) Update() {
 	// The game draws a frame every 60 ms (0x00A3E6F4), one per 3.6 updates
 	// at 60 Hz, and each frame runs 1 + speed game ticks
 	// (0x00437849–0x004378CC); the extra ticks stop when the hero is dead.
-	if s.clock != nil {
-		s.speed = s.clock.c.Speed
-		s.stepToServer()
+	if s.view != nil {
+		// A LAN viewer: the server runs the world; only the idle loops
+		// animate here, one frame per 60 ms.
+		if s.clock != nil {
+			s.speed = s.clock.c.Speed
+		}
+		if s.frame*5/18 != (s.frame-1)*5/18 {
+			s.viewFrame()
+		}
 	} else if s.frame*5/18 != (s.frame-1)*5/18 {
 		for k := 0; k <= s.speed; k++ {
 			if k > 0 && len(s.Party) > 0 && s.Party[0].Dead() {
@@ -1151,10 +1175,6 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	} else {
 		chars, owners := s.drawWorld(screen)
 		s.hovered = s.hitTest(chars, owners)
-		s.hoveredRemote = s.remoteAt(s.hovered)
-		if s.hoveredRemote != nil && (len(s.Party) == 0 || !s.Party[0].InStance() || !s.canTarget(s.hoveredRemote)) {
-			s.hovered = -1 // out of the stance (or a protected teammate) a remote hero takes no orders
-		}
 		s.hoveredBuilding = s.buildingUnderCursor()
 		if window {
 			s.hovered, s.hoveredBuilding = -1, 0 // the window covers the world
@@ -1343,7 +1363,7 @@ func toEbiten(img *image.RGBA) *ebiten.Image { return ebiten.NewImageFromImage(i
 
 // installHooks connects the simulation to this scene (world.Hooks): sounds,
 // the status line, the windows, the buildings' sprites, the map change,
-// the animated objects and the LAN reports.
+// and the animated objects.
 func (s *startScene) installHooks() {
 	s.Hooks = world.Hooks{
 		PlaySound:        s.playAt,
@@ -1361,15 +1381,5 @@ func (s *startScene) installHooks() {
 		},
 		ChangeMap: s.changeMap,
 		Animate:   s.animateObjects,
-		AfterStep: func() {
-			s.faceRemotes()
-			s.reportMove()
-			s.reportLook()
-		},
-		IsRemote:  func(i int) bool { return s.remoteAt(i) != nil },
-		CanTarget: func(i int) bool { r := s.remoteAt(i); return r == nil || s.canTarget(r) },
-		StrikeRemote: func(a *gamestate.Entity, target int, ranged bool) {
-			s.strikeRemote(a, target, ranged)
-		},
 	}
 }

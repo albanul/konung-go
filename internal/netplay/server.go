@@ -34,21 +34,22 @@ type ServerConfig struct {
 	OnJoin func(p PlayerInfo)
 	// OnLeave is called after a player has left (also for kicked players).
 	OnLeave func(p PlayerInfo)
-	// Start places a player who enters the world (MsgEnter, the original's
-	// «Ok» → 0x4C); nil = entering is refused. OnEnter is called after a
-	// player has entered.
-	Start   func(p PlayerInfo) (EnterPayload, error)
+	// Start puts the hero of a player who enters the world into it
+	// (MsgEnter, the original's «Ok» → 0x4C, 0x0044ADB4): hero is the
+	// account's (nil without accounts), p.Model the type picked at «Ok». It
+	// returns where the hero is and its slot; nil = entering is refused.
+	// OnEnter is called after a player has entered.
+	Start   func(p PlayerInfo, hero *Hero) (EnterPayload, error)
 	OnEnter func(p PlayerInfo)
+	// OnOrder receives an entered player's orders (MsgOrder), on its
+	// connection's goroutine.
+	OnOrder func(p PlayerInfo, o OrderPayload)
 	// Accounts checks logins; nil keeps no accounts (any name joins and
 	// nothing is saved), e.g. in tests.
 	Accounts AccountStore
-	// Combat resolves fights between players (fight.go); nil = no PvP.
-	// OnKill is called after a player's hero killed another's, with the
-	// killer's hero after the kill (nil without accounts) and both levels.
-	Combat Combat
-	OnKill func(killer, victim PlayerInfo, killerHero *Hero, killerLevel, victimLevel int)
-	// TeamSafe protects a hero from its own team (the same hero type) in
-	// fights; the original has no such rule (0x446264 compares groups only).
+	// TeamSafe: heroes of one team (the same hero type) cannot hurt each
+	// other (the world enforces it; the session tells the clients); the
+	// original has no such rule (0x446264 compares groups only).
 	TeamSafe bool
 	// Speed is the world speed for everyone (0 normal … MaxSpeed triple,
 	// the single-player numpad +/−); clients cannot change it.
@@ -106,15 +107,8 @@ type serverPlayer struct {
 	info PlayerInfo
 	conn *Conn
 	hero *Hero // the account's hero; nil without accounts
-	// entered: in the world (MsgEnter answered); pos is the last position.
+	// entered: in the world (MsgEnter answered).
 	entered bool
-	pos     Position
-	// The fight state (fight.go): the look, HP and death as the server
-	// keeps them, and the last strike (the swing rate).
-	look       Look
-	hp         int
-	dead       bool
-	lastStrike time.Time
 }
 
 // Server hosts one session: it accepts joins, keeps the player list, relays
@@ -346,20 +340,15 @@ func (s *Server) serve(conn *Conn) {
 			req := EnterRequest{Model: -1}
 			m.Decode(&req)
 			s.enter(p, req.Model)
-		case MsgMove:
-			var pos Position
-			if m.Decode(&pos) == nil && pos.Valid() {
-				s.move(p, pos)
-			}
-		case MsgLook:
-			var l LookPayload
-			if m.Decode(&l) == nil {
-				s.look(p, l.Look)
-			}
-		case MsgAttack:
-			var a AttackPayload
-			if m.Decode(&a) == nil {
-				s.attack(p, a)
+		case MsgOrder:
+			var o OrderPayload
+			if m.Decode(&o) == nil && s.cfg.OnOrder != nil {
+				s.mu.Lock()
+				entered, info := p.entered, p.info
+				s.mu.Unlock()
+				if entered {
+					s.cfg.OnOrder(info, o)
+				}
 			}
 		}
 		// Anything else from a joined client (a second join, pings are
@@ -485,56 +474,26 @@ func (s *Server) enter(p *serverPlayer, model int) {
 			}
 		}
 	}
-	look, hp := Look{Weapon: 2}, 1600 // HP 1600 on entry (0x0044B263)
-	if s.cfg.Combat != nil {
-		look, hp = s.cfg.Combat.Enter(p.info.ID, p.info.Model, p.hero)
-	}
-	at, err := s.cfg.Start(p.info)
+	s.mu.Lock()
+	info, hero := p.info, p.hero
+	s.mu.Unlock()
+	at, err := s.cfg.Start(info, hero)
 	if err != nil {
 		p.conn.Send(mustMessage(MsgError, ErrorPayload{Code: ErrServer, Message: err.Error()}))
 		return
 	}
-	// Under the lock, so every client sees the heroes appear in one order:
-	// the start to the player, the heroes already in the world to it, and
-	// the new hero to everyone else (0x8C, then 0x5A).
 	s.mu.Lock()
-	p.entered, p.pos = true, at
-	p.look, p.hp, p.dead = look, hp, false
+	p.entered = true
 	p.conn.Send(mustMessage(MsgEntered, at))
 	s.runClockLocked() // the clock runs with someone in the world
-	for _, id := range s.order {
-		if o := s.players[id]; o != p && o.entered {
-			p.conn.Send(mustMessage(MsgAppear, o.appear()))
-		}
-	}
-	s.broadcastLocked(mustMessage(MsgAppear, p.appear()), p.info.ID)
 	s.mu.Unlock()
 	if s.cfg.OnEnter != nil {
-		s.cfg.OnEnter(p.info)
+		s.cfg.OnEnter(info)
 	}
-}
-
-// move relays a hero's new position to everyone else (the original's 0x19).
-func (s *Server) move(p *serverPlayer, pos Position) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !p.entered {
-		return
-	}
-	p.pos = pos
-	s.broadcastLocked(mustMessage(MsgMoved, MovedPayload{ID: p.info.ID, Pos: pos}), p.info.ID)
-}
-
-// appear is p's hero as others see it (MsgAppear); s.mu held.
-func (p *serverPlayer) appear() AppearPayload {
-	return AppearPayload{Player: p.info, Hero: p.hero, Pos: p.pos, Look: p.look, HP: p.hp, Dead: p.dead}
 }
 
 func (s *Server) leave(p *serverPlayer) {
 	p.conn.Close()
-	if s.cfg.Combat != nil {
-		s.cfg.Combat.Leave(p.info.ID)
-	}
 	s.mu.Lock()
 	delete(s.players, p.info.ID)
 	for i, id := range s.order {

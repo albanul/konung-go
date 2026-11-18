@@ -109,9 +109,9 @@ type lanUI struct {
 	start *netplay.EnterPayload
 	// gameDir holds MAPS.RES.
 	gameDir string
-	// worldMsgs are the other heroes' appear, move and leave messages for
-	// the LAN world, queued from the wait on (the server sends the heroes
-	// already in the world right after the start); the menu applies them.
+	// worldMsgs are the server's world messages (views, players' heroes,
+	// sounds, map changes, the own hero's values) for the LAN viewer,
+	// queued from the wait on; the menu applies them (applyLAN).
 	worldMsgs []*netplay.Message
 	// clock is the server's world clock (MsgClock), nil until it arrives.
 	clock *serverClock
@@ -372,9 +372,7 @@ func (u *lanUI) readSession() {
 				return
 			}
 			switch m.Type {
-			case netplay.MsgPlayerLeft:
-				u.worldMsgs = append(u.worldMsgs, m)
-			case netplay.MsgAppear, netplay.MsgMoved, netplay.MsgLook, netplay.MsgHit, netplay.MsgHero:
+			case netplay.MsgView, netplay.MsgPlayer, netplay.MsgEvents, netplay.MsgMapChange, netplay.MsgHero:
 				u.worldMsgs = append(u.worldMsgs, m)
 			case netplay.MsgClock:
 				var c netplay.ClockPayload

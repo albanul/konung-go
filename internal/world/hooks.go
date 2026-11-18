@@ -33,14 +33,14 @@ type Hooks struct {
 	MemberExit func(m *Member, x gamestate.MapExit)
 	// Animate advances the animated map objects, once per tick after the AI.
 	Animate func()
-	// AfterStep runs at the end of every tick (the LAN reports).
+	// AfterStep runs at the end of every tick (unused by the game and the LAN server).
 	AfterStep func()
-	// IsRemote reports another player's hero (a LAN world); CanTarget
-	// whether the own hero may attack it; StrikeRemote reports a blow or an
-	// arrow of attacker that reached it (the server decides).
-	IsRemote     func(entity int) bool
-	CanTarget    func(entity int) bool
-	StrikeRemote func(attacker *gamestate.Entity, target int, ranged bool)
+	// Killed: attacker killed victim (Kill; the LAN server scores player
+	// kills and saves the killer's experience, 0x0043B67C, 0x00448970).
+	Killed func(attacker, victim *gamestate.Entity)
+	// Protected reports a target attacker may not hurt (the LAN server's
+	// team-damage option): its blows stop and its arrows do no harm.
+	Protected func(attacker, target *gamestate.Entity) bool
 }
 
 func (s *World) playAt(id int, c mapdata.Cell) {
@@ -102,12 +102,6 @@ func (s *World) afterStep() {
 	}
 }
 
-func (s *World) isRemote(i int) bool { return s.Hooks.IsRemote != nil && s.Hooks.IsRemote(i) }
-
-func (s *World) canTarget(i int) bool { return s.Hooks.CanTarget == nil || s.Hooks.CanTarget(i) }
-
-func (s *World) strikeRemote(a *gamestate.Entity, target int, ranged bool) {
-	if s.Hooks.StrikeRemote != nil {
-		s.Hooks.StrikeRemote(a, target, ranged)
-	}
+func (s *World) protected(a, t *gamestate.Entity) bool {
+	return s.Hooks.Protected != nil && s.Hooks.Protected(a, t)
 }

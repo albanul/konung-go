@@ -157,7 +157,7 @@ func (s *startScene) mapClick(hero *gamestate.Entity, mx, my int) {
 // drawLAN is the LAN map (0x0041E8EC): every location, the current map
 // tinted, and the number of players on each map at its marker (+3). The
 // counts are the players' groups' maps in the original; here the own hero
-// and the remote heroes the server reported (startScene.playerCounts).
+// and the other players' heroes on its map (startScene.playerCounts).
 func (w *worldMapWindow) drawLAN(view *ebiten.Image, mapNumber int, font *gameFont) {
 	l := w.lan
 	if l.reveal == nil {

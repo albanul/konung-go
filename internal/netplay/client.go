@@ -82,18 +82,6 @@ func (c *Client) Enter(model int) error {
 	return c.Send(mustMessage(MsgEnter, EnterRequest{Model: model}))
 }
 
-// Move reports the own hero's position.
-func (c *Client) Move(p Position) error { return c.Send(mustMessage(MsgMove, p)) }
-
-// Look reports the own hero's look (stance, weapon, equipment).
-func (c *Client) Look(l Look) error { return c.Send(mustMessage(MsgLook, LookPayload{Look: l})) }
-
-// Attack reports a blow (or an arrow, ranged) of the own hero that reached
-// target's hero; the server answers everyone with MsgHit.
-func (c *Client) Attack(target string, ranged bool) error {
-	return c.Send(mustMessage(MsgAttack, AttackPayload{Target: target, Ranged: ranged}))
-}
-
 // Chat sends a chat line to everyone in the session.
 func (c *Client) Chat(text string) error {
 	return c.Send(mustMessage(MsgChat, ChatPayload{Text: text}))

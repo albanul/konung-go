@@ -76,9 +76,6 @@ func (s *World) NearestEnemy(h mapdata.Cell) int {
 		if e.Group < 0 || s.PlayerGroup(e.Group) || !Alive(&n.Walker, e) {
 			continue
 		}
-		if r := s.isRemote(n.Entity); r && !s.canTarget(n.Entity) {
-			continue // a protected teammate
-		}
 		g := s.Game.Groups[e.Group]
 		if (g.Kind&0x80 != 0 && g.Alarm != gamestate.AlarmAttack) || g.Kind == 0x53 {
 			continue
@@ -208,19 +205,16 @@ func (s *World) Swing(aw *Walker, a *gamestate.Entity, target int, targetCell ma
 		aw.TurnToward(d)
 		return false
 	}
-	remote := s.isRemote(target)
-	if aw.ActStep == 2 && s.PlayerGroup(a.Group) && !remote {
+	if s.protected(a, t) {
+		return true // a teammate the server protects
+	}
+	if aw.ActStep == 2 && s.PlayerGroup(a.Group) {
 		s.Provoke(t.Group) // 0x00421F00: village anger, then 0x004248A0
 	}
 	if aw.AdvanceAct() {
 		return false
 	}
 	a.Variant, t.Variant = int(aw.Dir), int(tw.Dir)
-	if remote { // another player's hero: the server decides (lanfight.go)
-		s.strikeRemote(a, target, false)
-		aw.StartAct(gamestate.ActAttack)
-		return false
-	}
 	switch r, _ := s.Game.Strike(a, t, s.Tables, s.Rng.IntN); r {
 	case gamestate.StrikeDodged:
 		if s.PlayerGroup(a.Group) {
@@ -338,6 +332,9 @@ func (s *World) Kill(a *gamestate.Entity, tw *Walker, t *gamestate.Entity, arrow
 		bonus, level = 0, 0
 	}
 	s.DropLoot(t, tw.Cell, bonus, level)
+	if s.Hooks.Killed != nil {
+		s.Hooks.Killed(a, t)
+	}
 }
 
 // flinch starts the hit reaction (type 2/8) of a character hit hard: the

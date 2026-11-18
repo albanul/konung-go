@@ -12,18 +12,17 @@ import (
 
 	"konung1.5/internal/lanserver"
 	"konung1.5/internal/netplay"
-	"konung1.5/internal/world"
 )
 
 // serverWorld runs the LAN world (internal/lanserver) on the server's
 // clock: every map steps once per game tick, while anybody is in the world
 // (the clock stands still otherwise). Players entering get a hero in it, in
-// the first free player slot (0–15); clients do not see it yet (they still
-// run their own worlds, step 4 of docs/konung_lan.md#server-world).
+// the first free player slot (0–15), and see their hero's map
+// (lanserver.Host, docs/konung_lan.md#server-world).
 type serverWorld struct {
-	mu    sync.Mutex
-	w     *lanserver.World
-	slots map[string]int // player ID → slot
+	mu   sync.Mutex // the summary counters
+	w    *lanserver.World
+	host *lanserver.Host
 
 	steps    int           // ticks run since the last summary
 	stepTime time.Duration // time spent in them
@@ -53,49 +52,7 @@ func loadWorld(dir string) (*serverWorld, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &serverWorld{w: w, slots: map[string]int{}, since: time.Now()}, nil
-}
-
-// enter gives player p a hero (hero nil: the type's default) in a free
-// slot; a full world (16 heroes) leaves it out.
-func (s *serverWorld) enter(p netplay.PlayerInfo, hero *netplay.Hero) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	slot, ok := s.slots[p.ID]
-	if !ok {
-		used := map[int]bool{}
-		for _, k := range s.slots {
-			used[k] = true
-		}
-		slot = -1
-		for k := range world.LANPlayers {
-			if !used[k] {
-				slot = k
-				break
-			}
-		}
-		if slot < 0 {
-			log.Printf("world: no free slot for %s", p.Name)
-			return
-		}
-		s.slots[p.ID] = slot
-	}
-	m, c, err := s.w.AddPlayer(slot, p.Model, hero)
-	if err != nil {
-		log.Printf("world: %s: %v", p.Name, err)
-		return
-	}
-	log.Printf("world: %s is hero %d on map %d (%d, %d)", p.Name, slot, m, c.Row, c.Col)
-}
-
-// leave takes player id's hero out of the world.
-func (s *serverWorld) leave(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if slot, ok := s.slots[id]; ok {
-		s.w.RemovePlayer(slot)
-		delete(s.slots, id)
-	}
+	return &serverWorld{w: w, since: time.Now()}, nil
 }
 
 // maxCatchUp is the most ticks one wake-up runs; further behind, the world
@@ -116,18 +73,13 @@ func (s *serverWorld) run(clock func() netplay.ClockPayload, stop <-chan struct{
 			s.logSummary()
 		case <-t.C:
 			target := int(clock().Tick)
+			skipped := s.host.Jump(target, maxCatchUp*4, maxCatchUp)
+			t0 := time.Now()
+			n := s.host.Advance(target, maxCatchUp)
 			s.mu.Lock()
-			if behind := target - s.w.Tick; behind > maxCatchUp*4 {
-				s.skipped += behind - maxCatchUp
-				s.w.Tick = target - maxCatchUp
-			}
-			for n := 0; s.w.Tick < target && n < maxCatchUp; n++ {
-				t0 := time.Now()
-				s.w.Step()
-				s.stepTime += time.Since(t0)
-				s.steps++
-			}
-			s.w.TakeEvents() // no clients for them yet (step 4)
+			s.skipped += skipped
+			s.stepTime += time.Since(t0)
+			s.steps += n
 			s.mu.Unlock()
 		}
 	}
@@ -139,9 +91,10 @@ func (s *serverWorld) logSummary() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var maps []string
+	snaps, tick := s.host.Snapshots()
 	for n := 1; n <= lanserver.Maps; n++ {
 		alive, heroes := 0, 0
-		for _, c := range s.w.Snapshot(n).Chars {
+		for _, c := range snaps[n].Chars {
 			if !c.Dead {
 				alive++
 				if c.Player {
@@ -161,7 +114,7 @@ func (s *serverWorld) logSummary() {
 	}
 	elapsed := time.Since(s.since).Seconds()
 	log.Printf("world: tick %d, %.1f ticks/s, %v per tick, %d skipped; alive by map %s",
-		s.w.Tick, float64(s.steps)/max(elapsed, 1e-9), mean, s.skipped, strings.Join(maps, " "))
+		tick, float64(s.steps)/max(elapsed, 1e-9), mean, s.skipped, strings.Join(maps, " "))
 	s.steps, s.stepTime, s.skipped, s.since = 0, 0, 0, time.Now()
 }
 

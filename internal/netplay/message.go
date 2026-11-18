@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 4
+const ProtocolVersion = 5
 
 // MsgType identifies a message.
 type MsgType int
@@ -47,23 +47,22 @@ const (
 	MsgChat                            // client → server → all: ChatPayload
 	MsgGame                            // gameplay, defined with the traced protocol; routed to Server.OnGame
 	MsgEnter                           // client → server at «Ok»: enter the world (the original's 0x4C)
-	MsgEntered                         // server → client: EnterPayload, where the hero starts (0x8C)
-	MsgAppear                          // server → client: AppearPayload, a hero in the world (0x5A)
-	MsgMove                            // client → server: Position, the own hero moved
-	MsgMoved                           // server → client: MovedPayload, another hero moved (0x19)
+	MsgEntered                         // server → client: EnterPayload, where the hero starts and its slot (0x8C)
 	MsgClock                           // server → client: ClockPayload, the world clock (clock.go)
-	MsgLook                            // client → server → others: LookPayload, stance, weapon, equipment (0x5A/0x19 parts)
-	MsgAttack                          // client → server: AttackPayload, a blow or an arrow reached another hero (fight.go)
-	MsgHit                             // server → everyone in the world: HitPayload, the server's verdict
 	MsgHero                            // server → client: Hero, the own hero after a change (kill experience, 0x5C)
+	MsgOrder                           // client → server: OrderPayload, an order for the own hero (view.go; the original's 0x55)
+	MsgView                            // server → client: ViewPayload, the characters of the own hero's map (0x19)
+	MsgPlayer                          // server → client: PlayerPayload, a player's hero as it looks (0x5A)
+	MsgEvents                          // server → client: EventsPayload, sounds on the own hero's map
+	MsgMapChange                       // server → client: EnterPayload, the own hero took an exit to another map
 )
 
 var msgNames = map[MsgType]string{
 	MsgPing: "ping", MsgJoin: "join", MsgWelcome: "welcome", MsgError: "error",
 	MsgPlayerJoined: "player-joined", MsgPlayerLeft: "player-left", MsgSession: "session",
 	MsgChat: "chat", MsgGame: "game", MsgEnter: "enter", MsgEntered: "entered",
-	MsgAppear: "appear", MsgMove: "move", MsgMoved: "moved", MsgClock: "clock",
-	MsgLook: "look", MsgAttack: "attack", MsgHit: "hit", MsgHero: "hero",
+	MsgClock: "clock", MsgHero: "hero", MsgOrder: "order", MsgView: "view", MsgPlayer: "player",
+	MsgEvents: "events", MsgMapChange: "map-change",
 }
 
 func (t MsgType) String() string {
@@ -264,25 +263,12 @@ func (p Position) Valid() bool {
 	return p.Map >= 1 && p.Map <= 255 && p.Row >= 0 && p.Row < 320 && p.Col >= 0 && p.Col < 160 && p.Facing >= 0 && p.Facing < 8
 }
 
-// EnterPayload is where an entering hero starts.
-type EnterPayload = Position
-
-// AppearPayload is a hero in the world: the player, its account's hero
-// (appearance, level; nil on a server without accounts) and its position.
-// The original's 0x5A carries the appearance, name and clan.
-type AppearPayload struct {
-	Player PlayerInfo `json:"player"`
-	Hero   *Hero      `json:"hero,omitempty"`
-	Pos    Position   `json:"pos"`
-	Look   Look       `json:"look"`
-	HP     int        `json:"hp"`             // 0 with Dead
-	Dead   bool       `json:"dead,omitempty"` // killed and not entered again
-}
-
-// MovedPayload is another hero's new position (the original's 0x19).
-type MovedPayload struct {
-	ID  string   `json:"id"`
-	Pos Position `json:"pos"`
+// EnterPayload is where the own hero is (entering, MsgEntered; a map
+// change, MsgMapChange) and, on entering, its player slot: its entity and
+// group in the server's world (0–15).
+type EnterPayload struct {
+	Position
+	Slot int `json:"slot"`
 }
 
 // ChatPayload is a chat line.

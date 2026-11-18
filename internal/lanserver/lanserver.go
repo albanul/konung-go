@@ -51,6 +51,10 @@ type World struct {
 	players map[int]int // slot → map
 	moving  []move      // heroes that took an exit this tick
 	events  []Event
+
+	// TeamSafe: heroes of one type (the same model) cannot hurt each other
+	// (the server's team-damage option).
+	TeamSafe bool
 }
 
 type move struct {
@@ -127,7 +131,20 @@ func (w *World) hooks(n int) world.Hooks {
 		MemberExit: func(m *world.Member, x gamestate.MapExit) {
 			w.moving = append(w.moving, move{slot: m.Entity, x: x})
 		},
+		Killed: func(a, v *gamestate.Entity) {
+			if a.Group >= 0 && a.Group < world.LANPlayers {
+				w.events = append(w.events, Event{Kind: EventKill, Map: n, Entity: a.Index,
+					Victim: v.Index, VictimPlayer: v.Group >= 0 && v.Group < world.LANPlayers})
+			}
+		},
+		Protected: w.protected,
 	}
+}
+
+// protected is the team-damage option: two players' heroes of one type.
+func (w *World) protected(a, t *gamestate.Entity) bool {
+	player := func(e *gamestate.Entity) bool { return e.Group >= 0 && e.Group < world.LANPlayers }
+	return w.TeamSafe && player(a) && player(t) && a.Model == t.Model
 }
 
 // Step runs one game tick (60 ms at normal speed) of every map, then moves
@@ -148,7 +165,13 @@ func (w *World) Step() {
 			continue
 		}
 		w.place(mv.slot, mv.x.To, mapdata.Cell{Row: mv.x.Row, Col: mv.x.Col}, mv.x.Facing)
-		w.events = append(w.events, Event{Kind: EventMapChange, Map: mv.x.To, From: from, Entity: mv.slot, Row: mv.x.Row, Col: mv.x.Col})
+		m := w.Maps[mv.x.To]
+		c := mv.x.Row
+		col := mv.x.Col
+		if mem, _ := m.Member(mv.slot); mem != nil {
+			c, col = mem.Cell.Row, mem.Cell.Col
+		}
+		w.events = append(w.events, Event{Kind: EventMapChange, Map: mv.x.To, From: from, Entity: mv.slot, Row: c, Col: col, Facing: mv.x.Facing})
 	}
 }
 
@@ -266,8 +289,12 @@ func (w *World) Right(slot, target, row, col int) {
 		return
 	}
 	if target >= 0 {
-		if tw, _ := s.Combatant(target); tw == nil || target == slot {
+		tw, t := s.Combatant(target)
+		if tw == nil || target == slot {
 			return // not on this map
+		}
+		if _, me := s.Member(slot); me != nil && w.protected(me, t) {
+			return // a teammate the server protects
 		}
 	}
 	s.RightOrder(m, target, mapdata.Cell{Row: row, Col: col}, 0)

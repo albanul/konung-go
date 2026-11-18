@@ -2,21 +2,17 @@ package game
 
 import (
 	"os"
-	"strings"
 	"testing"
 	"time"
 
 	"konung1.5/internal/gamestate"
-	"konung1.5/internal/lanfight"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
-	"konung1.5/internal/resfmt"
 )
 
-// Without an account (a server without accounts) the hero is the
-// model's single-player hero: GAME.N's hero model is a placeholder (1 in all
-// three files) that the start replaces.
-func TestLANWorldWithoutAccount(t *testing.T) {
+// viewScene builds a LAN viewer for a Волк hero in slot 3 on map 1's start.
+func viewScene(t *testing.T) *startScene {
+	t.Helper()
 	const dir = "../../assets/Konung/"
 	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
 		t.Skip("MAPS.RES not available:", err)
@@ -25,104 +21,129 @@ func TestLANWorldWithoutAccount(t *testing.T) {
 	if err != nil {
 		t.Skip("assets missing:", err)
 	}
-	for m, at := range []netplay.EnterPayload{{Map: 1, Row: 110, Col: 32, Facing: 2}, {Map: 4, Row: 66, Col: 57}, {Map: 7, Row: 65, Col: 8, Facing: 4}} {
-		s, err := a.lanWorld(dir, nil, at, nil, m, "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if e := s.Party[0]; e.Model != m || e.PaletteOffset != gamestate.HeroPalette[m] {
-			t.Errorf("model %d: hero model %d, palette %#x", m, e.Model, e.PaletteOffset)
-		}
-	}
-}
-
-func TestLANWorld(t *testing.T) {
-	const dir = "../../assets/Konung/"
-	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
-		t.Skip("MAPS.RES not available:", err)
-	}
-	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
-	if err != nil {
-		t.Skip("assets missing:", err)
-	}
-	hero := &netplay.Hero{Level: 3, Model: 2, Palette: 35, Gold: 250, Charisma: 4, Strength: 16, Dexterity: 5, Endurance: 11,
-		Fencing: 150, Archery: 20, Herbalism: 50, Smithing: 10, Trade: 10, Carpentry: 1, Identification: 20}
-	at := netplay.EnterPayload{Map: 7, Row: 65, Col: 8, Facing: 4}
-	s, err := a.lanWorld(dir, nil, at, hero, 0, "Снежок")
+	hero := &netplay.Hero{Level: 3, Class: gamestate.ClassHunter, Model: 0, Palette: 71, Gold: 250, Strength: 16, Endurance: 11, Fencing: 150}
+	at := netplay.EnterPayload{Position: netplay.Position{Map: 1, Row: 110, Col: 32, Facing: 2}, Slot: 3}
+	s, err := a.lanView(dir, nil, at, hero, 0, "Snow")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !s.lan || s.MapNumber != 7 || s.Hero == nil || s.Hero.Cell != (mapdata.Cell{Row: 65, Col: 8}) || s.Hero.Dir != 4 {
-		t.Fatalf("scene: lan %v, map %d, hero %+v", s.lan, s.MapNumber, s.Hero)
+	return s
+}
+
+// The viewer: GAME.RES's world, the MAPS.RES map, the own hero alone as
+// party member 0 (its slot's entity, group 0 here) with the account's
+// values; nothing else until the server reports it.
+func TestLANView(t *testing.T) {
+	s := viewScene(t)
+	if !s.lan || s.view == nil || s.MapNumber != 1 || s.Hero == nil || s.Hero.Cell != (mapdata.Cell{Row: 110, Col: 32}) {
+		t.Fatalf("scene: lan %v view %v map %d hero %+v", s.lan, s.view != nil, s.MapNumber, s.Hero)
 	}
 	e := s.Party[0]
-	if e.Model != 2 || e.PaletteOffset != 35*512 || e.Gold != 250 || e.Level != 3 || e.BaseStats != [4]int{4, 16, 5, 11} || e.Fencing != 150 {
-		t.Errorf("hero entity = %+v", e)
+	if len(s.Party) != 1 || e.Index != 3 || e.Group != 0 || e.Level != 3 || e.Flags4&7 != gamestate.ClassHunter || e.PaletteOffset != 71*512 || e.Equipment == ([6]int{}) {
+		t.Errorf("own hero = %+v", e)
 	}
-	// The hero carries the account's name, in the status line too.
-	if got := resfmt.CP866ToUTF8(s.Game.EntityName(e, s.Tables)); got != "Снежок" {
-		t.Errorf("hero name %q", got)
+	if len(s.NPCs) != 0 {
+		t.Errorf("%d characters before any view", len(s.NPCs))
 	}
-	if got := resfmt.CP866ToUTF8(s.Game.StatusLine(e, s.Tables)); !strings.HasPrefix(got, "Снежок, ") {
-		t.Errorf("status line %q", got)
-	}
-	if len(s.NPCs) != 0 || len(s.Party) != 1 {
-		t.Errorf("%d characters besides a party of %d", len(s.NPCs), len(s.Party))
-	}
-	// The LAN map is MAPS.RES #7, not KONUNG.7.
-	maps, _ := os.ReadFile(dir + "MAPS.RES")
-	e7, _ := mapdata.SplitMapsRes(maps)
-	m7, _ := mapdata.Parse(e7[6].Map)
-	if s.m.LastRow != m7.LastRow || s.m.Cells[10][10] != m7.Cells[10][10] {
-		t.Error("the scene's map is not MAPS.RES #7")
-	}
-	// The single-player assets still read KONUNG.N.
-	if a.lanMaps != nil {
-		t.Error("lanWorld changed the shared assets")
+	if got := string(s.Game.EntityName(e, s.Tables)); got != string(cp866("Snow")) {
+		t.Errorf("name %q", got)
 	}
 }
 
-// A LAN teleport changes the map: the next MAPS.RES map, the hero on the
-// exit's arrival cell, still a LAN world.
-func TestLANWorldChangesMap(t *testing.T) {
-	const dir = "../../assets/Konung/"
-	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
-		t.Skip("MAPS.RES not available:", err)
-	}
-	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
-	if err != nil {
-		t.Skip("assets missing:", err)
-	}
-	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	x, ok := s.Game.ExitAt(1, 65, 7) // GAME.RES exit 3: map 1 → map 15
-	if !ok || x.To != 15 {
-		t.Fatalf("exit at (65,7) on map 1 = %+v, %v", x, ok)
-	}
-	s.changeMap(x)
-	if s.MapNumber != 15 || !s.lan {
-		t.Fatalf("after the exit: map %d, lan %v", s.MapNumber, s.lan)
-	}
-	if s.Hero == nil || s.Hero.Cell != (mapdata.Cell{Row: x.Row, Col: x.Col}) {
-		t.Errorf("hero at %+v, want the arrival (%d, %d)", s.Hero, x.Row, x.Col)
-	}
-	maps, _ := os.ReadFile(dir + "MAPS.RES")
-	e, _ := mapdata.SplitMapsRes(maps)
-	m15, _ := mapdata.Parse(e[14].Map)
-	if s.m.LastRow != m15.LastRow || s.m.Cells[20][20] != m15.Cells[20][20] {
-		t.Error("the new map is not MAPS.RES #15")
-	}
-	// And back: map 15 has exits too.
-	back := 0
-	for _, x := range s.Game.Exits {
-		if x.From == 15 {
-			back++
+// Views make, move and remove walkers; a player's hero is drawn from
+// MsgPlayer; the own hero's HP and death come from the server.
+func TestLANViewStates(t *testing.T) {
+	s := viewScene(t)
+	// A map-1 villager of GAME.RES.
+	villager := -1
+	for i, e := range s.Game.Entities {
+		if i >= 16 && e.Group >= 16 && s.Game.Groups[e.Group].Map == 1 && !e.Dead() && e.Row > 0 {
+			villager = i
+			break
 		}
 	}
-	if back != 8 {
-		t.Errorf("map 15 has %d exits", back)
+	if villager < 0 {
+		t.Fatal("no villager on map 1 in GAME.RES")
+	}
+	ve := s.Game.Entities[villager]
+	s.applyPlayer(netplay.PlayerPayload{Slot: 5, Player: netplay.PlayerInfo{ID: "o", Name: "Olaf", Clan: "Викинги", Model: 1},
+		Hero: &netplay.Hero{Level: 2, Model: 1, Palette: 29}})
+	s.applyView(netplay.ViewPayload{Map: 1, Tick: 900, Full: true, Chars: []netplay.CharState{
+		{Entity: 3, Player: true, Row: 110, Col: 32, Facing: 2, HP: 1600},
+		{Entity: villager, Row: ve.Row, Col: ve.Col, Facing: 1, HP: ve.HP},
+		{Entity: 5, Player: true, Row: 100, Col: 30, Facing: 4, HP: 1500, Stance: true, Weapon: gamestate.WeaponBlade},
+	}})
+	if s.Tick != 900 || len(s.NPCs) != 2 {
+		t.Fatalf("tick %d, %d walkers", s.Tick, len(s.NPCs))
+	}
+	olaf := s.ByEntity[5]
+	oe := s.Game.Entities[5]
+	if olaf == nil || olaf.Cell != (mapdata.Cell{Row: 100, Col: 30}) || oe.Model != 1 || oe.PaletteOffset != 29*512 || !oe.InStance() || oe.HP != 1500 {
+		t.Errorf("Olaf: walker %+v, record model %d palette %d stance %v HP %d", olaf, oe.Model, oe.PaletteOffset/512, oe.InStance(), oe.HP)
+	}
+	if st, ok := s.viewStatus(5); !ok || string(st) != string(cp866("Olaf, клан Викинги")) {
+		t.Errorf("status %q", st)
+	}
+	// A walk step, then the villager is gone.
+	s.applyView(netplay.ViewPayload{Map: 1, Tick: 901, Chars: []netplay.CharState{
+		{Entity: 5, Player: true, Row: 102, Col: 30, FromRow: 100, FromCol: 30, Walking: true, Step: 3, Facing: 4, HP: 1500, Stance: true},
+	}, Gone: []int{villager}})
+	if !olaf.Walking || olaf.Cell != (mapdata.Cell{Row: 102, Col: 30}) || olaf.From != (mapdata.Cell{Row: 100, Col: 30}) || olaf.StepT != 3 {
+		t.Errorf("Olaf walking: %+v", olaf.Walker)
+	}
+	if s.ByEntity[villager] != nil || len(s.NPCs) != 1 {
+		t.Error("the villager did not leave")
+	}
+	// The own hero is hit, then dies: the game is over.
+	s.applyView(netplay.ViewPayload{Map: 1, Tick: 902, Chars: []netplay.CharState{{Entity: 3, Player: true, Row: 110, Col: 32, HP: 700, Act: gamestate.ActFlinch, ActStep: 1}}})
+	if s.Party[0].HP != 700 || s.Hero.Act != gamestate.ActFlinch {
+		t.Errorf("own hero after a hit: HP %d act %d", s.Party[0].HP, s.Hero.Act)
+	}
+	s.applyView(netplay.ViewPayload{Map: 1, Tick: 903, Chars: []netplay.CharState{{Entity: 3, Player: true, Row: 110, Col: 32, HP: 0, Dead: true, Act: gamestate.ActDeath, ActStep: 5}}})
+	if !s.GameOver() {
+		t.Error("the own hero's death did not end the game")
+	}
+	// A view of another map (before its map change) is not applied.
+	s.applyView(netplay.ViewPayload{Map: 2, Tick: 904, Full: true})
+	if len(s.NPCs) != 1 {
+		t.Error("a view of another map was applied")
+	}
+}
+
+// The own hero's map change (MsgMapChange) builds the new map's scene with
+// the hero on its arrival cell, the viewer kept.
+func TestLANViewMapChange(t *testing.T) {
+	s := viewScene(t)
+	s.applyView(netplay.ViewPayload{Map: 1, Tick: 10, Full: true, Chars: []netplay.CharState{{Entity: 3, Player: true, Row: 110, Col: 32, HP: 1234}}})
+	v := s.view
+	s.hideHelp = true // F1 pressed before the map change
+	s.viewChangeMap(netplay.EnterPayload{Position: netplay.Position{Map: 3, Row: 70, Col: 40, Facing: 1}, Slot: 3})
+	if !s.hideHelp {
+		t.Error("the key help came back after the map change")
+	}
+	if s.MapNumber != 3 || s.view != v || s.Hero == nil || s.Hero.Cell != (mapdata.Cell{Row: 70, Col: 40}) || s.Party[0].HP != 1234 || len(s.NPCs) != 0 {
+		t.Errorf("after the change: map %d view kept %v hero %+v HP %d npcs %d", s.MapNumber, s.view == v, s.Hero, s.Party[0].HP, len(s.NPCs))
+	}
+}
+
+// The session timer and the shared moon.
+func TestLANClock(t *testing.T) {
+	k := &serverClock{c: netplay.ClockPayload{Tick: 5000, SessionLeft: -1}, at: time.Now()}
+	if _, ok := k.sessionLeft(); ok {
+		t.Error("unknown session time shown")
+	}
+	k.c.SessionLeft = 90
+	if left, ok := k.sessionLeft(); !ok || left > 90*time.Second || left < 89*time.Second {
+		t.Errorf("session left %v", left)
+	}
+	moonlit := 0
+	for d := range 1000 {
+		if lanMoon(d) {
+			moonlit++
+		}
+	}
+	if moonlit < 850 || moonlit > 950 {
+		t.Errorf("%d of 1000 nights moonlit, want about %d%%", moonlit, gamestate.MoonChance)
 	}
 }
 
@@ -174,282 +195,5 @@ func TestLANWorldMap(t *testing.T) {
 		if (m == 1) != (tinted > drawn/2) {
 			t.Errorf("map %d: %d of %d pixels tinted", m, tinted, drawn)
 		}
-	}
-}
-
-// Another player's hero on the map: it appears as a walker outside the
-// party, walks to reported cells, jumps when far, leaves the map, comes
-// back after a map change, and is removed when the player leaves.
-func TestLANRemotePlayers(t *testing.T) {
-	const dir = "../../assets/Konung/"
-	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
-		t.Skip("MAPS.RES not available:", err)
-	}
-	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
-	if err != nil {
-		t.Skip("assets missing:", err)
-	}
-	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var sent []netplay.Position
-	s.onMove = func(p netplay.Position) { sent = append(sent, p) }
-
-	ragnar := netplay.AppearPayload{
-		Player: netplay.PlayerInfo{ID: "r1", Name: "Ragnar", Clan: "Викинги", Model: 2},
-		Hero:   &netplay.Hero{Level: 4, Model: 2, Palette: 36},
-		Pos:    netplay.Position{Map: 1, Row: 100, Col: 32, Facing: 3},
-	}
-	s.remoteAppear(ragnar)
-	r := s.remotes["r1"]
-	n := s.ByEntity[r.Entity]
-	if n == nil || n.Mode != npcRemote || n.Cell != (mapdata.Cell{Row: 100, Col: 32}) {
-		t.Fatalf("remote walker = %+v", n)
-	}
-	e := s.Game.Entities[r.Entity]
-	if got := resfmt.CP866ToUTF8(s.Game.EntityName(e, s.Tables)); got != "Ragnar" {
-		t.Errorf("remote name %q", got)
-	}
-	if e.Model != 2 || e.PaletteOffset != 36*512 || e.Level != 4 || e.Group == 0 || s.PartyIndex(r.Entity) >= 0 {
-		t.Errorf("remote Entity: model %d palette %#x level %d group %d", e.Model, e.PaletteOffset, e.Level, e.Group)
-	}
-	if got := resfmt.CP866ToUTF8(remoteStatus(r)); got != "Ragnar, клан Викинги" {
-		t.Errorf("status %q", got)
-	}
-
-	// A nearby Cell: a walk. A far one: a jump.
-	s.remoteMove("r1", netplay.Position{Map: 1, Row: 104, Col: 33, Facing: 1})
-	if n := s.ByEntity[r.Entity]; n == nil || len(n.Path) == 0 && !n.Walking {
-		t.Error("no walk to a nearby cell")
-	}
-	s.remoteMove("r1", netplay.Position{Map: 1, Row: 200, Col: 40})
-	if n := s.ByEntity[r.Entity]; n == nil || chebyshev(n.Cell, mapdata.Cell{Row: 200, Col: 40}) > 3 {
-		t.Errorf("no jump: %+v", n)
-	}
-
-	// Off this map: taken off; still known.
-	s.remoteMove("r1", netplay.Position{Map: 15, Row: 66, Col: 57})
-	if s.ByEntity[r.Entity] != nil || s.remotes["r1"] == nil {
-		t.Error("remote on another map is still drawn here")
-	}
-	// The own hero takes exit 3 to map 15: the remote is there.
-	x, _ := s.Game.ExitAt(1, 65, 7)
-	s.changeMap(x)
-	if s.MapNumber != 15 || s.ByEntity[s.remotes["r1"].Entity] == nil {
-		t.Errorf("after the map change: map %d, remote placed %v", s.MapNumber, s.ByEntity[s.remotes["r1"].Entity] != nil)
-	}
-
-	// The own position is reported once per change.
-	sent = nil
-	s.reportMove()
-	s.reportMove()
-	if len(sent) != 1 || sent[0].Map != 15 {
-		t.Errorf("sent %+v", sent)
-	}
-
-	// The map window counts the own hero and Ragnar, both on map 15.
-	if c := s.playerCounts(); c[15] != 2 || len(c) != 1 {
-		t.Errorf("player counts %v", c)
-	}
-
-	s.remoteLeave("r1")
-	if len(s.remotes) != 0 {
-		t.Error("the player who left is still known")
-	}
-	for _, n := range s.NPCs {
-		if n.Mode == npcRemote {
-			t.Error("a remote walker is left on the map")
-		}
-	}
-}
-
-// A remote hero wears what its look says (the server's MsgLook): its own
-// items, and in the stance the body's combat set together with the stance
-// bit, so the drawn weapon shows (the bug: type 0 without the bit drew the
-// stance with no weapon).
-func TestLANRemoteLook(t *testing.T) {
-	const dir = "../../assets/Konung/"
-	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
-		t.Skip("MAPS.RES not available:", err)
-	}
-	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
-	if err != nil {
-		t.Skip("assets missing:", err)
-	}
-	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	own := lanfight.LookOf(s.Game, s.Party[0]) // the same type's gear
-	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "x", Name: "Twin", Model: 0}, Look: own, HP: 1600,
-		Pos: netplay.Position{Map: 1, Row: 100, Col: 32}})
-	r := s.remotes["x"]
-	e := s.Game.Entities[r.Entity]
-	if e.InStance() || e.Type < 6 {
-		t.Errorf("out of the stance: stance %v type %d", e.InStance(), e.Type)
-	}
-	if got := lanfight.LookOf(s.Game, e); got.Equip != own.Equip {
-		t.Errorf("remote equipment %+v, want %+v", got.Equip, own.Equip)
-	}
-	if e.Equipment == s.Party[0].Equipment {
-		t.Error("the remote hero shares the own hero's item records")
-	}
-	l := own
-	l.Stance = true
-	for k, it := range l.Equip {
-		if it.Item && k <= gamestate.WeaponBlade && k != gamestate.WeaponBow {
-			l.Weapon = k
-		}
-	}
-	s.remoteLook(netplay.LookPayload{ID: "x", Look: l})
-	e = s.Game.Entities[r.Entity]
-	if !e.InStance() || e.Type >= 6 || e.WeaponMode != l.Weapon {
-		t.Fatalf("in the stance: stance %v type %d weapon %d", e.InStance(), e.Type, e.WeaponMode)
-	}
-	if n := s.ByEntity[r.Entity]; n == nil || !n.Look.Stance {
-		t.Error("the walker's look did not change")
-	}
-	if l.Equip[l.Weapon].Item && len(s.Game.Overlays(e, s.Tables)) == 0 {
-		t.Error("no overlays in the stance: the weapon is not drawn")
-	}
-	// Hits: the server's verdict sets HP, a kill plays the death.
-	s.remoteHit(netplay.HitPayload{Attacker: "me", Target: "x", Result: netplay.HitLight, Damage: 40, HP: 1560}, "me")
-	if hp := s.Game.Entities[r.Entity].HP; hp != 1560 {
-		t.Errorf("HP %d after a hit", hp)
-	}
-	s.remoteHit(netplay.HitPayload{Attacker: "me", Target: "x", Result: netplay.HitKill, Killed: true}, "me")
-	if n := s.ByEntity[r.Entity]; n == nil || n.Act != gamestate.ActDeath || !r.dead {
-		t.Error("the kill did not play the death")
-	}
-	// The own hero dies by the server's verdict too.
-	s.remoteHit(netplay.HitPayload{Attacker: "x", Target: "me", Result: netplay.HitKill, Killed: true}, "me")
-	if s.Party[0].HP != 0 || s.Hero.Act != gamestate.ActDeath {
-		t.Errorf("own hero: HP %d, act %d", s.Party[0].HP, s.Hero.Act)
-	}
-}
-
-// In a LAN world the scene follows the server's clock: a far clock is
-// jumped to, a near one is reached by running ticks; the moon is the same
-// for everyone.
-func TestLANClock(t *testing.T) {
-	const dir = "../../assets/Konung/"
-	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
-		t.Skip("MAPS.RES not available:", err)
-	}
-	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
-	if err != nil {
-		t.Skip("assets missing:", err)
-	}
-	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.clock = &serverClock{c: netplay.ClockPayload{Tick: 5000, Speed: 1, SessionLeft: -1}, at: time.Now()}
-	s.stepToServer()
-	if s.Tick != 5000 {
-		t.Fatalf("tick %d after a far clock, want 5000", s.Tick)
-	}
-	s.clock.c.Tick = 5003
-	s.stepToServer()
-	if s.Tick != 5003 {
-		t.Errorf("tick %d after a near clock, want 5003 (three steps)", s.Tick)
-	}
-	if left, ok := s.clock.sessionLeft(); ok || left != 0 {
-		t.Error("unknown session time shown")
-	}
-	moonlit := 0
-	for d := range 1000 {
-		if lanMoon(d) {
-			moonlit++
-		}
-	}
-	if moonlit < 850 || moonlit > 950 {
-		t.Errorf("%d of 1000 nights moonlit, want about %d%%", moonlit, gamestate.MoonChance)
-	}
-}
-
-// On a server that protects teams, a teammate (same hero type) is no
-// Target: A picks the foe even when the teammate is closer.
-func TestLANTeamSafe(t *testing.T) {
-	const dir = "../../assets/Konung/"
-	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
-		t.Skip("MAPS.RES not available:", err)
-	}
-	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
-	if err != nil {
-		t.Skip("assets missing:", err)
-	}
-	s, err := a.lanWorld(dir, nil, netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}, nil, 0, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "mate", Name: "Mate", Model: 0}, HP: 1600, Pos: netplay.Position{Map: 1, Row: 106, Col: 32}})
-	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "foe", Name: "Foe", Model: 1}, HP: 1600, Pos: netplay.Position{Map: 1, Row: 100, Col: 32}})
-	mate, foe := s.remotes["mate"].Entity, s.remotes["foe"].Entity
-	if got := s.NearestEnemy(s.Hero.Cell); got != mate {
-		t.Fatalf("with team damage the nearest is %d, want the teammate %d", got, mate)
-	}
-	s.teamSafe = true
-	if got := s.NearestEnemy(s.Hero.Cell); got != foe {
-		t.Errorf("team-safe: nearest %d, want the foe %d", got, foe)
-	}
-}
-
-// A remote hero's swing plays out and ends in idle, and the next blow
-// swings again; a hero entering where another stands yields the cell.
-func TestLANRemoteSwingAndStart(t *testing.T) {
-	const dir = "../../assets/Konung/"
-	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
-		t.Skip("MAPS.RES not available:", err)
-	}
-	a, err := loadSceneAssets(dir+"GRAPH.RES", dir+"OBJECTS.RES", dir, dir+"konung.exe", dir+"Intr800r.res")
-	if err != nil {
-		t.Skip("assets missing:", err)
-	}
-	start := netplay.EnterPayload{Map: 1, Row: 110, Col: 32, Facing: 2}
-	s, err := a.lanWorld(dir, nil, start, nil, 0, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Ivar already stands on the start: the own hero yields, Ivar keeps it.
-	there := mapdata.Cell{Row: start.Row, Col: start.Col}
-	s.yieldStart([]mapdata.Cell{there})
-	if s.Hero.Cell == there {
-		t.Fatal("the own hero kept the taken start cell")
-	}
-	look := lanfight.LookOf(s.Game, s.Party[0]) // the same type's gear, in the stance
-	look.Stance = true
-	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "ivar", Name: "Ivar"}, HP: 1600, Look: look,
-		Pos: netplay.Position{Map: 1, Row: start.Row, Col: start.Col, Facing: 2}})
-	n := s.ByEntity[s.remotes["ivar"].Entity]
-	if n == nil || n.Cell != there {
-		t.Fatalf("Ivar placed at %+v, want his cell %+v", n.Cell, there)
-	}
-	// A report of the cell Ivar holds (a turn) does not step him off it.
-	s.remoteMove("ivar", netplay.Position{Map: 1, Row: start.Row, Col: start.Col, Facing: 5})
-	for range 40 {
-		s.Step()
-	}
-	if n.Cell != there {
-		t.Fatalf("Ivar stepped off his reported cell to %+v", n.Cell)
-	}
-	// Ivar's blow at the own hero: the swing plays and ends.
-	hit := netplay.HitPayload{Attacker: "ivar", Target: "me", Result: netplay.HitLight, Damage: 10, HP: 1590}
-	s.remoteHit(hit, "me")
-	if n.Act != gamestate.ActAttack {
-		t.Fatalf("no swing: act %d", n.Act)
-	}
-	steps := 0
-	for n.Act != 0 && steps < 200 {
-		s.faceRemotes()
-		steps++
-	}
-	if n.Act != 0 || steps < 2 {
-		t.Errorf("the swing did not play out: act %d after %d ticks", n.Act, steps)
-	}
-	s.remoteHit(hit, "me")
-	if n.Act != gamestate.ActAttack || n.ActStep != 0 {
-		t.Errorf("the next blow did not swing: act %d step %d", n.Act, n.ActStep)
 	}
 }
