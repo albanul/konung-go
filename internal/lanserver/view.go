@@ -65,11 +65,15 @@ func (w *World) PlayerLook(slot int) (netplay.Look, bool) {
 	return lanfight.LookOf(w.Game, e), true
 }
 
-// Progress is slot's hero's values after a kill (the experience: free
-// points and the combat skills), for the account and the 0x5C report.
+// Progress is slot's hero's own values now, for the account and the 0x5C
+// report: level, gold, free points, the base stats and the skills (a kill's
+// experience, raises, pick-ups, trades).
 func (w *World) Progress(slot int, h netplay.Hero) netplay.Hero {
 	if e, ok := w.Hero(slot); ok {
-		h.FreePoints, h.Fencing, h.Archery = e.FreeExp, e.Fencing, e.Marksmanship
+		h.Level, h.Gold, h.FreePoints = e.Level, e.Gold, e.FreeExp
+		h.Fencing, h.Archery = e.Fencing, e.Marksmanship
+		h.Charisma, h.Strength, h.Dexterity, h.Endurance = e.BaseStats[0], e.BaseStats[1], e.BaseStats[2], e.BaseStats[3]
+		h.Herbalism, h.Smithing, h.Trade, h.Carpentry, h.Identification = e.Skills[0], e.Skills[1], e.Skills[2], e.Skills[3], e.Skills[4]
 	}
 	return h
 }

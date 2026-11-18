@@ -745,6 +745,21 @@ func (m *Menu) applyLAN() {
 			if msg.Decode(&h) == nil {
 				w.ownHero(h)
 			}
+		case netplay.MsgInventory:
+			var inv netplay.InventoryPayload
+			if msg.Decode(&inv) == nil {
+				w.applyInventory(inv)
+			}
+		case netplay.MsgPiles:
+			var p netplay.PilesPayload
+			if msg.Decode(&p) == nil {
+				w.applyPiles(p)
+			}
+		case netplay.MsgPileWindow:
+			var pw netplay.PileWindowPayload
+			if msg.Decode(&pw) == nil {
+				w.applyPileWindow(pw)
+			}
 		}
 	}
 }

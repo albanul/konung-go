@@ -36,6 +36,7 @@ const (
 	OrderStance = "stance" // Space: into the stance (On) or out of it
 	OrderWeapon = "weapon" // 1/2/3, the HUD button: Mode (gamestate.Weapon*, −1 the next)
 	OrderAttack = "attack" // A: the stance and the nearest enemy
+	OrderItem   = "item"   // an item click (Item: ItemBag…), applied on the server (items.go)
 )
 
 // OrderPayload is an order for the own hero.
@@ -46,6 +47,11 @@ type OrderPayload struct {
 	Target int    `json:"target,omitempty"`
 	On     bool   `json:"on,omitempty"`
 	Mode   int    `json:"mode,omitempty"`
+	// OrderItem: the action, the cell or slot it names (Index) and, for
+	// the pile window's «Ok»/«Закрыть» (On = «Ok»), its four lists.
+	Item  string                         `json:"item,omitempty"`
+	Index int                            `json:"index,omitempty"`
+	Lists *[PileLists][PileListSlots]int `json:"lists,omitempty"`
 }
 
 // CharState is a character on the own hero's map at a tick: entity, cell
@@ -95,6 +101,7 @@ type PlayerPayload struct {
 const (
 	EventSound  = "sound"  // Sound at (Row, Col)
 	EventAction = "action" // Entity started action Act (its sound is the client's)
+	EventMsg    = "msg"    // a status-line message for the own hero (Text, CP866)
 )
 
 // Event is something on the own hero's map.
@@ -105,6 +112,7 @@ type Event struct {
 	Act    int    `json:"a,omitempty"`
 	Row    int    `json:"r,omitempty"`
 	Col    int    `json:"c,omitempty"`
+	Text   []byte `json:"x,omitempty"`
 }
 
 // EventsPayload is a tick's events.

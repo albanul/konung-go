@@ -131,7 +131,7 @@ func (s *startScene) toggleMap(hero *gamestate.Entity) {
 	if s.inv.open || s.talk.open() || s.trade.open() {
 		return
 	}
-	s.hand.Return(hero)
+	s.returnHand(hero)
 	s.hud.press(hudMapButton, hudMapImage)
 	s.wmap.open = !s.wmap.open
 }

@@ -64,6 +64,14 @@ type viewer struct {
 	views int
 	hits  []netplay.CharState // states with a flinch or death of another
 	ply   map[int]netplay.PlayerPayload
+	// Items (items_test.go): the last inventory, piles and pile window,
+	// the messages, and the inventory messages' bytes.
+	inv      netplay.InventoryPayload
+	invs     int
+	invBytes int
+	piles    netplay.PilesPayload
+	pileWin  netplay.PileWindowPayload
+	msgs     [][]byte
 }
 
 func enter(t *testing.T, ss *session, name string, model int) *viewer {
@@ -120,6 +128,40 @@ func (v *viewer) read() {
 			if m.Decode(&p) == nil {
 				v.mu.Lock()
 				v.ply[p.Slot] = p
+				v.mu.Unlock()
+			}
+		case netplay.MsgInventory:
+			var p netplay.InventoryPayload
+			if m.Decode(&p) == nil {
+				v.mu.Lock()
+				v.inv = p
+				v.invs++
+				v.invBytes += len(m.Payload)
+				v.mu.Unlock()
+			}
+		case netplay.MsgPiles:
+			var p netplay.PilesPayload
+			if m.Decode(&p) == nil {
+				v.mu.Lock()
+				v.piles = p
+				v.mu.Unlock()
+			}
+		case netplay.MsgPileWindow:
+			var p netplay.PileWindowPayload
+			if m.Decode(&p) == nil {
+				v.mu.Lock()
+				v.pileWin = p
+				v.mu.Unlock()
+			}
+		case netplay.MsgEvents:
+			var p netplay.EventsPayload
+			if m.Decode(&p) == nil {
+				v.mu.Lock()
+				for _, e := range p.Events {
+					if e.Kind == netplay.EventMsg {
+						v.msgs = append(v.msgs, e.Text)
+					}
+				}
 				v.mu.Unlock()
 			}
 		}

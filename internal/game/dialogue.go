@@ -186,7 +186,7 @@ func (s *startScene) newTalk() *gamestate.Talk {
 // talkTo opens the dialogue of entity i (0x004364F0, then the window
 // 0x0042DBBC(0)); the greeting plays when no line has speech.
 func (s *startScene) talkTo(i int) {
-	s.hand.Return(&s.Party[0])
+	s.returnHand(&s.Party[0])
 	tk := s.newTalk()
 	d := tk.OpenDialogue(i, &s.talk.greeting)
 	s.afterTalk(tk, d)

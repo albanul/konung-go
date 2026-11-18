@@ -372,7 +372,8 @@ func (u *lanUI) readSession() {
 				return
 			}
 			switch m.Type {
-			case netplay.MsgView, netplay.MsgPlayer, netplay.MsgEvents, netplay.MsgMapChange, netplay.MsgHero:
+			case netplay.MsgView, netplay.MsgPlayer, netplay.MsgEvents, netplay.MsgMapChange, netplay.MsgHero,
+				netplay.MsgInventory, netplay.MsgPiles, netplay.MsgPileWindow:
 				u.worldMsgs = append(u.worldMsgs, m)
 			case netplay.MsgClock:
 				var c netplay.ClockPayload

@@ -153,6 +153,10 @@ func run(dataDir string, st settings) error {
 		sw.w.TeamSafe = !teamDamage
 		sw.host = lanserver.NewHost(sw.w, func(id string, m *netplay.Message) error { return srv.Send(id, m) })
 		sw.host.OnKill = func(k lanserver.Kill) { scoreKill(store, k) }
+		sw.host.Load = func(p netplay.PlayerInfo) []lanserver.Item { return loadItems(store, p.Name) }
+		sw.host.Save = func(p netplay.PlayerInfo, hero *netplay.Hero, items []lanserver.Item) {
+			saveHero(store, p.Name, hero, items)
+		}
 		cfg.Start = func(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPayload, error) {
 			at, err := sw.host.Start(p, hero)
 			if err == nil {
@@ -196,6 +200,9 @@ func run(dataDir string, st settings) error {
 			srv.SyncClock()
 		case <-sessions.C:
 			srv.SetSessionEnd(time.Now().Add(length))
+			if sw != nil {
+				sw.host.SaveAll() // heroes and items kept at the session's end
+			}
 			if err := store.EndSession(); err != nil {
 				log.Printf("session end: %v", err)
 			} else {
@@ -206,6 +213,9 @@ func run(dataDir string, st settings) error {
 			}
 		case s := <-stop:
 			log.Printf("%v: stopping", s)
+			if sw != nil {
+				sw.host.SaveAll()
+			}
 			return nil
 		}
 	}
@@ -228,5 +238,38 @@ func scoreKill(store *lanstore.Store, k lanserver.Kill) {
 		if err := store.SaveProgress(k.Killer.Name, k.KillerHero); err != nil {
 			log.Printf("save %s: %v", k.Killer.Name, err)
 		}
+	}
+}
+
+// loadItems is an account's saved items (lanstore, after SAVITEMS.DAT's
+// drop rules); none for an account that never saved any (its hero keeps
+// its type's starting gear).
+func loadItems(store *lanstore.Store, name string) []lanserver.Item {
+	saved, err := store.LoadItems(name)
+	if err != nil {
+		log.Printf("items of %s: %v", name, err)
+		return nil
+	}
+	out := make([]lanserver.Item, len(saved))
+	for i, it := range saved {
+		out[i] = lanserver.Item(it)
+	}
+	return out
+}
+
+// saveHero keeps a player's hero (level, gold, stats, skills, experience)
+// and items (logout, death, the session's end).
+func saveHero(store *lanstore.Store, name string, hero *netplay.Hero, items []lanserver.Item) {
+	if hero != nil {
+		if err := store.SaveProgress(name, hero); err != nil {
+			log.Printf("save %s: %v", name, err)
+		}
+	}
+	saved := make([]lanstore.Item, len(items))
+	for i, it := range items {
+		saved[i] = lanstore.Item(it)
+	}
+	if err := store.SaveItems(name, saved); err != nil {
+		log.Printf("save items of %s: %v", name, err)
 	}
 }

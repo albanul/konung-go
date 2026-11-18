@@ -532,7 +532,7 @@ func (s *startScene) updateControls(mx, my int) {
 		button = buttonAt(s.Tables, mx, my)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
-		s.hand.Return(cur)
+		s.returnHand(cur)
 		if s.view != nil {
 			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderStance, On: !s.Party[0].InStance()})
 		} else {
@@ -541,7 +541,7 @@ func (s *startScene) updateControls(mx, my int) {
 		s.hud.press(hudStanceButton, gamestate.HUDButtonSlots(*s.ButtonEntity())[hudStanceButton])
 	}
 	weapon := func(mode int) {
-		s.hand.Return(cur)
+		s.returnHand(cur)
 		before := gamestate.HUDButtonSlots(*s.ButtonEntity())[hudWeaponButton]
 		if s.view != nil {
 			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderWeapon, Mode: mode})
@@ -579,17 +579,17 @@ func (s *startScene) updateControls(mx, my int) {
 		s.hud.press(hudLogButton, hudLogImage)
 	}
 	if (inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton) && !s.talk.log && !s.wmap.open {
-		s.hand.Return(cur)
+		s.returnHand(cur)
 		s.inv.toggle()
 		if s.inv.open {
-			s.hand.Box = 0 // 0x004246D1
+			s.clearBox() // 0x004246D1
 		}
 		s.hud.press(hudBagButton, hudBagImage)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyBackquote) && !s.inv.open && !s.talk.open() {
 		s.inv.toggleQuick()
 		if s.inv.quick {
-			s.hand.Box = 0 // 0x00437253: showing the strip empties the in-hand box
+			s.clearBox() // 0x00437253: showing the strip empties the in-hand box
 		}
 	}
 	switch {
@@ -605,7 +605,7 @@ func (s *startScene) updateControls(mx, my int) {
 		if _, inArea := s.wmap.regionAt(s.Game, mx, my); left && inArea {
 			s.mapClick(cur, mx, my)
 		} else if right {
-			s.hand.Return(cur)
+			s.returnHand(cur)
 		} else if left && !inView(mx, my) {
 			s.click(cur, mx, my, spot, false)
 		}
@@ -629,15 +629,13 @@ func (s *startScene) click(cur *gamestate.Entity, mx, my, spot int, right bool) 
 		}
 	}
 	if right && s.hand.Holding() {
-		s.hand.Return(cur) // 0x00423919
+		s.returnHand(cur) // 0x00423919
 		return
 	}
 	if s.view != nil {
-		// A LAN viewer: items, dialogues and trade are not synchronised
-		// (read-only); on the map clicks are orders.
-		if inView(mx, my) && !s.inv.open && !(s.inv.showStrip() && s.inv.strip.hit(mx, my)) {
-			s.viewClick(mx, my, right)
-		}
+		// A LAN viewer: item clicks and map clicks are orders
+		// (lanitems.go); dialogues are not synchronised yet.
+		s.lanClick(cur, mx, my, spot, right)
 		return
 	}
 	msg := 0
@@ -1043,10 +1041,13 @@ func (s *startScene) followPoint(w *walker) (x, y int, ok bool) {
 // in window 1 (the dialogue) and closes the quest log (window 2).
 func (s *startScene) escape() bool {
 	if len(s.Party) > 0 {
-		s.hand.Return(s.Current())
+		s.returnHand(s.Current())
 	}
 	switch {
 	case s.trade.open():
+		if s.view != nil {
+			s.lanPileApply(false) // the server closes its pile window too
+		}
 		s.trade.tr = nil // closes without applying: nothing changed yet
 		return false
 	case s.talk.d != nil:

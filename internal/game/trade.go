@@ -216,6 +216,10 @@ func (s *startScene) tradePortrait(k int) {
 // «Ok» reopens the window with the new state: the pile window while the
 // pile has items (0x004170A0), the trade through script 275 (0x00432FD0).
 func (s *startScene) applyTrade(accept bool) {
+	if s.view != nil {
+		s.lanPileApply(accept) // the server applies (lanitems.go)
+		return
+	}
 	tr := s.trade.tr
 	s.StoreWorld()
 	var cell mapdata.Cell

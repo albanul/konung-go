@@ -1,6 +1,8 @@
 package lanserver
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -27,6 +29,20 @@ type Host struct {
 	// experience; nil without accounts) and, for a player victim, the
 	// victim. The dedicated server scores and saves (0x0043B67C).
 	OnKill func(k Kill)
+	// Load gives an entering player's saved items (SAVITEMS.DAT,
+	// 0x0044444C; called under the lock); none: the hero keeps its type's
+	// starting gear. Save keeps a player's hero (its account values, nil
+	// without accounts) and items (0x00444918; called without the lock)
+	// when it leaves the world, dies, and at SaveAll (the session's end).
+	Load func(p netplay.PlayerInfo) []Item
+	Save func(p netplay.PlayerInfo, hero *netplay.Hero, items []Item)
+}
+
+// save is a Save call to make after the lock.
+type save struct {
+	p     netplay.PlayerInfo
+	hero  *netplay.Hero
+	items []Item
 }
 
 // Kill is a kill by a player's hero.
@@ -45,6 +61,9 @@ type hostPlayer struct {
 	slot  int
 	view  Viewer
 	looks map[int]netplay.Look // players' heroes sent to this player, as sent
+	// The items, piles and pile window as last sent (JSON), so only
+	// changes go out.
+	inv, piles, pileWin []byte
 }
 
 // NewHost connects w; send is the session's Server.Send.
@@ -75,11 +94,17 @@ func (h *Host) Start(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPay
 	}
 	hp.info, hp.hero = p, hero
 	hp.view, hp.looks = Viewer{}, map[int]netplay.Look{}
+	hp.inv, hp.piles, hp.pileWin = nil, nil, nil
 	m, c, err := h.W.AddPlayer(hp.slot, p.Model, hero)
 	if err != nil {
 		delete(h.players, p.ID)
 		delete(h.bySlot, hp.slot)
 		return netplay.EnterPayload{}, err
+	}
+	if h.Load != nil {
+		if items := h.Load(p); len(items) > 0 {
+			h.W.LoadItems(hp.slot, items)
+		}
 	}
 	e, _ := h.W.Hero(hp.slot)
 	return netplay.EnterPayload{Position: netplay.Position{Map: m, Row: c.Row, Col: c.Col, Facing: e.Variant}, Slot: hp.slot}, nil
@@ -98,11 +123,46 @@ func (h *Host) Slot(id string) (int, bool) {
 // Leave takes player id's hero out of the world (ServerConfig.OnLeave).
 func (h *Host) Leave(id string) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	var saves []save
 	if hp := h.players[id]; hp != nil {
+		saves = append(saves, h.saveOf(hp))
 		h.W.RemovePlayer(hp.slot)
 		delete(h.players, id)
 		delete(h.bySlot, hp.slot)
+	}
+	h.mu.Unlock()
+	h.save(saves)
+}
+
+// SaveAll keeps every player's hero and items (the session's end,
+// 0x0043459D).
+func (h *Host) SaveAll() {
+	h.mu.Lock()
+	var saves []save
+	for _, hp := range h.players {
+		saves = append(saves, h.saveOf(hp))
+	}
+	h.mu.Unlock()
+	h.save(saves)
+}
+
+// saveOf is what Save gets for hp now; h.mu held.
+func (h *Host) saveOf(hp *hostPlayer) save {
+	s := save{p: hp.info, items: h.W.SavedItems(hp.slot)}
+	if hp.hero != nil {
+		hero := h.W.Progress(hp.slot, *hp.hero)
+		hp.hero = &hero
+		s.hero = &hero
+	}
+	return s
+}
+
+func (h *Host) save(saves []save) {
+	if h.Save == nil {
+		return
+	}
+	for _, s := range saves {
+		h.Save(s.p, s.hero, s.items)
 	}
 }
 
@@ -125,6 +185,8 @@ func (h *Host) Order(p netplay.PlayerInfo, o netplay.OrderPayload) {
 		h.W.Weapon(hp.slot, o.Mode)
 	case netplay.OrderAttack:
 		h.W.Attack(hp.slot)
+	case netplay.OrderItem:
+		h.W.Item(hp.slot, o)
 	}
 }
 
@@ -159,20 +221,22 @@ func (h *Host) Advance(target, max int) int {
 	for ; h.W.Tick < target && n < max; n++ {
 		h.W.Step()
 	}
-	kills := h.report()
+	kills, saves := h.report()
 	h.mu.Unlock()
 	if h.OnKill != nil {
 		for _, k := range kills {
 			h.OnKill(k)
 		}
 	}
+	h.save(saves)
 	return n
 }
 
-// report sends the tick's events and views; h.mu held. It returns the
-// kills for OnKill.
-func (h *Host) report() []Kill {
+// report sends the tick's events, views and item changes; h.mu held. It
+// returns the kills for OnKill and the dead players' saves.
+func (h *Host) report() ([]Kill, []save) {
 	var kills []Kill
+	var saves []save
 	byMap := map[int][]netplay.Event{}
 	for _, ev := range h.W.TakeEvents() {
 		switch ev.Kind {
@@ -182,6 +246,7 @@ func (h *Host) report() []Kill {
 			byMap[ev.Map] = append(byMap[ev.Map], netplay.Event{Kind: netplay.EventAction, Entity: ev.Entity, Act: ev.Act, Row: ev.Row, Col: ev.Col})
 		case EventMapChange:
 			if hp := h.bySlot[ev.Entity]; hp != nil {
+				h.W.state(hp.slot).pile = nil // the pile window stays behind
 				h.sendTo(hp, netplay.MsgMapChange, netplay.EnterPayload{
 					Position: netplay.Position{Map: ev.Map, Row: ev.Row, Col: ev.Col, Facing: ev.Facing}, Slot: hp.slot})
 			}
@@ -199,6 +264,11 @@ func (h *Host) report() []Kill {
 			}
 			if v := h.bySlot[ev.Victim]; v != nil && ev.VictimPlayer {
 				k.Victim, k.VictimPlayer = v.info, true
+				// The dead hero is kept as it fell: its bag lies in the
+				// pile (DropLoot), equipment, jewellery, arrows and gold
+				// stay with the account.
+				h.W.closeItems(v.slot)
+				saves = append(saves, h.saveOf(v))
 			}
 			kills = append(kills, k)
 		}
@@ -208,27 +278,61 @@ func (h *Host) report() []Kill {
 		if !ok {
 			continue
 		}
-		// The players' heroes it has not seen (or whose look changed).
-		for _, c := range view.Chars {
-			if !c.Player || c.Entity == hp.slot {
+		// The players' heroes on its map it has not seen, or whose look
+		// changed (an item taken off or put on, worn out) even while they
+		// stand still.
+		for _, o := range h.players {
+			if o == hp || h.W.PlayerMap(o.slot) != view.Map {
 				continue
 			}
-			o := h.bySlot[c.Entity]
-			l, ok := h.W.PlayerLook(c.Entity)
-			if o == nil || !ok {
+			l, ok := h.W.PlayerLook(o.slot)
+			if !ok {
 				continue
 			}
-			if old, seen := hp.looks[c.Entity]; !seen || old != l {
-				hp.looks[c.Entity] = l
-				h.sendTo(hp, netplay.MsgPlayer, netplay.PlayerPayload{Slot: c.Entity, Player: o.info, Hero: o.hero, Look: l})
+			if old, seen := hp.looks[o.slot]; !seen || old != l {
+				hp.looks[o.slot] = l
+				h.sendTo(hp, netplay.MsgPlayer, netplay.PlayerPayload{Slot: o.slot, Player: o.info, Hero: o.hero, Look: l})
 			}
 		}
-		if ev := byMap[view.Map]; len(ev) > 0 {
-			h.sendTo(hp, netplay.MsgEvents, netplay.EventsPayload{Events: ev})
+		evs := byMap[view.Map]
+		for _, text := range h.W.TakeMessages(hp.slot) {
+			evs = append(evs, netplay.Event{Kind: netplay.EventMsg, Text: text})
+		}
+		if len(evs) > 0 {
+			h.sendTo(hp, netplay.MsgEvents, netplay.EventsPayload{Events: evs})
 		}
 		h.sendTo(hp, netplay.MsgView, view)
 	}
-	return kills
+	for _, hp := range h.players {
+		h.sendItems(hp)
+	}
+	return kills, saves
+}
+
+// sendItems sends hp its hero's items, its map's piles and its pile window
+// when they changed since the last send; h.mu held.
+func (h *Host) sendItems(hp *hostPlayer) {
+	inv, ok := h.W.Inventory(hp.slot)
+	if !ok {
+		return
+	}
+	changed := func(last *[]byte, v any) bool {
+		b, err := json.Marshal(v)
+		if err != nil || bytes.Equal(b, *last) {
+			return false
+		}
+		*last = b
+		return true
+	}
+	if changed(&hp.inv, inv) {
+		h.sendTo(hp, netplay.MsgInventory, inv)
+	}
+	if piles := h.W.Piles(h.W.PlayerMap(hp.slot)); changed(&hp.piles, piles) {
+		h.sendTo(hp, netplay.MsgPiles, piles)
+	}
+	if pw := h.W.PileWindow(hp.slot); changed(&hp.pileWin, pw) {
+		h.sendTo(hp, netplay.MsgPileWindow, pw)
+	}
 }
 
 func (h *Host) sendTo(hp *hostPlayer, t netplay.MsgType, payload any) {

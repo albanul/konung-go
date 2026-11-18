@@ -92,7 +92,7 @@ func (s *startScene) selectInWorld(i int) {
 // gatherOrder is the F key / HUD button 4 «Все ко мне» (0x004226C0): return
 // a held item, press the button, then the order (World.GatherOrder).
 func (s *startScene) gatherOrder() {
-	s.hand.Return(s.Current())
+	s.returnHand(s.Current())
 	s.hud.press(hudGatherButton, hudGatherImage)
 	s.GatherOrder()
 }
@@ -100,7 +100,7 @@ func (s *startScene) gatherOrder() {
 // attackOrder is the A key / HUD button 5 (0x00421698): return a held item,
 // press the button, then the order (World.AttackOrder).
 func (s *startScene) attackOrder() {
-	s.hand.Return(s.Current())
+	s.returnHand(s.Current())
 	s.hud.press(hudAttackButton, hudAttackImage)
 	s.AttackOrder()
 }

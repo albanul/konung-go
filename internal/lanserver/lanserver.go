@@ -51,6 +51,7 @@ type World struct {
 	players map[int]int // slot → map
 	moving  []move      // heroes that took an exit this tick
 	events  []Event
+	items   map[int]*itemState // by slot: the hand, the pile window (items.go)
 
 	// TeamSafe: heroes of one type (the same model) cannot hurt each other
 	// (the server's team-damage option).
@@ -138,6 +139,17 @@ func (w *World) hooks(n int) world.Hooks {
 			}
 		},
 		Protected: w.protected,
+		// A pick-up's message and pile window go to the hero picking up.
+		Message: func(text []byte) {
+			if a := w.Maps[n].Arriving; a != nil {
+				w.say(a.Entity, text)
+			}
+		},
+		OpenPileWindow: func(pile int) {
+			if a := w.Maps[n].Arriving; a != nil {
+				w.openPile(n, a.Entity, pile)
+			}
+		},
 	}
 }
 
@@ -229,6 +241,8 @@ func (w *World) RemovePlayer(slot int) {
 	if !ok {
 		return
 	}
+	w.closeItems(slot)
+	delete(w.items, slot) // a fresh hand and no pile window next time
 	delete(w.players, slot)
 	e, _ := w.Maps[m].RemoveMember(slot)
 	for _, i := range append(append(e.Equipment[:], e.Quiver), e.Bag[:]...) {

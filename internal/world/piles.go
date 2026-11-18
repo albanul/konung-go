@@ -26,6 +26,8 @@ func (s *World) Arrive(m *Member) {
 	if len(s.Party) == 0 || s.windowOpen() { // 0x004110F8: not while its window is open
 		return
 	}
+	s.Arriving = m // whose pick-up the message and the pile window are (LAN)
+	defer func() { s.Arriving = nil }()
 	e := &s.Party[m.K]
 	i, on := s.PileAt[m.Cell]
 	if !on || !s.Game.CanPickUp(s.Game.Piles[i], *e) {

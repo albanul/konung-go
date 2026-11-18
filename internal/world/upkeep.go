@@ -49,6 +49,13 @@ func (s *World) DropLoot(victim *gamestate.Entity, c mapdata.Cell, bonus, level 
 	if len(s.Party) > 0 {
 		curios = s.Party[0].Skills[4]
 	}
+	if s.LAN && s.PlayerGroup(victim.Group) {
+		// A player's hero keeps its gold (LAN_KONG.EXE's loot 0x43BD54
+		// drops only creatures' gold); its bag goes into the pile.
+		gold := victim.Gold
+		victim.Gold = 0
+		defer func() { victim.Gold = gold }()
+	}
 	i, ok := s.Game.DropLoot(victim, bonus, level, s.MapNumber, at, len(s.PileAt) < gamestate.MaxActivePiles,
 		&curios, s.Tables, s.Rng.IntN)
 	if len(s.Party) > 0 {

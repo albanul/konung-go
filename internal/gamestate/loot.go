@@ -326,3 +326,45 @@ func (g *Game) SetItemKind(i, category, typ int) int {
 	g.setItem(i, category, typ)
 	return i
 }
+
+// ItemRecord is item i's 16-byte record (zero when i is out of range).
+// The LAN server sends its players' item records with it.
+func (g *Game) ItemRecord(i int) (r [itemStride]byte) {
+	if i > 0 && (i+1)*itemStride <= len(g.items) {
+		copy(r[:], g.items[i*itemStride:])
+	}
+	return r
+}
+
+// SetItemRecord puts record r at item i (a LAN client mirroring the
+// server's items).
+func (g *Game) SetItemRecord(i int, r [itemStride]byte) {
+	if i > 0 && (i+1)*itemStride <= len(g.items) {
+		copy(g.items[i*itemStride:], r[:])
+	}
+}
+
+// SetItemKindTop is SetItemKind allocating from the top of the table down
+// (i == 0), so a LAN client's drawing-only records stay clear of the
+// server's item indices, which it mirrors (SetItemRecord).
+func (g *Game) SetItemKindTop(i, category, typ int) int {
+	if i == 0 {
+		for j := len(g.items)/itemStride - 1; j >= 1; j-- {
+			if int8(g.items[j*itemStride]) < 0 {
+				i = j
+				break
+			}
+		}
+		if i == 0 {
+			return 0
+		}
+		r := g.items[i*itemStride:]
+		r[0xE], r[1], r[2] = 0, 0xFF, 0xFF
+		binary.LittleEndian.PutUint16(r[0xC:], 0)
+	}
+	g.setItem(i, category, typ)
+	return i
+}
+
+// ItemStride is an item record's size.
+const ItemStride = itemStride

@@ -28,9 +28,9 @@ import (
 // A as in single player. The own hero is party member 0 (group 0 here; its
 // entity is its server slot) and feeds the HUD.
 //
-// Not synchronised yet, so read-only or off in a LAN world: item moves in
-// the character window and the bag strip, using items, dialogues and
-// trade, piles on the ground, «Все ко мне».
+// Items, piles and the pile window are the server's (lanitems.go). Not
+// synchronised yet, so off in a LAN world: dialogues and trade, «Все ко
+// мне», the shovel's dig mode.
 
 // lanView is a viewer scene's link to the server.
 type lanView struct {
@@ -190,7 +190,8 @@ func (s *startScene) applyPlayerLook(slot int, vp *viewPlayer) {
 			e.Equipment[k] = 0
 			continue
 		}
-		vp.items[k] = s.Game.SetItemKind(vp.items[k], it.Category, it.Type)
+		// From the table's top: the low indices mirror the server's items.
+		vp.items[k] = s.Game.SetItemKindTop(vp.items[k], it.Category, it.Type)
 		e.Equipment[k] = vp.items[k]
 	}
 	setStance(e, l.Stance)
@@ -347,6 +348,8 @@ func (s *startScene) applyEvents(ev []netplay.Event) {
 			if w, _ := s.Combatant(e.Entity); w != nil {
 				s.actionSound(w, e.Act)
 			}
+		case netplay.EventMsg:
+			s.showMessage(e.Text) // a pick-up's or an item click's message
 		}
 	}
 }

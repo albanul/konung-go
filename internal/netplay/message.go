@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 5
+const ProtocolVersion = 6
 
 // MsgType identifies a message.
 type MsgType int
@@ -55,6 +55,9 @@ const (
 	MsgPlayer                          // server → client: PlayerPayload, a player's hero as it looks (0x5A)
 	MsgEvents                          // server → client: EventsPayload, sounds on the own hero's map
 	MsgMapChange                       // server → client: EnterPayload, the own hero took an exit to another map
+	MsgInventory                       // server → client: InventoryPayload, the own hero's items and hand (items.go)
+	MsgPiles                           // server → client: PilesPayload, the piles on the own hero's map
+	MsgPileWindow                      // server → client: PileWindowPayload, the pile window opened, changed or closed
 )
 
 var msgNames = map[MsgType]string{
@@ -62,7 +65,8 @@ var msgNames = map[MsgType]string{
 	MsgPlayerJoined: "player-joined", MsgPlayerLeft: "player-left", MsgSession: "session",
 	MsgChat: "chat", MsgGame: "game", MsgEnter: "enter", MsgEntered: "entered",
 	MsgClock: "clock", MsgHero: "hero", MsgOrder: "order", MsgView: "view", MsgPlayer: "player",
-	MsgEvents: "events", MsgMapChange: "map-change",
+	MsgEvents: "events", MsgMapChange: "map-change", MsgInventory: "inventory", MsgPiles: "piles",
+	MsgPileWindow: "pile-window",
 }
 
 func (t MsgType) String() string {

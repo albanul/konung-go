@@ -62,4 +62,7 @@ type World struct {
 	// walks onto an exit leaves alone (Hooks.MemberExit) instead of the
 	// whole party changing maps. Single-player never sets it.
 	LAN bool
+	// Arriving is the member whose pick-up runs (Arrive), nil otherwise:
+	// the LAN server sends the pick-up's message and pile window to it.
+	Arriving *Member
 }
