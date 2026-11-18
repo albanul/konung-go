@@ -1,6 +1,7 @@
 package game
 
 import (
+	"konung1.5/internal/world"
 	"os"
 	"testing"
 
@@ -27,8 +28,8 @@ func TestStoreWorldKeepsCharacters(t *testing.T) {
 		}
 	}
 	moved := mapdata.Cell{Row: villager.Row + 2, Col: villager.Col}
-	s := &startScene{game: g, npcs: []*npc{{walker: walker{entity: villager.Index, cell: moved, dir: 3}}}}
-	s.storeWorld()
+	s := &startScene{World: &world.World{Game: g, NPCs: []*npc{{Walker: walker{Entity: villager.Index, Cell: moved, Dir: 3}}}}}
+	s.StoreWorld()
 	for _, p := range g.OnMap(1, nil) {
 		if p.Index == villager.Index {
 			if p.Row != moved.Row || p.Col != moved.Col || p.Variant != 3 {
@@ -57,10 +58,10 @@ func TestNewGameEachHero(t *testing.T) {
 		if err != nil {
 			t.Fatalf("model %d: %v", model, err)
 		}
-		if w.mapNumber != gamestate.HeroStartMap(model) || w.hero == nil {
-			t.Fatalf("model %d: map %d, hero %v", model, w.mapNumber, w.hero != nil)
+		if w.MapNumber != gamestate.HeroStartMap(model) || w.Hero == nil {
+			t.Fatalf("model %d: map %d, hero %v", model, w.MapNumber, w.Hero != nil)
 		}
-		e := w.game.Entities[w.hero.entity]
+		e := w.Game.Entities[w.Hero.Entity]
 		if e.Model != model || e.Level != 1 || e.Flags4 != gamestate.ClassHunter || e.BaseStats != [4]int{3, 3, 15, 10} {
 			t.Errorf("model %d: hero %+v", model, e)
 		}
@@ -82,7 +83,7 @@ func TestCamera(t *testing.T) {
 	if !inside() {
 		t.Fatalf("camera %d,%d outside the limits (%d×%d)", s.camX, s.camY, s.camW, s.camH)
 	}
-	if f, ok := s.hero.frame(s.tick); ok {
+	if f, ok := walkerFrame(s.Hero, s.Tick); ok {
 		x, y := f.x-s.camX, f.y-s.camY
 		atLimit := s.camX+viewLeft == cameraMinX || s.camY+viewTop == cameraMinY ||
 			s.camX+viewLeft+viewW == s.camW || s.camY+viewTop+viewH == s.camH
@@ -132,7 +133,7 @@ func TestFollowStopsScroll(t *testing.T) {
 		}
 		last = s.camX
 	}
-	x, _, _ := s.followPoint(s.hero)
+	x, _, _ := s.followPoint(s.Hero)
 	if left := s.camX + viewLeft; x-left != followMarginX && left != cameraMinX {
 		t.Errorf("hero %d px inside the view, want %d", x-left, followMarginX)
 	}

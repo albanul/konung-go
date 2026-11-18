@@ -36,7 +36,7 @@ type soundSystem struct {
 	track   int // 0x00A3E7D4
 	musicDB int
 	soundOn bool // setting 0x00A3E75C
-	rng     *rand.Rand
+	Rng     *rand.Rand
 }
 
 var sfx *soundSystem
@@ -44,7 +44,7 @@ var sfx *soundSystem
 // startAudio loads SOUNDS.RES and MUSICS.RES from the game directory and
 // starts a random track (0x00438E80), at the volume of the music setting.
 func startAudio(dir string, musicOn, soundOn bool) {
-	a := &soundSystem{sounds: map[int][]byte{}, soundOn: soundOn, rng: rand.New(rand.NewPCG(7, 9))}
+	a := &soundSystem{sounds: map[int][]byte{}, soundOn: soundOn, Rng: rand.New(rand.NewPCG(7, 9))}
 	if f, err := os.Open(filepath.Join(dir, "SOUNDS.RES")); err != nil {
 		log.Print(err)
 	} else {
@@ -72,7 +72,7 @@ func startAudio(dir string, musicOn, soundOn bool) {
 	}
 	sfx = a
 	if len(a.tracks) > 0 {
-		a.playTrack(a.rng.IntN(len(a.tracks)))
+		a.playTrack(a.Rng.IntN(len(a.tracks)))
 	}
 }
 
@@ -101,7 +101,7 @@ func (a *soundSystem) play(id, volume, pan int) {
 	}
 	rate := gamestate.SoundRates[0]
 	if gamestate.SoundVariants(id) {
-		rate = gamestate.SoundRates[a.rng.IntN(len(gamestate.SoundRates))]
+		rate = gamestate.SoundRates[a.Rng.IntN(len(gamestate.SoundRates))]
 	}
 	l, r := resfmt.DSPanGains(pan)
 	g := resfmt.DSGain(volume)
@@ -152,7 +152,7 @@ func (a *soundSystem) update() {
 	if a == nil || len(a.tracks) == 0 || a.music == nil || a.music.IsPlaying() {
 		return
 	}
-	next := a.rng.IntN(len(a.tracks))
+	next := a.Rng.IntN(len(a.tracks))
 	if next == a.track {
 		next = (next + 1) % len(a.tracks)
 	}
@@ -166,10 +166,10 @@ func (s *startScene) playAt(id int, c mapdata.Cell) {
 		return
 	}
 	vol, pan := 0, 0
-	if s.hero != nil {
-		hx, hy := mapdata.CellCenter(s.hero.cell)
+	if s.Hero != nil {
+		hx, hy := mapdata.CellCenter(s.Hero.Cell)
 		x, y := mapdata.CellCenter(c)
-		vol, pan = gamestate.SoundVolume(x-hx, y-hy), gamestate.SoundPan(c.Col-s.hero.cell.Col)
+		vol, pan = gamestate.SoundVolume(x-hx, y-hy), gamestate.SoundPan(c.Col-s.Hero.Cell.Col)
 	}
 	sfx.play(id, vol, pan)
 }
@@ -179,8 +179,8 @@ func (s *startScene) actionSound(w *walker, act int) {
 	if sfx == nil {
 		return
 	}
-	if id := gamestate.ActionSound(s.entity(w.entity), act, w == s.hero, sfx.rng.IntN); id > 0 {
-		s.playAt(id, w.cell)
+	if id := gamestate.ActionSound(s.Entity(w.Entity), act, w == s.Hero, sfx.Rng.IntN); id > 0 {
+		s.playAt(id, w.Cell)
 	}
 }
 
@@ -189,14 +189,14 @@ func (s *startScene) actionSound(w *walker, act int) {
 // (startScene.idleLoop).
 func (s *startScene) soundTick() {
 	if sfx == nil {
-		s.game.Sounds = s.game.Sounds[:0]
+		s.Game.Sounds = s.Game.Sounds[:0]
 		return
 	}
-	for _, id := range s.game.Sounds {
+	for _, id := range s.Game.Sounds {
 		sfx.play(id, 0, 0)
 	}
-	s.game.Sounds = s.game.Sounds[:0]
-	if id := gamestate.AmbientSound(s.mapNumber, sfx.rng.IntN); id >= 0 {
+	s.Game.Sounds = s.Game.Sounds[:0]
+	if id := gamestate.AmbientSound(s.MapNumber, sfx.Rng.IntN); id >= 0 {
 		sfx.play(id, 0, 0)
 	}
 }

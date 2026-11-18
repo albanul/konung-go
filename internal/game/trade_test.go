@@ -16,13 +16,13 @@ func (w *tradeWindow) clickCell(k, c int) (int, int) {
 // pile window; taking the pile's item and offering a bag item swaps them.
 func TestOverweightOpensPileWindow(t *testing.T) {
 	s := newVolkScene(t)
-	hero := &s.party[0]
+	hero := &s.Party[0]
 	ground := hero.Bag[4]
 	hero.Bag[4] = 0
-	i, _ := s.game.DropItem(-1, s.mapNumber, s.hero.cell.Row, s.hero.cell.Col, ground)
-	s.pileAt[s.hero.cell] = i
+	i, _ := s.Game.DropItem(-1, s.MapNumber, s.Hero.Cell.Row, s.Hero.Cell.Col, ground)
+	s.PileAt[s.Hero.Cell] = i
 	hero.Stats[3] = -40 // max weight 10000 − 13333: nothing more fits
-	s.arrive(s.lead())
+	s.Arrive(s.Lead())
 	if !s.trade.open() || s.trade.tr.Lists[gamestate.TradeGoods][0] != ground {
 		t.Fatalf("pile window not open (%v)", s.trade.tr)
 	}
@@ -40,13 +40,13 @@ func TestOverweightOpensPileWindow(t *testing.T) {
 		t.Fatal("click did not offer the item")
 	}
 	hero.Stats[3] = 30 // strong enough now
-	s.game.Entities[hero.Index].Stats[3] = 30
+	s.Game.Entities[hero.Index].Stats[3] = 30
 	ok := s.trade.layout.Buttons[1]
 	s.tradeClick(ok.Min.X+5, ok.Min.Y+5)
-	if s.party[0].Bag[0] != ground {
-		t.Fatalf("bag after Ok: %v", s.party[0].Bag[:4])
+	if s.Party[0].Bag[0] != ground {
+		t.Fatalf("bag after Ok: %v", s.Party[0].Bag[:4])
 	}
-	if p := s.game.Piles[i]; p.Items[0] != offered {
+	if p := s.Game.Piles[i]; p.Items[0] != offered {
 		t.Errorf("pile after Ok: %v", p.Items[:3])
 	}
 	if !s.trade.open() {

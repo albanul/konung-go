@@ -29,22 +29,22 @@ func TestSaveAndLoadScene(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w.mapNumber != 1 {
-		t.Fatalf("Volk starts on KONUNG.%d, want KONUNG.1", w.mapNumber)
+	if w.MapNumber != 1 {
+		t.Fatalf("Volk starts on KONUNG.%d, want KONUNG.1", w.MapNumber)
 	}
-	if w.hero == nil {
+	if w.Hero == nil {
 		t.Fatal("no hero")
 	}
-	cell := mapdata.Cell{Row: w.hero.cell.Row + 2, Col: w.hero.cell.Col}
-	w.hero.cell = cell
-	w.party[0].HP = 777
+	cell := mapdata.Cell{Row: w.Hero.Cell.Row + 2, Col: w.Hero.Cell.Col}
+	w.Hero.Cell = cell
+	w.Party[0].HP = 777
 	drop := mapdata.Cell{Row: cell.Row + 4, Col: cell.Col}
-	w.game.Piles = append(w.game.Piles, gamestate.Pile{Index: -1, Map: 1, Row: drop.Row, Col: drop.Col, Gold: 5})
-	w.pileAt[drop] = len(w.game.Piles) - 1
-	w.tick = 40
+	w.Game.Piles = append(w.Game.Piles, gamestate.Pile{Index: -1, Map: 1, Row: drop.Row, Col: drop.Col, Gold: 5})
+	w.PileAt[drop] = len(w.Game.Piles) - 1
+	w.Tick = 40
 
 	tmp := t.TempDir()
-	data, err := w.game.MarshalSave(w.saveState())
+	data, err := w.Game.MarshalSave(w.saveState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,21 +55,21 @@ func TestSaveAndLoadScene(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.hero == nil || l.hero.cell != cell {
-		t.Fatalf("hero at %v, want %v", l.hero.cell, cell)
+	if l.Hero == nil || l.Hero.Cell != cell {
+		t.Fatalf("hero at %v, want %v", l.Hero.Cell, cell)
 	}
-	if l.party[0].HP != 777 {
-		t.Errorf("hero HP %d", l.party[0].HP)
+	if l.Party[0].HP != 777 {
+		t.Errorf("hero HP %d", l.Party[0].HP)
 	}
-	if l.gameTime() != 40 {
-		t.Errorf("time %d", l.gameTime())
+	if l.GameTime() != 40 {
+		t.Errorf("time %d", l.GameTime())
 	}
-	i, ok := l.pileAt[drop]
-	if !ok || l.game.Piles[i].Gold != 5 || l.game.Piles[i].Index != -1 {
-		t.Errorf("dropped pile: %v %+v", ok, l.game.Piles[i])
+	i, ok := l.PileAt[drop]
+	if !ok || l.Game.Piles[i].Gold != 5 || l.Game.Piles[i].Index != -1 {
+		t.Errorf("dropped pile: %v %+v", ok, l.Game.Piles[i])
 	}
-	if len(l.npcs) != len(w.npcs) {
-		t.Errorf("%d characters, want %d", len(l.npcs), len(w.npcs))
+	if len(l.NPCs) != len(w.NPCs) {
+		t.Errorf("%d characters, want %d", len(l.NPCs), len(w.NPCs))
 	}
 	if l.saveName(time.Time{})[0] == ' ' {
 		t.Error("no location name")

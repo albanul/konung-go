@@ -89,7 +89,7 @@ func (u *lanUI) openNewHero() {
 		return
 	}
 	if u.hero != nil {
-		u.look = u.hero.Look // the account's look, when known
+		u.Look = u.hero.Look // the account's look, when known
 	}
 	u.disconnect()
 	u.addr.Text = nil
@@ -104,7 +104,7 @@ func (u *lanUI) openNewHero() {
 func (u *lanUI) setNewLook() {
 	gamestate.SelectHero(&u.nh, u.previewModel)
 	u.nh.Equipment = [6]int{} // the LAN template has no items (0x0042E0DB)
-	u.nh.PaletteOffset = uint32(gamestate.LANLookPalette(u.previewModel, u.look)) * 512
+	u.nh.PaletteOffset = uint32(gamestate.LANLookPalette(u.previewModel, u.Look)) * 512
 }
 
 func (u *lanUI) newRect(i int) gamestate.Rect { return u.exe.NewHeroRects[i] }
@@ -149,7 +149,7 @@ func (u *lanUI) updateNewHero(mx, my int, click bool) {
 	case hit == gamestate.NewHeroCancel: // 0x0042E826: the LAN menu
 		u.toMenu()
 	case hit == gamestate.LANNewPortrait:
-		u.look = (u.look + 1) % 8 // [0xA6EB4C]
+		u.Look = (u.Look + 1) % 8 // [0xA6EB4C]
 		u.setNewLook()
 	case hit == gamestate.LANNewClanList:
 		r := u.newRect(gamestate.LANNewClanList)
@@ -174,7 +174,7 @@ func (u *lanUI) clanRows() int {
 // saved, and the login opens.
 func (u *lanUI) newHeroOK() {
 	c := gamestate.ChoiceOf(u.nh)
-	u.pending = &netplay.HeroChoice{Class: int(c.Class), Archery: c.Archery, Skill: c.Skill, Stats: c.Stats, Look: u.look}
+	u.pending = &netplay.HeroChoice{Class: int(c.Class), Archery: c.Archery, Skill: c.Skill, Stats: c.Stats, Look: u.Look}
 	u.addClan(u.clan.Text)
 	u.saveConfig()
 	u.enterLogin()

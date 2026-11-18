@@ -1,6 +1,6 @@
 # Village buildings, the bridge gate and the voevoda's training
 
-Status: traced against `konung.exe`. The map-load object IDs are checked against every `GAME.N` and `KONUNG.N`. Ported: `gamestate.Game.SettlementPass` (`production.go`), `buildingPass`, `voevodaPass`, `BuildingObjects` (`buildings.go`), `startScene.updateBuildings` / `placeObjects` (`internal/game/buildings.go`); setting buildings on fire (`Game.ArrowOnBuilding`, `LineOfFireBuilding`, `startScene.shootBuilding` / `arrowOnBuilding`); the bridge gate (`Game.ExitOpen`). `cmd/map-render -game` draws the buildings in their state. Tests: `TestBuildingObjectsMatchMaps`, `TestRuinRebuilt`, `TestBuildingBurns`, `TestVoevodaTrains`, `TestBuildingSpriteFollowsState`, `TestArrowsSetBuildingOnFire`, `TestArrowOnBuilding`, `TestLineOfFireBuilding`, `TestOilMakesIncendiaryArrows`, `TestExitGate`.
+Status: traced against `konung.exe`. The map-load object IDs are checked against every `GAME.N` and `KONUNG.N`. Ported: `gamestate.Game.SettlementPass` (`production.go`), `buildingPass`, `voevodaPass`, `BuildingObjects` (`buildings.go`), `startScene.updateBuildings` / `placeObjects` (`internal/game/buildings.go`); setting buildings on fire (`Game.ArrowOnBuilding`, `LineOfFireBuilding`, `World.ShootBuilding` / `World.ArrowOnBuilding`); the bridge gate (`Game.ExitOpen`). `cmd/map-render -game` draws the buildings in their state. Tests: `TestBuildingObjectsMatchMaps`, `TestRuinRebuilt`, `TestBuildingBurns`, `TestVoevodaTrains`, `TestBuildingSpriteFollowsState`, `TestArrowsSetBuildingOnFire`, `TestArrowOnBuilding`, `TestLineOfFireBuilding`, `TestOilMakesIncendiaryArrows`, `TestExitGate`.
 
 Both run in the settlement pass `0x0041D39F`, every 16 ticks (`(time + 7) & 0xF == 0`), for all 20 settlements. The rest of the pass (tribute, healer, smith) is in [trade: production](konung_trade.md#shop-stock-production). The surrender and alarm checks are in [combat](konung_combat.md).
 
@@ -103,12 +103,12 @@ Only the selection's bow can do it, with **incendiary arrows**: arrows whose spe
    * With a flagged target placement, the line of fire `0x0041130C` runs with the building as the target. At the first arrow-blocking cell (`0xC000`), the ray point (x, y + 30) is tested against the building's drawn image (`0x0043F89C`). On a hit, the aim `+0x0C/+0x0E` moves to that cell and the result is 1. Otherwise the result is 0.
    * A result of 1 shoots (action 4) and keeps the order, so the hero keeps shooting until the line is lost or the arrows run out. 0 or −1 ends it.
 
-   Port: `startScene.shootBuilding`, `gamestate.LineOfFireBuilding`.
+   Port: `World.ShootBuilding`, `gamestate.LineOfFireBuilding`.
 5. **Flight** (`0x0042135D`): an arrow point on a blocking cell removes the arrow. Before that, the game checks that the **shooter's current target** is a flagged building of the map's settlement and that the point is on its image. If so, the first building record on that placement (`0x0042138A`):
    * on `rand() % 100 < 21`: state 3, timer 1;
    * in any case: `+0x4B2 |= 0x15` (angry), and the village group is alarmed (`0x004248A0`).
 
-   The flight does not test the arrow's special; the incendiary check is only in the order. A ruin or a building under construction that is hit also jumps to state 3 and burns. Port: `startScene.arrowOnBuilding`, `gamestate.Game.ArrowOnBuilding`.
+   The flight does not test the arrow's special; the incendiary check is only in the order. A ruin or a building under construction that is hit also jumps to state 3 and burns. Port: `World.ArrowOnBuilding`, `gamestate.Game.ArrowOnBuilding`.
 6. The settlement pass then burns the building down (states 4, 5, then 6, [above](#pass-0x0041d939)) and swaps its sprite. Burning objects carry flames. The villagers rebuild it when they can.
 
 ## The bridge gate

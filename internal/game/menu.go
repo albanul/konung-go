@@ -357,9 +357,9 @@ func (m *Menu) Update() error {
 			m.writeConfig()
 		}
 		m.world.Update()
-		if f := m.world.film; f != "" {
-			toMenu := m.world.filmToMenu
-			m.world.film = ""
+		if f := m.world.Film; f != "" {
+			toMenu := m.world.FilmToMenu
+			m.world.Film = ""
 			m.playFilm(f, false, func() {
 				if toMenu {
 					m.inWorld = false // state 7; m.running stays set
@@ -367,7 +367,7 @@ func (m *Menu) Update() error {
 			})
 			return nil
 		}
-		if m.world.gameOver() {
+		if m.world.GameOver() {
 			// 0x004376A8: the hero died; no game is running any more
 			// ([0x00A3E728] = 0), GAMEOVER.FLM plays, then the menu (state 7).
 			m.running = false
@@ -407,8 +407,8 @@ func (m *Menu) Update() error {
 		if left {
 			m.inLAN = false
 		}
-		if m.lan.resume {
-			m.lan.resume = false
+		if m.lan.Resume {
+			m.lan.Resume = false
 			if m.lanWorld && m.lan.client != nil {
 				m.inLAN, m.inWorld = false, true
 			} else {
@@ -534,17 +534,17 @@ func (m *Menu) updateSaves() error {
 	if s.selected < 0 {
 		return nil
 	}
-	switch s.mode {
+	switch s.Mode {
 	case screenSave:
 		// A save stores the settings 0x00A3E71C and 0x00A3E734.
-		m.world.game.Options = [2]int32{m.config.DayNight, m.config.Lighting}
+		m.world.Game.Options = [2]int32{m.config.DayNight, m.config.Lighting}
 		if err := s.save(s.selected, m.world); err != nil {
 			log.Printf("save slot %d: %v", s.selected, err)
 			return nil
 		}
 		m.inWorld = true
 	case screenLoad:
-		w, err := m.assets.loadSaved(s.dir, s.selected)
+		w, err := m.assets.loadSaved(s.Dir, s.selected)
 		if err != nil {
 			log.Printf("load slot %d: %v", s.selected, err)
 			return nil
@@ -552,7 +552,7 @@ func (m *Menu) updateSaves() error {
 		m.leaveLANWorld()
 		m.world, m.running, m.inWorld = w, true, true
 		// Loading restores them (0x004249AC); KONUNG.CFG is not rewritten.
-		m.config.DayNight, m.config.Lighting = w.game.Options[0], w.game.Options[1]
+		m.config.DayNight, m.config.Lighting = w.Game.Options[0], w.Game.Options[1]
 	}
 	return nil
 }

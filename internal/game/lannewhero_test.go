@@ -60,7 +60,7 @@ func TestLANNewHero(t *testing.T) {
 	if !gamestate.LANTradeStat(&u.nh, 2, true) {
 		t.Fatalf("raise Лов refused with %d points", u.nh.FreeExp)
 	}
-	u.look = 5
+	u.Look = 5
 	u.setNewLook()
 	if u.nh.Model != gamestate.HeroMichail || u.nh.PaletteOffset != 39*512 {
 		t.Errorf("preview: model %d palette %d", u.nh.Model, u.nh.PaletteOffset/512)

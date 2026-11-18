@@ -3,6 +3,7 @@ package game
 import (
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/netplay"
+	"konung1.5/internal/world"
 )
 
 // Fights between players, the client's side (netplay/fight.go): a blow or
@@ -19,7 +20,7 @@ func (s *startScene) strikeRemote(attacker *gamestate.Entity, target int, ranged
 	if r == nil {
 		return false
 	}
-	if len(s.party) > 0 && attacker.Index == s.party[0].Index && s.onAttack != nil {
+	if len(s.Party) > 0 && attacker.Index == s.Party[0].Index && s.onAttack != nil {
 		s.onAttack(r.info.ID, ranged)
 	}
 	return true
@@ -28,20 +29,20 @@ func (s *startScene) strikeRemote(attacker *gamestate.Entity, target int, ranged
 // canTarget reports whether the own hero may attack r's hero: always,
 // unless the server protects teams and r is of the own team (hero type).
 func (s *startScene) canTarget(r *remotePlayer) bool {
-	return !s.teamSafe || len(s.party) == 0 || r.info.Model != s.party[0].Model
+	return !s.teamSafe || len(s.Party) == 0 || r.info.Model != s.Party[0].Model
 }
 
 // hitWalker is the walker and entity of player id's hero on this map: the
 // own hero when id is self.
 func (s *startScene) hitWalker(id, self string) (*walker, *gamestate.Entity) {
 	if id == self {
-		if len(s.party) == 0 {
+		if len(s.Party) == 0 {
 			return nil, nil
 		}
-		return s.combatant(s.party[0].Index)
+		return s.Combatant(s.Party[0].Index)
 	}
-	if r := s.remotes[id]; r != nil && r.entity >= 0 {
-		return s.combatant(r.entity)
+	if r := s.remotes[id]; r != nil && r.Entity >= 0 {
+		return s.Combatant(r.Entity)
 	}
 	return nil, nil
 }
@@ -52,14 +53,14 @@ func (s *startScene) remoteHit(h netplay.HitPayload, self string) {
 	// The attacker's swing or shot as seen here (its own client plays it
 	// already).
 	if h.Attacker != self {
-		if aw, _ := s.hitWalker(h.Attacker, self); aw != nil && !aw.walking && aw.act == 0 {
+		if aw, _ := s.hitWalker(h.Attacker, self); aw != nil && !aw.Walking && aw.Act == 0 {
 			if tw != nil {
-				aw.dir = facing(aw.cell, tw.cell)
+				aw.Dir = world.Facing(aw.Cell, tw.Cell)
 			}
 			if h.Ranged {
-				aw.startAct(gamestate.ActShoot)
+				aw.StartAct(gamestate.ActShoot)
 			} else {
-				aw.startAct(gamestate.ActAttack)
+				aw.StartAct(gamestate.ActAttack)
 			}
 		}
 	}
@@ -72,24 +73,24 @@ func (s *startScene) remoteHit(h netplay.HitPayload, self string) {
 	switch {
 	case h.Killed:
 		te.HP = 0
-		tw.halt()
-		tw.startAct(gamestate.ActDeath)
+		tw.Halt()
+		tw.StartAct(gamestate.ActDeath)
 	case h.Result == netplay.HitHeavy:
 		te.HP = h.HP
-		s.flinch(tw)
+		s.Flinch(tw)
 	case h.Result == netplay.HitLight:
 		te.HP = h.HP
 	case h.Result == netplay.HitDodged && h.Attacker == self:
-		s.playAt(gamestate.SoundDodge, tw.cell)
+		s.playAt(gamestate.SoundDodge, tw.Cell)
 	}
 }
 
 // ownHero takes the server's values after a change of the own hero (the
 // kill experience, MsgHero; the original's 0x5C).
 func (s *startScene) ownHero(h netplay.Hero) {
-	if len(s.party) == 0 {
+	if len(s.Party) == 0 {
 		return
 	}
-	e := &s.party[0]
+	e := &s.Party[0]
 	e.FreeExp, e.Fencing, e.Marksmanship = h.FreePoints, h.Fencing, h.Archery
 }

@@ -4,23 +4,24 @@ import (
 	"testing"
 
 	"konung1.5/internal/mapdata"
+	"konung1.5/internal/world"
 )
 
 func TestHeroWalksToGoal(t *testing.T) {
 	start := mapdata.Cell{Row: 86, Col: 33}
-	h := &walker{cell: start}
+	h := &walker{Cell: start}
 	wall := func(c mapdata.Cell) bool { return c.Col == 36 && c.Row > 80 && c.Row < 96 } // force a detour
 	goal := mapdata.Cell{Row: 88, Col: 40}
-	h.blocked = wall
-	h.walkTo(goal)
-	if len(h.path) == 0 {
+	h.Blocked = wall
+	h.WalkTo(goal)
+	if len(h.Path) == 0 {
 		t.Fatal("no path planned")
 	}
-	steps := len(h.path)
+	steps := len(h.Path)
 	// One tick per walk frame, plus one per octant turned before a step
 	// (0x004391BC).
-	turns, dir, at := 0, h.dir, start
-	for _, c := range h.path {
+	turns, dir, at := 0, h.Dir, start
+	for _, c := range h.Path {
 		for _, n := range mapdata.Neighbors(at) {
 			if n.Cell == c {
 				d := (int(n.Dir) - int(dir) + 8) % 8
@@ -31,29 +32,29 @@ func TestHeroWalksToGoal(t *testing.T) {
 		at = c
 	}
 	ticks := 0
-	for ; ticks < 100000 && (h.walking || len(h.path) > 0); ticks++ {
-		prev := h.cell
-		h.update()
-		if wall(h.cell) {
-			t.Fatalf("hero entered blocked cell %v", h.cell)
+	for ; ticks < 100000 && (h.Walking || len(h.Path) > 0); ticks++ {
+		prev := h.Cell
+		h.Update()
+		if wall(h.Cell) {
+			t.Fatalf("hero entered blocked cell %v", h.Cell)
 		}
-		if h.cell != prev {
+		if h.Cell != prev {
 			adjacent := false
 			for _, n := range mapdata.Neighbors(prev) {
-				adjacent = adjacent || n.Cell == h.cell
+				adjacent = adjacent || n.Cell == h.Cell
 			}
 			if !adjacent {
-				t.Fatalf("hero jumped from %v to %v", prev, h.cell)
+				t.Fatalf("hero jumped from %v to %v", prev, h.Cell)
 			}
 		}
 	}
-	if want := steps*defaultWalkSteps + turns; ticks != want {
-		t.Errorf("walk took %d ticks, want %d frames per cell + %d turns = %d", ticks, defaultWalkSteps, turns, want)
+	if want := steps*world.DefaultWalkSteps + turns; ticks != want {
+		t.Errorf("walk took %d ticks, want %d frames per cell + %d turns = %d", ticks, world.DefaultWalkSteps, turns, want)
 	}
-	if h.cell != goal || h.walking {
-		t.Fatalf("hero stopped at %v (walking %v), want %v", h.cell, h.walking, goal)
+	if h.Cell != goal || h.Walking {
+		t.Fatalf("hero stopped at %v (walking %v), want %v", h.Cell, h.Walking, goal)
 	}
-	if x, y := h.position(); true {
+	if x, y := h.Position(); true {
 		if gx, gy := mapdata.CellCenter(goal); x != float64(gx) || y != float64(gy) {
 			t.Fatalf("hero at %.1f,%.1f, want cell centre %d,%d", x, y, gx, gy)
 		}
@@ -61,15 +62,15 @@ func TestHeroWalksToGoal(t *testing.T) {
 	// Re-targeting mid-step keeps the step in progress.
 	// The walker holds the cell it is entering from the step's start
 	// (0x0041492E) and frees the one it left.
-	h.walkTo(mapdata.Cell{Row: 88, Col: 30})
-	h.update()
-	entering, left := h.cell, h.from
-	if !h.walking || entering == goal || left != goal {
-		t.Fatalf("step: walking %v from %v into %v", h.walking, left, entering)
+	h.WalkTo(mapdata.Cell{Row: 88, Col: 30})
+	h.Update()
+	entering, left := h.Cell, h.From
+	if !h.Walking || entering == goal || left != goal {
+		t.Fatalf("step: walking %v from %v into %v", h.Walking, left, entering)
 	}
-	h.walkTo(mapdata.Cell{Row: 70, Col: 40})
-	if !h.walking || h.cell != entering || h.from != left {
-		t.Fatalf("re-target dropped the current step into %v (now %v)", entering, h.cell)
+	h.WalkTo(mapdata.Cell{Row: 70, Col: 40})
+	if !h.Walking || h.Cell != entering || h.From != left {
+		t.Fatalf("re-target dropped the current step into %v (now %v)", entering, h.Cell)
 	}
 }
 
@@ -77,18 +78,18 @@ func TestHeroWalksToGoal(t *testing.T) {
 // idle, advances one frame per tick and starts over after its last frame
 // (0x004223AD, 0x0041291C).
 func TestIdleLoop(t *testing.T) {
-	s := &startScene{}
-	w := &walker{idle: -1, load: func(kind, dir int) []sceneFrame { return make([]sceneFrame, 12) }}
-	w.act = 2 // busy: a hit reaction
-	s.idleLoop(w, false)
-	if w.idle != -1 {
-		t.Fatalf("busy walker idles at %d", w.idle)
+	s := &startScene{World: &world.World{}}
+	w := &walker{Idle: -1, Frames: fixedFrames(12)}
+	w.Act = 2 // busy: a hit reaction
+	s.IdleLoop(w, false)
+	if w.Idle != -1 {
+		t.Fatalf("busy walker idles at %d", w.Idle)
 	}
-	w.act = 0
+	w.Act = 0
 	var seen []int
 	for range 26 {
-		s.idleLoop(w, false)
-		seen = append(seen, w.idle)
+		s.IdleLoop(w, false)
+		seen = append(seen, w.Idle)
 	}
 	want := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1}
 	for i := range want {
@@ -96,8 +97,8 @@ func TestIdleLoop(t *testing.T) {
 			t.Fatalf("idle frames %v, want %v", seen, want)
 		}
 	}
-	s.idleLoop(w, true)
-	if w.idle != -1 {
+	s.IdleLoop(w, true)
+	if w.Idle != -1 {
 		t.Error("a dead walker idles")
 	}
 }

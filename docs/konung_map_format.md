@@ -41,7 +41,7 @@ Expansion (loop at `0x0043C498`): byte `0xFF` → word `0x0FFF`; if `(b & 0x0F) 
 
 The character-creation preview (`0x004303B2`) clears the buffer and uses it as a scratch image while no map is loaded ([new game](konung_new_game.md)). The next map load rebuilds it.
 
-Port: `mapdata.WalkGrid` keeps the bytes: `Blocked` (wall), `ArrowBlocked` (`0xC0`). Occupants, exits and piles live in the scene (`walker` cell reservations, `Game.ExitAt`, `startScene.pileAt`).
+Port: `mapdata.WalkGrid` keeps the bytes: `World.Blocked` (wall), `ArrowBlocked` (`0xC0`). Occupants, exits and piles live in the scene (`walker` cell reservations, `Game.ExitAt`, `World.PileAt`).
 
 ## Terrain cells (verified)
 

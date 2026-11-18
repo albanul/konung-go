@@ -30,7 +30,7 @@ func TestLANWorldWithoutAccount(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if e := s.party[0]; e.Model != m || e.PaletteOffset != gamestate.HeroPalette[m] {
+		if e := s.Party[0]; e.Model != m || e.PaletteOffset != gamestate.HeroPalette[m] {
 			t.Errorf("model %d: hero model %d, palette %#x", m, e.Model, e.PaletteOffset)
 		}
 	}
@@ -52,22 +52,22 @@ func TestLANWorld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !s.lan || s.mapNumber != 7 || s.hero == nil || s.hero.cell != (mapdata.Cell{Row: 65, Col: 8}) || s.hero.dir != 4 {
-		t.Fatalf("scene: lan %v, map %d, hero %+v", s.lan, s.mapNumber, s.hero)
+	if !s.lan || s.MapNumber != 7 || s.Hero == nil || s.Hero.Cell != (mapdata.Cell{Row: 65, Col: 8}) || s.Hero.Dir != 4 {
+		t.Fatalf("scene: lan %v, map %d, hero %+v", s.lan, s.MapNumber, s.Hero)
 	}
-	e := s.party[0]
+	e := s.Party[0]
 	if e.Model != 2 || e.PaletteOffset != 35*512 || e.Gold != 250 || e.Level != 3 || e.BaseStats != [4]int{4, 16, 5, 11} || e.Fencing != 150 {
 		t.Errorf("hero entity = %+v", e)
 	}
 	// The hero carries the account's name, in the status line too.
-	if got := resfmt.CP866ToUTF8(s.game.EntityName(e, s.tables)); got != "Снежок" {
+	if got := resfmt.CP866ToUTF8(s.Game.EntityName(e, s.Tables)); got != "Снежок" {
 		t.Errorf("hero name %q", got)
 	}
-	if got := resfmt.CP866ToUTF8(s.game.StatusLine(e, s.tables)); !strings.HasPrefix(got, "Снежок, ") {
+	if got := resfmt.CP866ToUTF8(s.Game.StatusLine(e, s.Tables)); !strings.HasPrefix(got, "Снежок, ") {
 		t.Errorf("status line %q", got)
 	}
-	if len(s.npcs) != 0 || len(s.party) != 1 {
-		t.Errorf("%d characters besides a party of %d", len(s.npcs), len(s.party))
+	if len(s.NPCs) != 0 || len(s.Party) != 1 {
+		t.Errorf("%d characters besides a party of %d", len(s.NPCs), len(s.Party))
 	}
 	// The LAN map is MAPS.RES #7, not KONUNG.7.
 	maps, _ := os.ReadFile(dir + "MAPS.RES")
@@ -97,16 +97,16 @@ func TestLANWorldChangesMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	x, ok := s.game.ExitAt(1, 65, 7) // GAME.RES exit 3: map 1 → map 15
+	x, ok := s.Game.ExitAt(1, 65, 7) // GAME.RES exit 3: map 1 → map 15
 	if !ok || x.To != 15 {
 		t.Fatalf("exit at (65,7) on map 1 = %+v, %v", x, ok)
 	}
 	s.changeMap(x)
-	if s.mapNumber != 15 || !s.lan {
-		t.Fatalf("after the exit: map %d, lan %v", s.mapNumber, s.lan)
+	if s.MapNumber != 15 || !s.lan {
+		t.Fatalf("after the exit: map %d, lan %v", s.MapNumber, s.lan)
 	}
-	if s.hero == nil || s.hero.cell != (mapdata.Cell{Row: x.Row, Col: x.Col}) {
-		t.Errorf("hero at %+v, want the arrival (%d, %d)", s.hero, x.Row, x.Col)
+	if s.Hero == nil || s.Hero.Cell != (mapdata.Cell{Row: x.Row, Col: x.Col}) {
+		t.Errorf("hero at %+v, want the arrival (%d, %d)", s.Hero, x.Row, x.Col)
 	}
 	maps, _ := os.ReadFile(dir + "MAPS.RES")
 	e, _ := mapdata.SplitMapsRes(maps)
@@ -116,7 +116,7 @@ func TestLANWorldChangesMap(t *testing.T) {
 	}
 	// And back: map 15 has exits too.
 	back := 0
-	for _, x := range s.game.Exits {
+	for _, x := range s.Game.Exits {
 		if x.From == 15 {
 			back++
 		}
@@ -203,41 +203,41 @@ func TestLANRemotePlayers(t *testing.T) {
 	}
 	s.remoteAppear(ragnar)
 	r := s.remotes["r1"]
-	n := s.byEntity[r.entity]
-	if n == nil || n.mode != npcRemote || n.cell != (mapdata.Cell{Row: 100, Col: 32}) {
+	n := s.ByEntity[r.Entity]
+	if n == nil || n.Mode != npcRemote || n.Cell != (mapdata.Cell{Row: 100, Col: 32}) {
 		t.Fatalf("remote walker = %+v", n)
 	}
-	e := s.game.Entities[r.entity]
-	if got := resfmt.CP866ToUTF8(s.game.EntityName(e, s.tables)); got != "Ragnar" {
+	e := s.Game.Entities[r.Entity]
+	if got := resfmt.CP866ToUTF8(s.Game.EntityName(e, s.Tables)); got != "Ragnar" {
 		t.Errorf("remote name %q", got)
 	}
-	if e.Model != 2 || e.PaletteOffset != 36*512 || e.Level != 4 || e.Group == 0 || s.partyIndex(r.entity) >= 0 {
-		t.Errorf("remote entity: model %d palette %#x level %d group %d", e.Model, e.PaletteOffset, e.Level, e.Group)
+	if e.Model != 2 || e.PaletteOffset != 36*512 || e.Level != 4 || e.Group == 0 || s.PartyIndex(r.Entity) >= 0 {
+		t.Errorf("remote Entity: model %d palette %#x level %d group %d", e.Model, e.PaletteOffset, e.Level, e.Group)
 	}
 	if got := resfmt.CP866ToUTF8(remoteStatus(r)); got != "Ragnar, клан Викинги" {
 		t.Errorf("status %q", got)
 	}
 
-	// A nearby cell: a walk. A far one: a jump.
+	// A nearby Cell: a walk. A far one: a jump.
 	s.remoteMove("r1", netplay.Position{Map: 1, Row: 104, Col: 33, Facing: 1})
-	if n := s.byEntity[r.entity]; n == nil || len(n.path) == 0 && !n.walking {
+	if n := s.ByEntity[r.Entity]; n == nil || len(n.Path) == 0 && !n.Walking {
 		t.Error("no walk to a nearby cell")
 	}
 	s.remoteMove("r1", netplay.Position{Map: 1, Row: 200, Col: 40})
-	if n := s.byEntity[r.entity]; n == nil || chebyshev(n.cell, mapdata.Cell{Row: 200, Col: 40}) > 3 {
+	if n := s.ByEntity[r.Entity]; n == nil || chebyshev(n.Cell, mapdata.Cell{Row: 200, Col: 40}) > 3 {
 		t.Errorf("no jump: %+v", n)
 	}
 
 	// Off this map: taken off; still known.
 	s.remoteMove("r1", netplay.Position{Map: 15, Row: 66, Col: 57})
-	if s.byEntity[r.entity] != nil || s.remotes["r1"] == nil {
+	if s.ByEntity[r.Entity] != nil || s.remotes["r1"] == nil {
 		t.Error("remote on another map is still drawn here")
 	}
 	// The own hero takes exit 3 to map 15: the remote is there.
-	x, _ := s.game.ExitAt(1, 65, 7)
+	x, _ := s.Game.ExitAt(1, 65, 7)
 	s.changeMap(x)
-	if s.mapNumber != 15 || s.byEntity[s.remotes["r1"].entity] == nil {
-		t.Errorf("after the map change: map %d, remote placed %v", s.mapNumber, s.byEntity[s.remotes["r1"].entity] != nil)
+	if s.MapNumber != 15 || s.ByEntity[s.remotes["r1"].Entity] == nil {
+		t.Errorf("after the map change: map %d, remote placed %v", s.MapNumber, s.ByEntity[s.remotes["r1"].Entity] != nil)
 	}
 
 	// The own position is reported once per change.
@@ -257,8 +257,8 @@ func TestLANRemotePlayers(t *testing.T) {
 	if len(s.remotes) != 0 {
 		t.Error("the player who left is still known")
 	}
-	for _, n := range s.npcs {
-		if n.mode == npcRemote {
+	for _, n := range s.NPCs {
+		if n.Mode == npcRemote {
 			t.Error("a remote walker is left on the map")
 		}
 	}
@@ -281,18 +281,18 @@ func TestLANRemoteLook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	own := lanfight.LookOf(s.game, s.party[0]) // the same type's gear
+	own := lanfight.LookOf(s.Game, s.Party[0]) // the same type's gear
 	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "x", Name: "Twin", Model: 0}, Look: own, HP: 1600,
 		Pos: netplay.Position{Map: 1, Row: 100, Col: 32}})
 	r := s.remotes["x"]
-	e := s.game.Entities[r.entity]
+	e := s.Game.Entities[r.Entity]
 	if e.InStance() || e.Type < 6 {
 		t.Errorf("out of the stance: stance %v type %d", e.InStance(), e.Type)
 	}
-	if got := lanfight.LookOf(s.game, e); got.Equip != own.Equip {
+	if got := lanfight.LookOf(s.Game, e); got.Equip != own.Equip {
 		t.Errorf("remote equipment %+v, want %+v", got.Equip, own.Equip)
 	}
-	if e.Equipment == s.party[0].Equipment {
+	if e.Equipment == s.Party[0].Equipment {
 		t.Error("the remote hero shares the own hero's item records")
 	}
 	l := own
@@ -303,29 +303,29 @@ func TestLANRemoteLook(t *testing.T) {
 		}
 	}
 	s.remoteLook(netplay.LookPayload{ID: "x", Look: l})
-	e = s.game.Entities[r.entity]
+	e = s.Game.Entities[r.Entity]
 	if !e.InStance() || e.Type >= 6 || e.WeaponMode != l.Weapon {
 		t.Fatalf("in the stance: stance %v type %d weapon %d", e.InStance(), e.Type, e.WeaponMode)
 	}
-	if n := s.byEntity[r.entity]; n == nil || !n.look.stance {
+	if n := s.ByEntity[r.Entity]; n == nil || !n.Look.Stance {
 		t.Error("the walker's look did not change")
 	}
-	if l.Equip[l.Weapon].Item && len(s.game.Overlays(e, s.tables)) == 0 {
+	if l.Equip[l.Weapon].Item && len(s.Game.Overlays(e, s.Tables)) == 0 {
 		t.Error("no overlays in the stance: the weapon is not drawn")
 	}
 	// Hits: the server's verdict sets HP, a kill plays the death.
 	s.remoteHit(netplay.HitPayload{Attacker: "me", Target: "x", Result: netplay.HitLight, Damage: 40, HP: 1560}, "me")
-	if hp := s.game.Entities[r.entity].HP; hp != 1560 {
+	if hp := s.Game.Entities[r.Entity].HP; hp != 1560 {
 		t.Errorf("HP %d after a hit", hp)
 	}
 	s.remoteHit(netplay.HitPayload{Attacker: "me", Target: "x", Result: netplay.HitKill, Killed: true}, "me")
-	if n := s.byEntity[r.entity]; n == nil || n.act != gamestate.ActDeath || !r.dead {
+	if n := s.ByEntity[r.Entity]; n == nil || n.Act != gamestate.ActDeath || !r.dead {
 		t.Error("the kill did not play the death")
 	}
 	// The own hero dies by the server's verdict too.
 	s.remoteHit(netplay.HitPayload{Attacker: "x", Target: "me", Result: netplay.HitKill, Killed: true}, "me")
-	if s.party[0].HP != 0 || s.hero.act != gamestate.ActDeath {
-		t.Errorf("own hero: HP %d, act %d", s.party[0].HP, s.hero.act)
+	if s.Party[0].HP != 0 || s.Hero.Act != gamestate.ActDeath {
+		t.Errorf("own hero: HP %d, act %d", s.Party[0].HP, s.Hero.Act)
 	}
 }
 
@@ -347,13 +347,13 @@ func TestLANClock(t *testing.T) {
 	}
 	s.clock = &serverClock{c: netplay.ClockPayload{Tick: 5000, Speed: 1, SessionLeft: -1}, at: time.Now()}
 	s.stepToServer()
-	if s.tick != 5000 {
-		t.Fatalf("tick %d after a far clock, want 5000", s.tick)
+	if s.Tick != 5000 {
+		t.Fatalf("tick %d after a far clock, want 5000", s.Tick)
 	}
 	s.clock.c.Tick = 5003
 	s.stepToServer()
-	if s.tick != 5003 {
-		t.Errorf("tick %d after a near clock, want 5003 (three steps)", s.tick)
+	if s.Tick != 5003 {
+		t.Errorf("tick %d after a near clock, want 5003 (three steps)", s.Tick)
 	}
 	if left, ok := s.clock.sessionLeft(); ok || left != 0 {
 		t.Error("unknown session time shown")
@@ -370,7 +370,7 @@ func TestLANClock(t *testing.T) {
 }
 
 // On a server that protects teams, a teammate (same hero type) is no
-// target: A picks the foe even when the teammate is closer.
+// Target: A picks the foe even when the teammate is closer.
 func TestLANTeamSafe(t *testing.T) {
 	const dir = "../../assets/Konung/"
 	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
@@ -386,12 +386,12 @@ func TestLANTeamSafe(t *testing.T) {
 	}
 	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "mate", Name: "Mate", Model: 0}, HP: 1600, Pos: netplay.Position{Map: 1, Row: 106, Col: 32}})
 	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "foe", Name: "Foe", Model: 1}, HP: 1600, Pos: netplay.Position{Map: 1, Row: 100, Col: 32}})
-	mate, foe := s.remotes["mate"].entity, s.remotes["foe"].entity
-	if got := s.nearestEnemy(s.hero.cell); got != mate {
+	mate, foe := s.remotes["mate"].Entity, s.remotes["foe"].Entity
+	if got := s.NearestEnemy(s.Hero.Cell); got != mate {
 		t.Fatalf("with team damage the nearest is %d, want the teammate %d", got, mate)
 	}
 	s.teamSafe = true
-	if got := s.nearestEnemy(s.hero.cell); got != foe {
+	if got := s.NearestEnemy(s.Hero.Cell); got != foe {
 		t.Errorf("team-safe: nearest %d, want the foe %d", got, foe)
 	}
 }

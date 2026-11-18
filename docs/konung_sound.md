@@ -35,16 +35,16 @@ Port: `soundSystem.play` renders the sample to 44.1 kHz stereo with the gains (`
 | 2 / 8 | swing (action 5) with axe/club / blade (weapon mode 2) | `0x004146D3` | `startAct` |
 | 3 | bow shot (action 4, humans) | `0x004146C7` | `startAct` |
 | 4 | click: HUD buttons (attack all `0x00421698`, stance `0x0042179C`, weapon `0x0042192C`, gather `0x004226C0`, bag `0x00424610`), the in-hand box when something moves (`0x0041EB84`), a mouse click on an active item of the main menu, with or without a running game (`0x004379E2`; without a game items 0–1 are inactive and silent; Enter makes no sound), the world map toggle (M / HUD 2, `0x00436EB9`, `0x00422C01`) and the quest log toggle (Q / HUD 5, `0x0042459C`); the settings screen's clicks are silent | | `hud.press`, `boxSwap`, `Menu.Update` |
-| 6 | the party's blow is dodged (`0x0041C480` = −2), at the target | `0x0042204B` | `startScene.swing` |
+| 6 | the party's blow is dodged (`0x0041C480` = −2), at the target | `0x0042204B` | `World.Swing` |
 | 7 | the hero starts walking (action 1) | `0x004146F6` | `walkTo` |
 | 9 | a herb is used: mixed or drunk | `0x0041E195` | `UseHerb` |
 | 10 | every misc item use: the common tail of `0x00414E64` ([misc items](konung_misc_items.md)); the shovel (`0x00415520`) and the jump orb (`0x004153CC`) play it once more in their cases | `0x00415C6C`, `0x00415520`, `0x004153CC` | `UseMisc` |
 | 8m + 0x22 … 0x24 | human voice (model m = `+0xD6`): death (action 3) +0, idle +1 (`rand() % 100 > 95`, 4 in 100; also on the hero-creation screen, [new game](konung_new_game.md#sound-verified)), hit reaction (2) +2 | table `0x00414768` | `startAct`, idle, `newHeroScreen.idle` |
-| 8·`+0x04` − 0x1D0 + k | animated models (creatures, women, children; `+0x04` with bit `0x40`): k = 0 swing (5), 1 wake-up cry (step 1 of action 4, `0x00412A60`), 2 death (3), 3 idle (`> 95`, 4 in 100) or walk (`> 75`, 24 in 100), 4 hit reaction (2) | table `0x00414500` | `startAct`, `creatureTick`, idle |
+| 8·`+0x04` − 0x1D0 + k | animated models (creatures, women, children; `+0x04` with bit `0x40`): k = 0 swing (5), 1 wake-up cry (step 1 of action 4, `0x00412A60`), 2 death (3), 3 idle (`> 95`, 4 in 100) or walk (`> 75`, 24 in 100), 4 hit reaction (2) | table `0x00414500` | `startAct`, `World.CreatureTick`, idle |
 | 0x100 + (map − 1)·8 + 0…7 | ambient: once per main-loop pass with `rand() % 100 > 98` | `0x004376F4` | `soundTick` |
 
-* Action sounds are played by `0x004143DC`, which starts an action animation (port `walker.startAct`); actions 6–9 (outside the stance) use 0–3. Character sounds are positional.
-* Walk: `0x004142D4` (set a destination) starts action 1 once per walk order, so the hero's footstep plays once per click (port `walker.walkTo`). Idle: `0x00410450` and the AI's idle decisions start action 0, and the idle case restarts it after its last frame (party `0x004223C8`, creatures `0x00412933`), so every idle loop rolls the idle sound (port `startScene.idleLoop`).
+* Action sounds are played by `0x004143DC`, which starts an action animation (port `world.Walker.StartAct`); actions 6–9 (outside the stance) use 0–3. Character sounds are positional.
+* Walk: `0x004142D4` (set a destination) starts action 1 once per walk order, so the hero's footstep plays once per click (port `world.Walker.WalkTo`). Idle: `0x00410450` and the AI's idle decisions start action 0, and the idle case restarts it after its last frame (party `0x004223C8`, creatures `0x00412933`), so every idle loop rolls the idle sound (port `World.IdleLoop`).
 
 ## Music
 

@@ -4,7 +4,6 @@ import (
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/resfmt"
 )
@@ -20,43 +19,29 @@ import (
 // inactive piles; a picked nut or root comes back
 // after gamestate.PileRespawnTicks.
 
-// gameTime is the game clock 0x00A3E770, one tick per AI tick.
-func (s *startScene) gameTime() int { return s.tick }
-
-// activatePiles adds the map's piles that the loader rule allows and that
-// aren't active yet.
-func (s *startScene) activatePiles() {
-	now := s.gameTime()
-	for i, p := range s.game.Piles {
-		if _, on := s.pileAt[mapdata.Cell{Row: p.Row, Col: p.Col}]; !on && p.Active(s.mapNumber, now) {
-			s.pileAt[mapdata.Cell{Row: p.Row, Col: p.Col}] = i
-		}
-	}
-}
-
 // drawPiles draws the visible piles after the decorations.
 func (s *startScene) drawPiles(dst *ebiten.Image) {
 	// Rows top to bottom, columns left to right, like the terrain pass.
-	cells := make([]mapdata.Cell, 0, len(s.pileAt))
-	for c := range s.pileAt {
+	cells := make([]mapdata.Cell, 0, len(s.PileAt))
+	for c := range s.PileAt {
 		cells = append(cells, c)
 	}
 	sort.Slice(cells, func(i, j int) bool {
 		return cells[i].Row < cells[j].Row || cells[i].Row == cells[j].Row && cells[i].Col < cells[j].Col
 	})
 	for _, c := range cells {
-		p := s.game.Piles[s.pileAt[c]]
+		p := s.Game.Piles[s.PileAt[c]]
 		if !p.Visible() {
 			continue
 		}
-		img := s.hud.slot(s.game.PileImage(s.tables, p))
+		img := s.hud.slot(s.Game.PileImage(s.Tables, p))
 		if img == nil {
 			continue
 		}
 		b := img.Bounds()
 		x, y := mapdata.CellCenter(c)
 		x, y = x-b.Dx()/2, y-b.Dy()/2
-		if s.game.Lit && s.assets.glow != nil {
+		if s.Game.Lit && s.assets.glow != nil {
 			// 0x00426554: the glow first, centred on the image (0x0043DE4D).
 			gx, gy := x+b.Dx()/2-resfmt.GlowWidth/2, y+b.Dy()/2-resfmt.GlowHeight/2
 			if s.visible(gx, gy, resfmt.GlowWidth, resfmt.GlowHeight) {
@@ -67,7 +52,7 @@ func (s *startScene) drawPiles(dst *ebiten.Image) {
 		}
 		if s.visible(x, y, b.Dx(), b.Dy()) {
 			// The glowing piles use the raw palette, the others the tint.
-			s.drawTinted(dst, img, x-s.camX, y-s.camY, s.game.Lit)
+			s.drawTinted(dst, img, x-s.camX, y-s.camY, s.Game.Lit)
 		}
 	}
 }
@@ -90,36 +75,6 @@ func (s *startScene) pileUnderCursor() (cell mapdata.Cell, ok bool) {
 		return cell, false
 	}
 	cell = mapdata.CellAt(mx+s.camX, my+s.camY)
-	i, on := s.pileAt[cell]
-	return cell, on && s.game.Piles[i].Visible()
-}
-
-// arrive runs when member m's walk ends with the pick-up intent set
-// (0x004110EC(e)): the pile on its cell goes into its bag.
-func (s *startScene) arrive(m *member) {
-	if len(s.party) == 0 || s.inv.open { // 0x004110F8: not while its window is open
-		return
-	}
-	e := &s.party[m.k]
-	i, on := s.pileAt[m.cell]
-	if !on || !s.game.CanPickUp(s.game.Piles[i], *e) {
-		return
-	}
-	if s.game.Piles[i].Index == 0 {
-		// 0x00411154: record 0 (map 46) is the end of the game. Next
-		// state 7 (the menu; the game stays running, so «Вернуться в
-		// игру» returns to it), then WIN.FLM. Nothing is taken.
-		s.film, s.filmToMenu = resfmt.FilmWin, true
-		return
-	}
-	msg, removed := s.game.PickUp(e, s.tables, i, s.gameTime())
-	if removed {
-		delete(s.pileAt, m.cell) // 0x0041096C clears the cell's pile flag
-	}
-	if msg == gamestate.MsgBagFull || msg == gamestate.MsgTooHeavy {
-		s.openPileWindow(i) // 0x0041122A: the rest can be swapped in the pile window
-	}
-	if msg != 0 {
-		s.showMessage(s.tables.CString(msg))
-	}
+	i, on := s.PileAt[cell]
+	return cell, on && s.Game.Piles[i].Visible()
 }

@@ -90,17 +90,17 @@ func parseLights(data []byte) (*mapdata.LitCells, *mapdata.TerrainLights, error)
 // whenever the time of day is exactly 0; maps with a fixed light (caves)
 // ignore the time; with day/night off the world is untinted.
 func (s *startScene) updateLight() {
-	now := s.gameTime()
+	now := s.GameTime()
 	if s.lan {
 		s.moon = lanMoon(now / gamestate.DayLength) // the same for every player
 	} else if now%gamestate.DayLength == 0 {
-		s.moon = s.rng.IntN(100) < gamestate.MoonChance
+		s.moon = s.Rng.IntN(100) < gamestate.MoonChance
 	}
 	t, night := resfmt.Tint{}, false
-	if fixed, ok := s.tables.MapLight(s.mapNumber); ok {
+	if fixed, ok := s.Tables.MapLight(s.MapNumber); ok {
 		t = fixed
 	} else if s.dayNight {
-		t, night = gamestate.DayTint(now, s.tables.DayThresholds(), s.moon)
+		t, night = gamestate.DayTint(now, s.Tables.DayThresholds(), s.moon)
 	}
 	if t != s.tint || s.tintU == nil {
 		s.tint, s.tintU = t, tintUniforms(t)
@@ -109,10 +109,10 @@ func (s *startScene) updateLight() {
 	// 16–23 %. The lit path (0x0042565D: night lights 0x00A4E2A0 and
 	// «Световые эффекты») passes it halved, in full while the map's village
 	// is alarmed (0x004257A9).
-	g := s.rng.IntN(4) + 8
-	r := s.rng.IntN(8) + 16
+	g := s.Rng.IntN(4) + 8
+	r := s.Rng.IntN(8) + 16
 	s.litPath = night && s.lighting && s.assets.lightMasks != nil
-	if st := s.game.SettlementOnMap(s.mapNumber); st == nil || s.game.Groups[st.Group].Alarm != gamestate.AlarmAttack {
+	if st := s.Game.SettlementOnMap(s.MapNumber); st == nil || s.Game.Groups[st.Group].Alarm != gamestate.AlarmAttack {
 		r, g = r/2, g/2
 	}
 	s.flicker = resfmt.LitTerrainLight{Day: t, FlickR: r, FlickG: g}

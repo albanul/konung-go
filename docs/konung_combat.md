@@ -28,8 +28,8 @@ Entity `+0x00` is the action type, relative to the animation set: 0–5 in the c
   3. At step 2: if the target's group is a village (`+0x1E` bit `0x80`), settlement `+0x4B2 |= 0x15`; then `0x004248A0` alarms the target's group (`+0x1D` = 1, members' `+0x14` = `0xFF`).
   4. Advance the step; after the last step the blow lands: `0x0041B100` then `0x0041C480`.
   5. Kill (1): attacker `+6` = 0; victim HP = 0, `+2` = 0, death animation; experience (below); `0x00418510` (loot); attacker idle. Damage ≥ `0x30` (0): the victim flinches (type 2, or 8 outside the stance). Otherwise (−1 light hit, −2 dodge) nothing. A heavy hit starts the hit reaction whatever the victim does, a walk included ([party](konung_party.md#hit-reaction-and-the-portrait-verified)). A hit on a party member redraws its portrait, red while the reaction plays (`0x0042D574`). The swing restarts.
-* **Retaliation** `0x0041EC0C`: an idle party member without an intent (`+2 & 9` = 0) scans its 8 neighbours. A neighbour of another group with `+2` bit `0x01` and target = it becomes its target; the member sets `+2 |= 2` and the stance, and swings back. Port: `startScene.retaliate`, for every member. Stationary creatures swing with `+2` = `0x02`, so they are not struck back automatically.
-* **Hero death** (`0x004376A8`): the main loop sees the hero's `+4` bit `0x80`, sets `0xA3E7F0` = 7, plays `GAMEOVER.FLM` (`0x0042B690(0x00450650)`) and leaves the game loop. The bit is set on the second-to-last frame of the death animation (`0x0042248F`: frame `+0x10` = frame count `+0xD7` − 2), so the film starts as the hero falls; its frozen frame is the fallen hero. Port: `startScene.gameOver` on the same update, then the main menu, and "New Game" starts again ([films](konung_films.md)).
+* **Retaliation** `0x0041EC0C`: an idle party member without an intent (`+2 & 9` = 0) scans its 8 neighbours. A neighbour of another group with `+2` bit `0x01` and target = it becomes its target; the member sets `+2 |= 2` and the stance, and swings back. Port: `World.Retaliate`, for every member. Stationary creatures swing with `+2` = `0x02`, so they are not struck back automatically.
+* **Hero death** (`0x004376A8`): the main loop sees the hero's `+4` bit `0x80`, sets `0xA3E7F0` = 7, plays `GAMEOVER.FLM` (`0x0042B690(0x00450650)`) and leaves the game loop. The bit is set on the second-to-last frame of the death animation (`0x0042248F`: frame `+0x10` = frame count `+0xD7` − 2), so the film starts as the hero falls; its frozen frame is the fallen hero. Port: `World.GameOver` on the same update, then the main menu, and "New Game" starts again ([films](konung_films.md)).
 
 ## Attack order (verified)
 
@@ -41,7 +41,7 @@ Entity `+0x00` is the action type, relative to the animation set: 0–5 in the c
 * Eligible groups: on the current map, not the party, `+0x1E` bit `0x80` clear (no village) unless alarmed, and `+0x1E` ≠ `0x53`. The group whose living member inside the area is closest to the leader wins. Then `0x004203A0` / `0x004202A8` pick that member.
 * When the target dies, the same search finds the next one. This also happens after a right-click attack, because the intent stays. With no enemy left, the intent ends (`+2 &= ~1`, `0x0041E456`).
 
-Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent). With the bow active the hero shoots instead (`+2` = `0x44`, `heroShoot`, [bows](#bows-verified)). A orders every living member ([party](konung_party.md#orders-verified)).
+Port: `World.AttackOrder`, `World.NearestEnemy`, `world.Member.Melee` (the intent). With the bow active the hero shoots instead (`+2` = `0x44`, `heroShoot`, [bows](#bows-verified)). A orders every living member ([party](konung_party.md#orders-verified)).
 
 ## Creature AI (verified)
 
@@ -54,7 +54,7 @@ Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent).
 
   A hit or a dying member also sets 1 (`0x00412A21` at the end of the hit reaction, `0x00412989` in the death), and a party attacker's swing does too (`0x004248A0`). Each check overwrites it.
 * **Members.** An idle member (`+2` bit `0x40`, type not 2/3/9) is decided by `0x00412E00` when the path budget `0x004116CC` allows (3 searches per tick, round-robin). Otherwise its action runs (table `0x00412BE0`): idle `0x0041291C`, walk `0x00412717`, hit reaction `0x00412A0E`, death `0x00412944`, type 4 `0x00412A36` (dormant pose and wake-up; the bow shot for humanoids), swing `0x0041248D`.
-* **Decision `0x00412E00`:** members with entity `+4` = `0x51`, `0x52` or `0x53` (women, children, the lone characters of the `0x53` groups) do nothing, even when alarmed (`0x00412E4F`; port: `creatureDecide`, test `TestKind53Stands`). The others **by alarm state:**
+* **Decision `0x00412E00`:** members with entity `+4` = `0x51`, `0x52` or `0x53` (women, children, the lone characters of the `0x53` groups) do nothing, even when alarmed (`0x00412E4F`; port: `World.CreatureDecide`, test `TestKind53Stands`). The others **by alarm state:**
   * 0 calm: back to idle (type 0/6, except a dormant type 4). Calm creatures never move.
   * 1 attack: target by kind (`gamestate.TacticOf`), then path to it with `+2` = 1 (`0x0041326B` → `0x004142D4`):
 
@@ -69,11 +69,11 @@ Port: `startScene.attackOrder`, `nearestEnemy`, `startScene.melee` (the intent).
     Distance `0x00439944` (`gamestate.Dist`): the larger axis difference, plus 1 if the smaller one exceeds 1.
   * `0x20` return: a member with the melee intent keeps fighting while a party member is inside the leash (`0x0041FD74`). Kinds `0x41`/`0x4D`/`0x4F` and `0x43`/`0x45` use their selector without the nearest fallback; stationary ones stop; others find nothing. Otherwise the intent ends. A member outside the territory walks to a free cell picked like `0x0041F5D8` (`gamestate.WanderTarget`) with `+2` = 8.
 * **Chase** `0x00411FD0` (walking with the melee intent): a dead target ends it. A target still on `+0x0C/+0x0E` keeps it going. A target outside the leash drops it (leash). A target that moved one cell patches the path's last step; otherwise the member goes idle and re-decides.
-* **Swing** `0x0041248D`: as the party's, without the step-2 alarm. A kill also adds xp to the creature's `+0x40`. After a swing that did not kill, kind `0x49` runs off (`0x004126BD`: `0x004101E4` picks a cell two view heights or widths away, [misc items](konung_misc_items.md#enemy-group-0x0041fd74-and-flight-0x004101e4); then a walk with `+2` = 8, else the swing restarts). Port: `startScene.retreat`, called from `swing` for creatures; once the walk ends the creature decides again (hit and run). `GAME.0`/`1`/`2` have 45/40/58 such creatures (OBJECTS models 8 and 23).
+* **Swing** `0x0041248D`: as the party's, without the step-2 alarm. A kill also adds xp to the creature's `+0x40`. After a swing that did not kill, kind `0x49` runs off (`0x004126BD`: `0x004101E4` picks a cell two view heights or widths away, [misc items](konung_misc_items.md#enemy-group-0x0041fd74-and-flight-0x004101e4); then a walk with `+2` = 8, else the swing restarts). Port: `World.Retreat`, called from `World.Swing` for creatures; once the walk ends the creature decides again (hit and run). `GAME.0`/`1`/`2` have 45/40/58 such creatures (OBJECTS models 8 and 23).
 * **Revival:** a dying kind-`0x4C` creature with `+0x12` > 0 gets HP 1600, `+0x12` − 1 and action 4 (dormant) instead of dying (`gamestate.Revives`).
 * **Walk extras** (ported, [movement](konung_movement.md#port)): `+0x11` slows walking (ticks where `time & m == m`); kinds `0x4D`/`0x4F` pause a random number of ticks between steps ([movement](konung_movement.md#a-walk-step)).
 
-Port: `startScene.combatTick` → `alarmCheck`, `creatureTick` (`creatureChase`, `creatureDecide`, `goFor`, `stationarySwing`, `returnTarget`), `actTick`. The selectors work on the whole party (`creatureTarget`, `nearestMember`). Corrected kind routing: `0x4E` and `0x54` belong to "others".
+Port: `World.CombatTick` → `World.AlarmCheck`, `World.CreatureTick` (`World.CreatureChase`, `World.CreatureDecide`, `World.GoFor`, `World.StationarySwing`, `World.ReturnTarget`), `World.ActTick`. The selectors work on the whole party (`World.CreatureTarget`, `World.NearestMember`). Corrected kind routing: `0x4E` and `0x54` belong to "others".
 
 ## Formulas (verified)
 
@@ -199,7 +199,7 @@ Settlement byte `+0x4B2` (`Settlement.Flags`):
 * **Load** (`0x0043BD5C`): `0x10`, plus `0x04` for a fenced village (`+1` ≠ 0) of another tribe.
 * **Anger** `|= 0x15` (hostile + strangers + independent): a villager's hit reaction ending or death (step count − 2), whoever caused it (`0x0041658E`, `0x0041651C`); the party's melee swing at step 2; an arrow hitting a villager or a building; the dialogue's "attack" op (script 274, which sets the flags only for the village group, [dialogues](konung_dialogue.md#script-functions-verified)).
 * **Who counts.** Only members of the village group itself (`+0x1E` bit `0x80`; the swing tests it at `0x00421F39`). Characters with a group of their own on the village map do not count; for example Путята (entity 536 on `KONUNG.1`, a one-member kind-`0x53` group with a dialogue). Hitting them alarms only their own group.
-* **Alarm** `0x004248A0` (hits, the swing's step 2): `+0x1D` = 1. Every member without the melee intent (and not of kind `0x49`) gets `+0x14` = `0xFF`, which ends its walk after the current step, so everyone decides at once (`startScene.alarmGroup`).
+* **Alarm** `0x004248A0` (hits, the swing's step 2): `+0x1D` = 1. Every member without the melee intent (and not of kind `0x49`) gets `+0x14` = `0xFF`, which ends its walk after the current step, so everyone decides at once (`World.AlarmGroup`).
 * **Peace** `&= 0xEA`: surrender, a village without men, the dialogue's vassal op (script 365, without `0x80`).
 * **Alarm check** `0x00416700`, every 16 ticks offset by 7 (`(time + 7) & 0xF` = 0, `0x0041D39F`) for the village on the current map. Without bits `0x05` → calm. Otherwise a living party member inside the village group's rectangle alarms it (`+0x1A` = party, `+0x1D` = 1) when bit `0x01` is set, or when bit `0x04` is set and the member is an armed stranger. Otherwise calm. Hostility outlives the alarm: the village re-attacks on re-entry.
 * **Alarmed villagers** (`0x00416934` → `0x00416DA6`):
@@ -207,7 +207,7 @@ Settlement byte `+0x4B2` (`Settlement.Flags`):
   * Men first re-equip and enter the stance (`0x004105A0`). Then they shoot (`0x00410E84`) or go for the nearest party member (`0x004202A8`) in melee.
 * **Surrender** (the settlement tick, while alarmed and not yet surrendered):
   * P = Σ `0x0041B70C` over the party, V = Σ over the living men (model < 3).
-  * P / V ≥ 2.0 → alarm 0; living members idle, targets cleared; flags `|= 0x80`, `&= 0xEA`; message `0x0045D37C` «Довольно крови, князь. Деревня сдается на твою милость!»; film `DEFEAT<map>.FLM`, then back to the game ([films](konung_films.md#triggers); port: `startScene.film`); the party's targets are cleared.
+  * P / V ≥ 2.0 → alarm 0; living members idle, targets cleared; flags `|= 0x80`, `&= 0xEA`; message `0x0045D37C` «Довольно крови, князь. Деревня сдается на твою милость!»; film `DEFEAT<map>.FLM`, then back to the game ([films](konung_films.md#triggers); port: `World.Film`); the party's targets are cleared.
   * A village without men: alarm 0, flags `&= 0xEA`.
 * Tribute, buildings (records from settlement `+0x18`, 8 bytes; `+0x40`/`+0x41` = building 5's type/state, the map-exit gate) and the economy are not part of combat; see [buildings](konung_buildings.md) and [trade: production](konung_trade.md#shop-stock-production).
 
@@ -246,11 +246,12 @@ Engine-free rules live in `gamestate`:
 * `upkeep.go`: `Upkeep`, `EnterMap`, `PlaceInTerritory`, `NewMember`.
 * `leave.go`: `LeaveMap`.
 
-The scene (`internal/game`) consumes them:
-* `combat.go`: `combatTick` each game tick, the swing, `kill`, `provoke`, the creature AI and the hero's orders.
-* `ranged.go`: shooting and arrows. Arrows are drawn over the characters.
+The simulation (`internal/world`, engine-free) consumes them:
+* `combat.go`: `World.CombatTick` each game tick, the swing, `World.Kill`, `World.Provoke`, the creature AI.
+* `party.go`: the party AI and the hero's orders.
+* `ranged.go`: shooting and arrows (`internal/game/ranged.go` draws them over the characters).
 * `upkeep.go`: the 16-tick upkeep, the settlement tick, loot piles, the villagers' fight.
-* `scene.go`: `buildScene` runs `EnterMap`; `changeMap` runs `LeaveMap`.
+* `populate.go`: `World.Populate` runs `EnterMap`; `step.go`: `World.Leave` runs `LeaveMap`.
 
 Orders:
 * Right click on a character in the stance: shoot it when `CanShoot`, else attack in melee.

@@ -103,7 +103,7 @@ type lanUI struct {
 	leaveLAN bool // «Выход»: back to the port's main menu
 	// inGame: a LAN world runs (the menu was opened by Escape in it).
 	// resume and endGame ask the menu to go back to it or to end it.
-	inGame, resume, endGame bool
+	inGame, Resume, endGame bool
 	// start is set when the server answers «Ok» (MsgEntered): the menu
 	// takes it and builds the LAN world (takeStart).
 	start *netplay.EnterPayload
@@ -122,7 +122,7 @@ type lanUI struct {
 	tables    *resfmt.ExeTables
 	items     *gamestate.Game // empty: the LAN template has no equipment
 	nh        gamestate.Entity
-	look      int // the look index 0–7, one for every type ([0xA6EB4C])
+	Look      int // the look index 0–7, one for every type ([0xA6EB4C])
 	// previewModel is the type «Новый герой»'s preview shows (Михаил;
 	// a right click steps it, for demonstration only).
 	previewModel int
@@ -230,7 +230,7 @@ func (u *lanUI) escape() bool {
 	case u.state == lanRating, u.state == lanLogin, u.state == lanNewHero:
 		u.toMenu()
 	case u.inGame:
-		u.resume = true // back to the game
+		u.Resume = true // back to the game
 	default:
 		u.disconnect()
 		return true
@@ -274,7 +274,7 @@ func (u *lanUI) menuItem(item int) {
 	if u.inGame {
 		switch item {
 		case lanItemRating: // «Вернуться в игру»
-			u.resume = true
+			u.Resume = true
 			return
 		case lanItemSettings: // «Закончить игру»: logout (0x44)
 			u.endGame = true
@@ -613,7 +613,7 @@ func (u *lanUI) joined(c *netplay.Client, err error, rebuilt bool) {
 		u.pending = nil // the server rebuilt the hero
 	}
 	if c.Hero != nil {
-		u.look = c.Hero.Look
+		u.Look = c.Hero.Look
 	}
 	for _, name := range c.Clans {
 		u.addClan(cp866(name))

@@ -66,7 +66,7 @@ func (s *startScene) placeObjects(placements []mapdata.Placement, where string, 
 			for _, v := range variants {
 				o.frames = append(o.frames, frame(v))
 			}
-			o.variant, o.counter = mapdata.StartObject(sorted[i].Object, s.rng.IntN)
+			o.variant, o.counter = mapdata.StartObject(sorted[i].Object, s.Rng.IntN)
 			o.period = sorted[i].Object.Period
 		}
 		out = append(out, o)
@@ -79,7 +79,7 @@ func (s *startScene) placeObjects(placements []mapdata.Placement, where string, 
 // (type object + state) and the sprites are replaced.
 func (s *startScene) updateBuildings() {
 	var changed []mapdata.Placement
-	for i, id := range s.game.BuildingObjects(s.mapNumber, s.tables) {
+	for i, id := range s.Game.BuildingObjects(s.MapNumber, s.Tables) {
 		if i < len(s.placements) && s.placements[i].ID != id {
 			s.placements[i].ID = id
 			changed = append(changed, s.placements[i])
@@ -160,11 +160,11 @@ func (s *startScene) buildingUnderCursor() int {
 // map's settlement, a selected member alive and able to act, in the stance
 // with the bow active, a bow and incendiary arrows.
 func (s *startScene) fireReady() bool {
-	if len(s.party) == 0 || s.game.SettlementOnMap(s.mapNumber) == nil {
+	if len(s.Party) == 0 || s.Game.SettlementOnMap(s.MapNumber) == nil {
 		return false
 	}
-	for _, m := range s.selected() {
-		if h := s.party[m.k]; h.InStance() && gamestate.CanShoot(h) && s.game.Incendiary(h) {
+	for _, m := range s.Selected() {
+		if h := s.Party[m.K]; h.InStance() && gamestate.CanShoot(h) && s.Game.Incendiary(h) {
 			return true
 		}
 	}

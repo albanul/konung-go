@@ -142,11 +142,11 @@ func (s *startScene) toggleMap(hero *gamestate.Entity) {
 // (gamestate.Game.Travel, 0x00422AD8); the window closes. Clicks elsewhere
 // in the view are ignored (0x00422EDF).
 func (s *startScene) mapClick(hero *gamestate.Entity, mx, my int) {
-	m, _ := s.wmap.regionAt(s.game, mx, my) // 0 on the LAN map: no travel
+	m, _ := s.wmap.regionAt(s.Game, mx, my) // 0 on the LAN map: no travel
 	if m == 0 {
 		return
 	}
-	x, ok := s.game.Travel(hero, m)
+	x, ok := s.Game.Travel(hero, m)
 	if !ok {
 		return
 	}

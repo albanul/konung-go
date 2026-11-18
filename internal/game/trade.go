@@ -162,17 +162,9 @@ func (w *tradeWindow) open() bool { return w != nil && w.tr != nil }
 // openPileWindow is 0x004170A0 for the hero at pile i (the pick-up stopped
 // at the bag or weight limit, 0x0041122A).
 func (s *startScene) openPileWindow(i int) {
-	s.storeWorld()
-	hero := s.party[0].Index
-	s.trade.tr = s.game.OpenPileTrade(hero, hero, i)
-}
-
-// syncParty reads the party copies back after the trade rules changed the
-// records.
-func (s *startScene) syncParty() {
-	for k := range s.party {
-		s.party[k] = s.game.Entities[s.party[k].Index]
-	}
+	s.StoreWorld()
+	hero := s.Party[0].Index
+	s.trade.tr = s.Game.OpenPileTrade(hero, hero, i)
 }
 
 // tradeClick is a left click in window 7 (0x00422864: hotspots 0x32 cell,
@@ -195,7 +187,7 @@ func (s *startScene) tradeClick(mx, my int) {
 		s.applyTrade(kind == tradeHitOk)
 	default:
 		// The hit test also offers the portraits (0x004392F4).
-		if k := s.tables.HUDHotspot800(mx, my) - hotspotPortrait; k >= 0 && k < len(portraitCells) && k < len(s.party) {
+		if k := s.Tables.HUDHotspot800(mx, my) - hotspotPortrait; k >= 0 && k < len(portraitCells) && k < len(s.Party) {
 			s.tradePortrait(k)
 		}
 	}
@@ -205,18 +197,18 @@ func (s *startScene) tradeClick(mx, my int) {
 // living member other than the shown one becomes the trading character
 // (gamestate.Game.SwitchShown) and the character window's character.
 func (s *startScene) tradePortrait(k int) {
-	m, e := s.partyMember(s.party[k].Index)
+	m, e := s.PartyMember(s.Party[k].Index)
 	if e == nil {
-		e = &s.party[k]
+		e = &s.Party[k]
 	}
-	if e.Dead() || (m != nil && m.act == gamestate.ActDeath) {
+	if e.Dead() || (m != nil && m.Act == gamestate.ActDeath) {
 		return // 0x00422EA8
 	}
-	s.storeWorld()
-	if s.game.SwitchShown(s.trade.tr, e.Index) {
-		s.cur = k
+	s.StoreWorld()
+	if s.Game.SwitchShown(s.trade.tr, e.Index) {
+		s.Cur = k
 	}
-	s.syncParty()
+	s.SyncParty()
 }
 
 // applyTrade is the button action (0x004236D9, 0x004236FB): Apply; on
@@ -225,27 +217,27 @@ func (s *startScene) tradePortrait(k int) {
 // pile has items (0x004170A0), the trade through script 275 (0x00432FD0).
 func (s *startScene) applyTrade(accept bool) {
 	tr := s.trade.tr
-	s.storeWorld()
+	s.StoreWorld()
 	var cell mapdata.Cell
 	if tr.Pile >= 0 {
-		p := s.game.Piles[tr.Pile]
+		p := s.Game.Piles[tr.Pile]
 		cell = mapdata.Cell{Row: p.Row, Col: p.Col}
 	}
-	msg, ok, removed := s.game.Apply(s.tables, tr, accept, s.gameTime())
-	s.syncParty()
+	msg, ok, removed := s.Game.Apply(s.Tables, tr, accept, s.GameTime())
+	s.SyncParty()
 	if !ok {
-		s.showMessage(s.tables.CString(msg))
+		s.showMessage(s.Tables.CString(msg))
 		return
 	}
 	if removed {
-		delete(s.pileAt, cell) // 0x0041093C
+		delete(s.PileAt, cell) // 0x0041093C
 	}
 	switch {
 	case !accept, tr.Pile >= 0 && removed:
 		s.trade.tr = nil
 	case tr.Pile >= 0:
-		s.trade.tr = s.game.OpenPileTrade(tr.Hero, tr.Shown, tr.Pile)
+		s.trade.tr = s.Game.OpenPileTrade(tr.Hero, tr.Shown, tr.Pile)
 	default:
-		s.trade.tr = s.game.OpenTrade(tr.Hero, tr.Shown, tr.NPC, tr.Map)
+		s.trade.tr = s.Game.OpenTrade(tr.Hero, tr.Shown, tr.NPC, tr.Map)
 	}
 }

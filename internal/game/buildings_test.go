@@ -13,7 +13,7 @@ import (
 // objects stay in depth order.
 func TestBuildingSpriteFollowsState(t *testing.T) {
 	s := newVolkScene(t)
-	st := s.game.SettlementOnMap(s.mapNumber)
+	st := s.Game.SettlementOnMap(s.MapNumber)
 	b := st.Raw[0x18+8 : 0x18+16] // record 1, the healer's hut
 	pl := int(binary.LittleEndian.Uint16(b[2:]))
 	find := func() *sceneObject {
@@ -25,14 +25,14 @@ func TestBuildingSpriteFollowsState(t *testing.T) {
 		return nil
 	}
 	before := find()
-	if before == nil || s.placements[pl].ID != s.tables.BuildingObject(int(int8(b[0])))+gamestate.BuildingStanding {
+	if before == nil || s.placements[pl].ID != s.Tables.BuildingObject(int(int8(b[0])))+gamestate.BuildingStanding {
 		t.Fatalf("placement %d: %+v", pl, s.placements[pl])
 	}
 	img := before.frames[0].img
 	b[1] = gamestate.BuildingRuin
 	s.updateBuildings()
 	after := find()
-	if s.placements[pl].ID != s.tables.BuildingObject(int(int8(b[0])))+gamestate.BuildingRuin || after == nil || after.frames[0].img == img {
+	if s.placements[pl].ID != s.Tables.BuildingObject(int(int8(b[0])))+gamestate.BuildingRuin || after == nil || after.frames[0].img == img {
 		t.Fatalf("sprite not replaced: %+v", s.placements[pl])
 	}
 	for i := 1; i < len(s.objects); i++ {
@@ -48,8 +48,8 @@ func TestBuildingSpriteFollowsState(t *testing.T) {
 // settlement pass then turns it into a burning sprite.
 func TestArrowsSetBuildingOnFire(t *testing.T) {
 	s := newVolkScene(t)
-	g := s.game
-	st := g.SettlementOnMap(s.mapNumber)
+	g := s.Game
+	st := g.SettlementOnMap(s.MapNumber)
 	b := st.Raw[0x18 : 0x18+8] // record 0, the elder's house
 	p := int(binary.LittleEndian.Uint16(b[2:]))
 	o := s.buildingObject(p)
@@ -71,46 +71,46 @@ func TestArrowsSetBuildingOnFire(t *testing.T) {
 			arrows = i
 		}
 	}
-	hero := &s.party[0]
+	hero := &s.Party[0]
 	hero.Equipment[gamestate.WeaponBow], hero.Quiver = bow, arrows
 	gamestate.SelectWeapon(hero, gamestate.WeaponBow)
 	gamestate.EnterStance(hero)
-	s.hero.cell = mapdata.Cell{Row: target.Row + 14, Col: target.Col}
-	s.hero.path, s.hero.walking = nil, false
-	s.hero.look = lookOf(*hero)
+	s.Hero.Cell = mapdata.Cell{Row: target.Row + 14, Col: target.Col}
+	s.Hero.Path, s.Hero.Walking = nil, false
+	s.Hero.Look = lookOf(*hero)
 
 	// Without incendiary arrows a right click on the house does nothing.
 	s.hoveredBuilding = p + 1
-	from := s.hero.cell
+	from := s.Hero.Cell
 	s.click(hero, viewLeft+100, viewTop+100, 0, true)
-	h := s.lead()
-	if h.burnTarget != 0 || s.hero.walking || len(s.hero.path) > 0 || s.hero.cell != from {
+	h := s.Lead()
+	if h.BurnTarget != 0 || s.Hero.Walking || len(s.Hero.Path) > 0 || s.Hero.Cell != from {
 		t.Fatal("plain arrows: the click gave an order")
 	}
 
-	s.endFight(h)
-	h.burnTarget, h.intent, h.targetCell = p+1, gamestate.IntentShoot, target
+	s.EndFight(h)
+	h.BurnTarget, h.Intent, h.TargetCell = p+1, gamestate.IntentShoot, target
 	shots := 0
-	for i := 0; i < 4000 && h.shoot() && binary.LittleEndian.Uint16(b[6:]) == 0; i++ {
-		n := len(s.arrows)
-		s.flyArrows()
-		s.memberTick(h)
-		if len(s.arrows) > n {
+	for i := 0; i < 4000 && h.Shoot() && binary.LittleEndian.Uint16(b[6:]) == 0; i++ {
+		n := len(s.Arrows)
+		s.FlyArrows()
+		s.MemberTick(h)
+		if len(s.Arrows) > n {
 			shots++
 		}
 	}
 	if shots == 0 {
-		t.Fatalf("no arrow was shot (shoot %v, act %d, cell %v, target %v)", h.shoot(), s.hero.act, s.hero.cell, target)
+		t.Fatalf("no arrow was shot (shoot %v, act %d, cell %v, target %v)", h.Shoot(), s.Hero.Act, s.Hero.Cell, target)
 	}
 	if st.Flags&0x15 != 0x15 || g.Groups[st.Group].Alarm != gamestate.AlarmAttack {
 		t.Errorf("village not angered: flags %#x alarm %d", st.Flags, g.Groups[st.Group].Alarm)
 	}
 	if b[1] != gamestate.BuildingStanding || binary.LittleEndian.Uint16(b[6:]) != 1 {
-		t.Fatalf("after %d shots: record %v (shoot %v)", shots, b, h.shoot())
+		t.Fatalf("after %d shots: record %v (shoot %v)", shots, b, h.Shoot())
 	}
 	t.Logf("caught fire after %d shots", shots)
 	img := o.frames[0].img
-	s.game.SettlementPass(s.tables, hero.Index, s.mapNumber, false)
+	s.Game.SettlementPass(s.Tables, hero.Index, s.MapNumber, false)
 	s.updateBuildings()
 	if b[1] != 4 || s.buildingObject(p) == nil || s.buildingObject(p).frames[0].img == img || len(s.buildingObject(p).flames) == 0 {
 		t.Errorf("not burning after the pass: %v", b)
@@ -122,7 +122,7 @@ func TestArrowsSetBuildingOnFire(t *testing.T) {
 // objects keep their one frame.
 func TestAnimatedObjects(t *testing.T) {
 	v := newVolkScene(t)
-	s, err := v.assets.buildScene(v.game, 42, v, nil)
+	s, err := v.assets.buildScene(v.Game, 42, v, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestAnimatedObjects(t *testing.T) {
 	}
 	// The step runs in the game tick.
 	before := o.counter
-	s.step()
+	s.Step()
 	if o.counter == before {
 		t.Error("a game tick did not step the animation")
 	}

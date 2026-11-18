@@ -46,12 +46,12 @@ const clockMaxSteps = 4
 // stepToServer runs the ticks that keep the scene with the server's clock.
 func (s *startScene) stepToServer() {
 	target := s.clock.tick()
-	if d := target - s.tick; d > clockSnap || d < -clockSnap {
-		s.tick = target
+	if d := target - s.Tick; d > clockSnap || d < -clockSnap {
+		s.Tick = target
 		return
 	}
-	for n := 0; s.tick < target && n < clockMaxSteps; n++ {
-		s.step()
+	for n := 0; s.Tick < target && n < clockMaxSteps; n++ {
+		s.Step()
 	}
 }
 

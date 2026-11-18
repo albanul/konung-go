@@ -28,17 +28,17 @@ type remotePlayer struct {
 	info   netplay.PlayerInfo
 	hero   *netplay.Hero
 	pos    netplay.Position
-	look   netplay.Look
+	Look   netplay.Look
 	hp     int
 	dead   bool
-	entity int    // index in game.Entities, -1 until first placed
+	Entity int    // index in game.Entities, -1 until first placed
 	items  [6]int // the equipment's item records in game (drawing only)
 }
 
 // remoteAt is the remote player whose hero is entity i, or nil.
 func (s *startScene) remoteAt(i int) *remotePlayer {
 	for _, r := range s.remotes {
-		if r.entity == i && i >= 0 {
+		if r.Entity == i && i >= 0 {
 			return r
 		}
 	}
@@ -52,15 +52,15 @@ func (s *startScene) remoteAppear(a netplay.AppearPayload) {
 	}
 	r := s.remotes[a.Player.ID]
 	if r == nil {
-		r = &remotePlayer{entity: -1}
+		r = &remotePlayer{Entity: -1}
 		s.remotes[a.Player.ID] = r
 	}
-	r.info, r.hero, r.look, r.hp, r.dead = a.Player, a.Hero, a.Look, a.HP, a.Dead
-	if n := s.byEntity[r.entity]; n != nil {
+	r.info, r.hero, r.Look, r.hp, r.dead = a.Player, a.Hero, a.Look, a.HP, a.Dead
+	if n := s.ByEntity[r.Entity]; n != nil {
 		s.removeNPC(n) // entered again: placed anew, alive
 	}
-	if r.entity >= 0 {
-		e := &s.game.Entities[r.entity]
+	if r.Entity >= 0 {
+		e := &s.Game.Entities[r.Entity]
 		e.Flags4 &^= 0x80
 		e.HP = r.hp
 	}
@@ -76,25 +76,25 @@ func (s *startScene) remoteMove(id string, pos netplay.Position) {
 		return
 	}
 	r.pos = pos
-	n := s.byEntity[r.entity]
+	n := s.ByEntity[r.Entity]
 	if r.dead {
 		return // the dead lie where they fell
 	}
-	if pos.Map != s.mapNumber {
+	if pos.Map != s.MapNumber {
 		if n != nil {
 			s.removeNPC(n)
 		}
 		return
 	}
 	cell := mapdata.Cell{Row: pos.Row, Col: pos.Col}
-	if n == nil || chebyshev(n.cell, cell) > remoteWalkLimit {
+	if n == nil || chebyshev(n.Cell, cell) > remoteWalkLimit {
 		if n != nil {
 			s.removeNPC(n)
 		}
 		s.placeRemote(r)
 		return
 	}
-	n.walkTo(cell)
+	n.WalkTo(cell)
 }
 
 // remoteLeave removes a player who left the session (MsgPlayerLeft).
@@ -103,7 +103,7 @@ func (s *startScene) remoteLeave(id string) {
 	if r == nil {
 		return
 	}
-	if n := s.byEntity[r.entity]; n != nil {
+	if n := s.ByEntity[r.Entity]; n != nil {
 		s.removeNPC(n)
 	}
 	delete(s.remotes, id)
@@ -113,7 +113,7 @@ func (s *startScene) remoteLeave(id string) {
 // change keeps the remotes and their entities).
 func (s *startScene) placeRemotes() {
 	for _, r := range s.remotes {
-		if r.pos.Map == s.mapNumber && !r.dead {
+		if r.pos.Map == s.MapNumber && !r.dead {
 			s.placeRemote(r)
 		}
 	}
@@ -124,11 +124,11 @@ func (s *startScene) placeRemotes() {
 // emptied group, so no party or village rule applies to it) and puts its
 // walker on r's cell, or the nearest free one.
 func (s *startScene) placeRemote(r *remotePlayer) {
-	if len(s.game.Groups) == 0 {
+	if len(s.Game.Groups) == 0 {
 		return
 	}
-	if r.entity < 0 {
-		e := s.game.Entities[s.game.Groups[0].First]
+	if r.Entity < 0 {
+		e := s.Game.Entities[s.Game.Groups[0].First]
 		model := min(max(r.info.Model, 0), netplay.Models-1)
 		t := gamestate.NewHeroTemplate()
 		gamestate.SelectHero(&t, model)
@@ -142,57 +142,57 @@ func (s *startScene) placeRemote(r *remotePlayer) {
 		// look (applyLook), never the own hero's.
 		e.Flags3 &^= 0x04
 		e.Type, e.Step, e.Quiver, e.Bag, e.Equipment = 6, 0, 0, [32]int{}, [6]int{}
-		e.Group = len(s.game.Groups) - 1 // emptied by EnterLANWorld: no group rules
-		e.Index = len(s.game.Entities)
-		s.game.Entities = append(s.game.Entities, e)
-		r.entity = e.Index
+		e.Group = len(s.Game.Groups) - 1 // emptied by EnterLANWorld: no group rules
+		e.Index = len(s.Game.Entities)
+		s.Game.Entities = append(s.Game.Entities, e)
+		r.Entity = e.Index
 		s.applyLook(r)
-		if s.game.Names == nil {
-			s.game.Names = map[int][]byte{}
+		if s.Game.Names == nil {
+			s.Game.Names = map[int][]byte{}
 		}
-		s.game.Names[e.Index] = cp866(r.info.Name)
+		s.Game.Names[e.Index] = cp866(r.info.Name)
 	}
-	e := &s.game.Entities[r.entity]
+	e := &s.Game.Entities[r.Entity]
 	e.HP = r.hp
 	cell := mapdata.NearestFree(mapdata.Cell{Row: r.pos.Row, Col: r.pos.Col}, func(c mapdata.Cell) bool {
-		return s.walk.Blocked(c.Row, c.Col) || s.occ[c]
+		return s.Walk.Blocked(c.Row, c.Col) || s.Occ[c]
 	}, 6)
 	e.Row, e.Col, e.Variant = cell.Row, cell.Col, r.pos.Facing&7
 	upload := newUploader()
 	p := gamestate.Placed{Entity: *e, Row: cell.Row, Col: cell.Col}
 	n := &npc{
-		walker: walker{
-			entity: r.entity, cell: cell, dir: mapdata.Direction(r.pos.Facing & 7), idle: -1,
-			look: lookOf(*e),
-			load: entityLoader(s.game, p, liveEntity(s.game, r.entity), s.assets.objects, s.assets.graph, s.tables,
-				func(sp *resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image) { return upload(sp.Image, sp.Shadow) },
-				func(err error) { log.Printf("LAN player %s: %v", r.info.Name, err) }),
-			reserve: func(c mapdata.Cell) bool {
-				if s.occ[c] {
+		Walker: walker{
+			Entity: r.Entity, Cell: cell, Dir: mapdata.Direction(r.pos.Facing & 7), Idle: -1,
+			Look: lookOf(*e),
+			Reserve: func(c mapdata.Cell) bool {
+				if s.Occ[c] {
 					return false
 				}
-				s.occ[c] = true
+				s.Occ[c] = true
 				return true
 			},
-			release: func(c mapdata.Cell) { delete(s.occ, c) },
-			sound:   s.actionSound,
+			Release: func(c mapdata.Cell) { delete(s.Occ, c) },
+			Sound:   s.actionSound,
 		},
-		mode: npcRemote, liveMode: npcRemote, target: -1, rng: s.rng.IntN,
+		Mode: npcRemote, LiveMode: npcRemote, Target: -1, Rng: s.Rng.IntN,
 	}
-	n.blocked = s.blocked
-	s.occ[cell] = true
-	s.npcs = append(s.npcs, n)
-	s.byEntity[r.entity] = n
+	withSprites(&n.Walker, entityLoader(s.Game, p, liveEntity(s.Game, r.Entity), s.assets.objects, s.assets.graph, s.Tables,
+		func(sp *resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image) { return upload(sp.Image, sp.Shadow) },
+		func(err error) { log.Printf("LAN player %s: %v", r.info.Name, err) }))
+	n.Blocked = s.Blocked
+	s.Occ[cell] = true
+	s.NPCs = append(s.NPCs, n)
+	s.ByEntity[r.Entity] = n
 }
 
 // removeNPC takes a walker off the map and frees its cells.
 func (s *startScene) removeNPC(n *npc) {
-	delete(s.occ, n.cell)
-	delete(s.occ, n.from)
-	delete(s.byEntity, n.entity)
-	for i, m := range s.npcs {
+	delete(s.Occ, n.Cell)
+	delete(s.Occ, n.From)
+	delete(s.ByEntity, n.Entity)
+	for i, m := range s.NPCs {
 		if m == n {
-			s.npcs = append(s.npcs[:i], s.npcs[i+1:]...)
+			s.NPCs = append(s.NPCs[:i], s.NPCs[i+1:]...)
 			break
 		}
 	}
@@ -201,10 +201,10 @@ func (s *startScene) removeNPC(n *npc) {
 // reportMove sends the own hero's position when its cell, facing or map
 // changed (MsgMove).
 func (s *startScene) reportMove() {
-	if s.onMove == nil || s.hero == nil {
+	if s.onMove == nil || s.Hero == nil {
 		return
 	}
-	p := netplay.Position{Map: s.mapNumber, Row: s.hero.cell.Row, Col: s.hero.cell.Col, Facing: int(s.hero.dir) & 7}
+	p := netplay.Position{Map: s.MapNumber, Row: s.Hero.Cell.Row, Col: s.Hero.Cell.Col, Facing: int(s.Hero.Dir) & 7}
 	if p != s.lastMove {
 		s.lastMove = p
 		s.onMove(p)
@@ -214,8 +214,8 @@ func (s *startScene) reportMove() {
 // faceRemotes turns idle remote heroes to their reported facing.
 func (s *startScene) faceRemotes() {
 	for _, r := range s.remotes {
-		if n := s.byEntity[r.entity]; n != nil && n.idle() && n.cell == (mapdata.Cell{Row: r.pos.Row, Col: r.pos.Col}) {
-			n.dir = mapdata.Direction(r.pos.Facing & 7)
+		if n := s.ByEntity[r.Entity]; n != nil && n.IsIdle() && n.Cell == (mapdata.Cell{Row: r.pos.Row, Col: r.pos.Col}) {
+			n.Dir = mapdata.Direction(r.pos.Facing & 7)
 		}
 	}
 }
@@ -243,7 +243,7 @@ func chebyshev(a, b mapdata.Cell) int {
 // playerCounts is the number of heroes per map for the LAN map window: the
 // own hero and every remote hero the server reported.
 func (s *startScene) playerCounts() map[int]int {
-	c := map[int]int{s.mapNumber: 1}
+	c := map[int]int{s.MapNumber: 1}
 	for _, r := range s.remotes {
 		c[r.pos.Map]++
 	}
@@ -254,39 +254,39 @@ func (s *startScene) playerCounts() map[int]int {
 // stance bit, as ToggleStance), the weapon mode and the equipment as item
 // records of this game that only drawing reads.
 func (s *startScene) applyLook(r *remotePlayer) {
-	if r.entity < 0 {
+	if r.Entity < 0 {
 		return
 	}
-	e := &s.game.Entities[r.entity]
+	e := &s.Game.Entities[r.Entity]
 	if !e.Dead() && e.HP > 0 {
-		if r.look.Stance {
+		if r.Look.Stance {
 			gamestate.EnterStance(e)
 		} else {
 			gamestate.LeaveStance(e)
 		}
 	}
-	e.WeaponMode = r.look.Weapon
-	for k, it := range r.look.Equip {
+	e.WeaponMode = r.Look.Weapon
+	for k, it := range r.Look.Equip {
 		if !it.Item {
 			if r.items[k] != 0 {
-				s.game.SetItemKind(r.items[k], -1, 0)
+				s.Game.SetItemKind(r.items[k], -1, 0)
 				r.items[k] = 0
 			}
 			e.Equipment[k] = 0
 			continue
 		}
-		r.items[k] = s.game.SetItemKind(r.items[k], it.Category, it.Type)
+		r.items[k] = s.Game.SetItemKind(r.items[k], it.Category, it.Type)
 		e.Equipment[k] = r.items[k]
 	}
-	if n := s.byEntity[r.entity]; n != nil {
-		n.look = lookOf(*e)
+	if n := s.ByEntity[r.Entity]; n != nil {
+		n.Look = lookOf(*e)
 	}
 }
 
 // remoteLook is another hero's new look (MsgLook).
 func (s *startScene) remoteLook(l netplay.LookPayload) {
 	if r := s.remotes[l.ID]; r != nil {
-		r.look = l.Look
+		r.Look = l.Look
 		s.applyLook(r)
 	}
 }
@@ -294,10 +294,10 @@ func (s *startScene) remoteLook(l netplay.LookPayload) {
 // reportLook sends the own hero's look when its stance, weapon or equipment
 // changed (MsgLook).
 func (s *startScene) reportLook() {
-	if s.onLook == nil || len(s.party) == 0 {
+	if s.onLook == nil || len(s.Party) == 0 {
 		return
 	}
-	l := lanfight.LookOf(s.game, s.party[0])
+	l := lanfight.LookOf(s.Game, s.Party[0])
 	if l != s.lastLook {
 		s.lastLook = l
 		s.onLook(l)
