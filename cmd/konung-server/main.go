@@ -6,9 +6,11 @@
 //	konung-server [-data DIR] [-port 7777] [-max 16] [-name NAME] [-minutes 180] [-speed 0]
 //
 // DIR holds konung.db, the LAN version's GAME.RES (the world: players start
-// on their hero model's village map; without it nobody can enter) and,
-// optionally, its SERVER file (session name and length; the flags override
-// it). TCP on the port carries the game;
+// on their hero model's village map; without it nobody can enter),
+// optionally its SERVER file (session name and length; the flags override
+// it), and for fights between players konung.exe and GAME.0, GAME.1, GAME.2
+// (the strike rules and the heroes' gear; without them heroes cannot hurt
+// each other). TCP on the port carries the game;
 // UDP on the same port answers LAN discovery. The server owns the world
 // clock (time of day, world speed) for every client. See Containerfile for
 // running it in a container.
@@ -25,6 +27,7 @@ import (
 	"time"
 
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/lanfight"
 	"konung1.5/internal/lanstore"
 	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
@@ -68,6 +71,14 @@ func run(dataDir string, port, maxPlayers int, name string, minutes, speed int) 
 		return err
 	}
 
+	// Fights between players: decided here with the game's rules.
+	var combat netplay.Combat
+	if w, err := loadFights(dataDir); err != nil {
+		log.Printf("fights between players off: %v", err)
+	} else {
+		combat = w
+	}
+
 	store, err := lanstore.Open(filepath.Join(dataDir, "konung.db"))
 	if err != nil {
 		return err
@@ -80,6 +91,19 @@ func run(dataDir string, port, maxPlayers int, name string, minutes, speed int) 
 		Accounts: store,
 		Start:    start,
 		Speed:    speed,
+		Combat:   combat,
+		OnKill: func(killer, victim netplay.PlayerInfo, killerHero *netplay.Hero, killerLevel, victimLevel int) {
+			points := gamestate.HeroKillPoints(victimLevel, killerLevel, false)
+			log.Printf("%s killed %s: %d points", killer.Name, victim.Name, points)
+			if err := store.Score(killer.Name, lanstore.KillHero, points); err != nil {
+				log.Printf("score: %v", err)
+			}
+			if killerHero != nil {
+				if err := store.SaveProgress(killer.Name, killerHero); err != nil {
+					log.Printf("save %s: %v", killer.Name, err)
+				}
+			}
+		},
 		OnJoin: func(p netplay.PlayerInfo) {
 			if p.New { // as the original server prints (0x0044B1CE)
 				log.Printf("Новый игрок %s клан %s", p.Name, p.Clan)
@@ -135,4 +159,19 @@ func run(dataDir string, port, maxPlayers int, name string, minutes, speed int) 
 			return nil
 		}
 	}
+}
+
+// loadFights reads konung.exe and GAME.0–GAME.2 from dir for lanfight.
+func loadFights(dir string) (*lanfight.World, error) {
+	exe, err := os.ReadFile(filepath.Join(dir, "konung.exe"))
+	if err != nil {
+		return nil, err
+	}
+	var games [netplay.Models][]byte
+	for m := range games {
+		if games[m], err = os.ReadFile(filepath.Join(dir, "GAME."+strconv.Itoa(m))); err != nil {
+			return nil, err
+		}
+	}
+	return lanfight.New(exe, games)
 }

@@ -396,6 +396,25 @@ func (s *Store) SaveHero(name string, h *netplay.Hero) error {
 	return nil
 }
 
+// SaveProgress stores the hero's own values (level, gold, free points,
+// stats, skills) and leaves the rating and the counters to Score and
+// EndSession (a kill saves the killer's experience, 0x00448970).
+func (s *Store) SaveProgress(name string, h *netplay.Hero) error {
+	res, err := s.db.Exec(`UPDATE accounts SET level = ?, gold = ?, free_points = ?,
+		charisma = ?, strength = ?, dexterity = ?, endurance = ?,
+		fencing = ?, archery = ?, identification = ?, trade = ?, smithing = ?, carpentry = ?, herbalism = ?
+		WHERE name = ?`,
+		h.Level, h.Gold, h.FreePoints, h.Charisma, h.Strength, h.Dexterity, h.Endurance,
+		h.Fencing, h.Archery, h.Identification, h.Trade, h.Smithing, h.Carpentry, h.Herbalism, name)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return fmt.Errorf("lanstore: no account %q", name)
+	}
+	return nil
+}
+
 // Kill kinds counted by Score (0x0043B67C).
 const (
 	KillHero = iota

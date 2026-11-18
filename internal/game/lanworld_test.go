@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/lanfight"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
@@ -263,9 +264,11 @@ func TestLANRemotePlayers(t *testing.T) {
 	}
 }
 
-// A remote hero wears what the own hero wears at the start (the GAME.N
-// template's equipment), not the creation screen's preview gear.
-func TestLANRemoteEquipment(t *testing.T) {
+// A remote hero wears what its look says (the server's MsgLook): its own
+// items, and in the stance the body's combat set together with the stance
+// bit, so the drawn weapon shows (the bug: type 0 without the bit drew the
+// stance with no weapon).
+func TestLANRemoteLook(t *testing.T) {
 	const dir = "../../assets/Konung/"
 	if _, err := os.Stat(dir + "MAPS.RES"); err != nil {
 		t.Skip("MAPS.RES not available:", err)
@@ -278,9 +281,51 @@ func TestLANRemoteEquipment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "x", Name: "Twin", Model: 0}, Pos: netplay.Position{Map: 1, Row: 100, Col: 32}})
-	if own, other := s.party[0].Equipment, s.game.Entities[s.remotes["x"].entity].Equipment; own != other {
-		t.Errorf("equipment: own %v, remote %v", own, other)
+	own := lanfight.LookOf(s.game, s.party[0]) // the same type's gear
+	s.remoteAppear(netplay.AppearPayload{Player: netplay.PlayerInfo{ID: "x", Name: "Twin", Model: 0}, Look: own, HP: 1600,
+		Pos: netplay.Position{Map: 1, Row: 100, Col: 32}})
+	r := s.remotes["x"]
+	e := s.game.Entities[r.entity]
+	if e.InStance() || e.Type < 6 {
+		t.Errorf("out of the stance: stance %v type %d", e.InStance(), e.Type)
+	}
+	if got := lanfight.LookOf(s.game, e); got.Equip != own.Equip {
+		t.Errorf("remote equipment %+v, want %+v", got.Equip, own.Equip)
+	}
+	if e.Equipment == s.party[0].Equipment {
+		t.Error("the remote hero shares the own hero's item records")
+	}
+	l := own
+	l.Stance = true
+	for k, it := range l.Equip {
+		if it.Item && k <= gamestate.WeaponBlade && k != gamestate.WeaponBow {
+			l.Weapon = k
+		}
+	}
+	s.remoteLook(netplay.LookPayload{ID: "x", Look: l})
+	e = s.game.Entities[r.entity]
+	if !e.InStance() || e.Type >= 6 || e.WeaponMode != l.Weapon {
+		t.Fatalf("in the stance: stance %v type %d weapon %d", e.InStance(), e.Type, e.WeaponMode)
+	}
+	if n := s.byEntity[r.entity]; n == nil || !n.look.stance {
+		t.Error("the walker's look did not change")
+	}
+	if l.Equip[l.Weapon].Item && len(s.game.Overlays(e, s.tables)) == 0 {
+		t.Error("no overlays in the stance: the weapon is not drawn")
+	}
+	// Hits: the server's verdict sets HP, a kill plays the death.
+	s.remoteHit(netplay.HitPayload{Attacker: "me", Target: "x", Result: netplay.HitLight, Damage: 40, HP: 1560}, "me")
+	if hp := s.game.Entities[r.entity].HP; hp != 1560 {
+		t.Errorf("HP %d after a hit", hp)
+	}
+	s.remoteHit(netplay.HitPayload{Attacker: "me", Target: "x", Result: netplay.HitKill, Killed: true}, "me")
+	if n := s.byEntity[r.entity]; n == nil || n.act != gamestate.ActDeath || !r.dead {
+		t.Error("the kill did not play the death")
+	}
+	// The own hero dies by the server's verdict too.
+	s.remoteHit(netplay.HitPayload{Attacker: "x", Target: "me", Result: netplay.HitKill, Killed: true}, "me")
+	if s.party[0].HP != 0 || s.hero.act != gamestate.ActDeath {
+		t.Errorf("own hero: HP %d, act %d", s.party[0].HP, s.hero.act)
 	}
 }
 

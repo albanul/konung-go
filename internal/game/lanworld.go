@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/lanfight"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
 )
@@ -60,7 +61,7 @@ func (a *sceneAssets) lanWorld(gameDir string, exe *gamestate.LANExe, at netplay
 	gamestate.SelectHero(&tmplHero, model)
 	game.StartHero(tmplHero)
 	if hero != nil {
-		applyLANHero(&game.Entities[game.Groups[0].First], hero)
+		lanfight.ApplyHero(&game.Entities[game.Groups[0].First], hero)
 	}
 	// GAME.RES's map exits: the teleports between the LAN maps. (The
 	// original client skips them and the server moves players between maps;
@@ -79,18 +80,4 @@ func (a *sceneAssets) lanWorld(gameDir string, exe *gamestate.LANExe, at netplay
 		game.Names = map[int][]byte{game.Groups[0].First: cp866(name)}
 	}
 	return la.buildScene(game, at.Map, nil, nil)
-}
-
-// applyLANHero puts an account's hero (LANUSERS.DAT record) on the scene's
-// hero entity: level, gold, experience, the skills and stats, the model and
-// its palette (index × 512 = the palette's byte offset in GRAPH.RES).
-func applyLANHero(e *gamestate.Entity, h *netplay.Hero) {
-	e.Level, e.Gold, e.FreeExp = h.Level, h.Gold, h.FreePoints
-	e.Fencing, e.Marksmanship = h.Fencing, h.Archery
-	e.Skills = [5]int{h.Herbalism, h.Smithing, h.Trade, h.Carpentry, h.Identification}
-	e.BaseStats = [4]int{h.Charisma, h.Strength, h.Dexterity, h.Endurance}
-	e.Stats = e.BaseStats
-	e.Model = h.Model
-	e.PaletteOffset = uint32(h.Palette) * 512
-	e.HP = gamestate.HPFull // 0x0042105C: 1600 on entry
 }

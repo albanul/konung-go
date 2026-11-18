@@ -290,3 +290,39 @@ func (g *Game) GainExperience(e *Entity, t *resfmt.ExeTables, xp int) {
 		}
 	}
 }
+
+// CopyItemFrom copies item i of src into the first free record of g
+// (newItem's rule) and returns its index, 0 when i is empty or g is full.
+// The LAN server builds each hero's fighting entity in one shared Game from
+// the hero type's GAME.N template (lanfight).
+func (g *Game) CopyItemFrom(src *Game, i int) int {
+	if i <= 0 || (i+1)*itemStride > len(src.items) || int8(src.items[i*itemStride]) < 0 {
+		return 0
+	}
+	j := g.newItem()
+	if j != 0 {
+		copy(g.items[j*itemStride:][:itemStride], src.items[i*itemStride:][:itemStride])
+	}
+	return j
+}
+
+// ItemKind is item i's category and type (category < 0 when free).
+func (g *Game) ItemKind(i int) (category, typ int) {
+	if i <= 0 || (i+1)*itemStride > len(g.items) {
+		return -1, 0
+	}
+	r := g.items[i*itemStride:]
+	return int(int8(r[0])), int(r[3])
+}
+
+// SetItemKind makes item i (allocated when i is 0; 0 if none is free) an
+// item of category and type, for drawing another player's equipment.
+func (g *Game) SetItemKind(i, category, typ int) int {
+	if i == 0 {
+		if i = g.newItem(); i == 0 {
+			return 0
+		}
+	}
+	g.setItem(i, category, typ)
+	return i
+}

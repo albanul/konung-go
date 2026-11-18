@@ -695,3 +695,88 @@ func TestClock(t *testing.T) {
 		t.Errorf("clock with nobody in the world = %+v (was %+v)", c, stopped)
 	}
 }
+
+// fakeCombat kills with every second strike.
+type fakeCombat struct {
+	mu      sync.Mutex
+	strikes int
+}
+
+func (f *fakeCombat) Enter(id string, model int, h *Hero) (Look, int) { return Look{Weapon: 2}, 1600 }
+func (f *fakeCombat) Leave(id string)                                 {}
+func (f *fakeCombat) Stance(id string, stance bool, weapon int) Look {
+	return Look{Stance: stance, Weapon: weapon}
+}
+func (f *fakeCombat) Strike(r StrikeRequest) Strike {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.strikes++
+	if f.strikes%2 == 0 {
+		return Strike{Result: HitKill}
+	}
+	return Strike{Result: HitHeavy, Damage: 100, HP: 1500}
+}
+
+// Attacks: the stance and the reach are checked, everyone in the world gets
+// the verdict, a kill scores and the dead are not struck again.
+func TestAttack(t *testing.T) {
+	kills := make(chan string, 4)
+	fc := &fakeCombat{}
+	s := startServer(t, ServerConfig{
+		Start: func(p PlayerInfo) (EnterPayload, error) {
+			return EnterPayload{Map: 1, Row: 110, Col: 32 + 2*p.Model, Facing: 2}, nil
+		},
+		Combat: fc,
+		OnKill: func(k, v PlayerInfo, _ *Hero, kl, vl int) { kills <- k.Name + ">" + v.Name },
+	})
+	a := dial(t, s, "Volk", 0)
+	a.Enter(-1)
+	waitFor(t, a.Conn, MsgEntered)
+	b := dial(t, s, "Ragnar", 1)
+	b.Enter(-1)
+	waitFor(t, b.Conn, MsgEntered)
+	attack := func() { a.Send(mustMessage(MsgAttack, AttackPayload{Target: b.PlayerID})) }
+
+	attack() // out of the stance: nothing; the chat line below arrives first
+	a.Send(mustMessage(MsgLook, LookPayload{Look: Look{Stance: true, Weapon: 2}}))
+	var l LookPayload
+	if waitFor(t, b.Conn, MsgLook).Decode(&l); l.ID != a.PlayerID || !l.Stance {
+		t.Fatalf("b sees look %+v", l)
+	}
+	attack()
+	var h HitPayload
+	if waitFor(t, b.Conn, MsgHit).Decode(&h); h.Attacker != a.PlayerID || h.Target != b.PlayerID || h.Result != HitHeavy || h.HP != 1500 {
+		t.Errorf("hit = %+v", h)
+	}
+	waitFor(t, a.Conn, MsgHit) // the attacker gets it too
+	time.Sleep(strikeEvery)
+	attack()
+	if waitFor(t, b.Conn, MsgHit).Decode(&h); !h.Killed {
+		t.Errorf("kill = %+v", h)
+	}
+	if k := <-kills; k != "Volk>Ragnar" {
+		t.Errorf("OnKill %s", k)
+	}
+	// Out of reach: Ragnar's next spot is 30 cells off (and dead anyway).
+	time.Sleep(strikeEvery)
+	attack()
+	a.Chat("done")
+	for {
+		m := waitFor(t, b.Conn, MsgChat)
+		var c ChatPayload
+		m.Decode(&c)
+		if c.Text == "done" {
+			break
+		}
+	}
+	select {
+	case k := <-kills:
+		t.Errorf("a dead hero was killed again: %s", k)
+	default:
+	}
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	if fc.strikes != 2 { // not the one out of the stance, not the dead
+		t.Errorf("%d strikes reached the combat, want 2", fc.strikes)
+	}
+}

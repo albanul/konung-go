@@ -311,7 +311,12 @@ func (g *Game) StartHero(tmpl Entity) {
 	if i < 0 || i >= len(g.Entities) {
 		return
 	}
-	e := &g.Entities[i]
+	StartHeroEntity(&g.Entities[i], tmpl)
+	g.Groups[0].Map = HeroStartMap(tmpl.Model)
+}
+
+// StartHeroEntity is StartHero's part on the hero entity e.
+func StartHeroEntity(e *Entity, tmpl Entity) {
 	e.Fencing, e.Marksmanship = tmpl.Fencing, tmpl.Marksmanship
 	e.Skills = tmpl.Skills
 	e.BaseStats, e.Stats = tmpl.BaseStats, tmpl.BaseStats
@@ -320,7 +325,6 @@ func (g *Game) StartHero(tmpl Entity) {
 	e.NameIndex, e.Model, e.PaletteOffset = tmpl.NameIndex, tmpl.Model, tmpl.PaletteOffset
 	e.Flags4 = tmpl.Flags4
 	e.Level = 1
-	g.Groups[0].Map = HeroStartMap(tmpl.Model)
 }
 
 // HeroStartMap is the hero's start map, KONUNG.<model·3 + 1> (0x004390B4).

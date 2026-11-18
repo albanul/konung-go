@@ -16,16 +16,16 @@
 #                             (default: line 2 of the SERVER file, else
 #                             «Стандартный Сервер с Командной игрой»)
 #   KONUNG_PORT=7777          host port for the game (TCP) and LAN discovery (UDP)
-#   KONUNG_ASSETS=assets/Konung   folder with GAME.RES (required) and SERVER (optional)
+#   KONUNG_ASSETS=assets/Konung   folder with GAME.RES (required), SERVER (optional), and
+#                             konung.exe + GAME.0–GAME.2 (fights between players)
 #   KONUNG_NETWORK=           set to "host" to use the host's network directly; LAN
 #                             discovery (UDP broadcast) may not pass a port mapping
 #   KONUNG_SERVER_ARGS=       extra server flags, e.g. '-minutes 60 -max 8'
 #   KONUNG_IMAGE=konung-server  KONUNG_CONTAINER=konung-server  KONUNG_VOLUME=konung-data
 #   KONUNG_ENGINE=podman      or docker
 #
-# The data volume holds konung.db (accounts and progress), GAME.RES and SERVER.
-# GAME.RES and SERVER are copied in at every start, so edits to them apply on
-# restart; the database is never touched by this script except by "reset".
+# The data volume holds konung.db (accounts and progress) and the game files
+# above, copied in at every start, so edits to them apply on restart; the database is never touched by this script except by "reset".
 # The container itself holds nothing: it is re-created at every start.
 set -euo pipefail
 
@@ -61,9 +61,14 @@ build() {
 copy_data() {
 	[[ -f $assets/GAME.RES ]] || die "$assets/GAME.RES not found (set KONUNG_ASSETS); without it nobody can enter the world"
 	"$engine" cp "$assets/GAME.RES" "$container:/data/GAME.RES"
-	if [[ -f $assets/SERVER ]]; then
-		"$engine" cp "$assets/SERVER" "$container:/data/SERVER"
-	fi
+	local f
+	for f in SERVER konung.exe GAME.0 GAME.1 GAME.2; do
+		if [[ -f $assets/$f ]]; then
+			"$engine" cp "$assets/$f" "$container:/data/$f"
+		elif [[ $f != SERVER ]]; then
+			say "Note: $assets/$f not found: players cannot hurt each other."
+		fi
+	done
 }
 
 create() {

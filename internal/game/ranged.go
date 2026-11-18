@@ -237,6 +237,12 @@ func (s *startScene) arrowOnBuilding(a *gamestate.Arrow) {
 
 // arrowHit applies an arrow to entity v (0x0041ACE0, 0x0041C29C).
 func (s *startScene) arrowHit(a gamestate.Arrow, v int) {
+	if s.remoteAt(v) != nil { // another player's hero: the server decides
+		if _, sh := s.combatant(a.Shooter); sh != nil {
+			s.strikeRemote(sh, v, true)
+		}
+		return
+	}
 	vw, ve := s.combatant(v)
 	_, shooter := s.combatant(a.Shooter)
 	if shooter == nil {

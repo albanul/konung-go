@@ -432,6 +432,16 @@ func (m *Menu) Update() error {
 					lan.client.Move(p)
 				}
 			}
+			w.onLook = func(l netplay.Look) {
+				if lan.client != nil {
+					lan.client.Look(l)
+				}
+			}
+			w.onAttack = func(target string, ranged bool) {
+				if lan.client != nil {
+					lan.client.Attack(target, ranged)
+				}
+			}
 			m.applyLAN()
 		}
 		return nil
@@ -716,6 +726,10 @@ func (m *Menu) applyLAN() {
 	if m.world == nil {
 		return
 	}
+	self := ""
+	if m.lan.client != nil {
+		self = m.lan.client.PlayerID
+	}
 	for _, msg := range msgs {
 		switch msg.Type {
 		case netplay.MsgAppear:
@@ -732,6 +746,21 @@ func (m *Menu) applyLAN() {
 			var l netplay.PlayerLeftPayload
 			if msg.Decode(&l) == nil {
 				m.world.remoteLeave(l.ID)
+			}
+		case netplay.MsgLook:
+			var l netplay.LookPayload
+			if msg.Decode(&l) == nil && l.ID != self {
+				m.world.remoteLook(l)
+			}
+		case netplay.MsgHit:
+			var h netplay.HitPayload
+			if msg.Decode(&h) == nil {
+				m.world.remoteHit(h, self)
+			}
+		case netplay.MsgHero:
+			var h netplay.Hero
+			if msg.Decode(&h) == nil {
+				m.world.ownHero(h)
 			}
 		}
 	}

@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 3
+const ProtocolVersion = 4
 
 // MsgType identifies a message.
 type MsgType int
@@ -52,6 +52,10 @@ const (
 	MsgMove                            // client → server: Position, the own hero moved
 	MsgMoved                           // server → client: MovedPayload, another hero moved (0x19)
 	MsgClock                           // server → client: ClockPayload, the world clock (clock.go)
+	MsgLook                            // client → server → others: LookPayload, stance, weapon, equipment (0x5A/0x19 parts)
+	MsgAttack                          // client → server: AttackPayload, a blow or an arrow reached another hero (fight.go)
+	MsgHit                             // server → everyone in the world: HitPayload, the server's verdict
+	MsgHero                            // server → client: Hero, the own hero after a change (kill experience, 0x5C)
 )
 
 var msgNames = map[MsgType]string{
@@ -59,6 +63,7 @@ var msgNames = map[MsgType]string{
 	MsgPlayerJoined: "player-joined", MsgPlayerLeft: "player-left", MsgSession: "session",
 	MsgChat: "chat", MsgGame: "game", MsgEnter: "enter", MsgEntered: "entered",
 	MsgAppear: "appear", MsgMove: "move", MsgMoved: "moved", MsgClock: "clock",
+	MsgLook: "look", MsgAttack: "attack", MsgHit: "hit", MsgHero: "hero",
 }
 
 func (t MsgType) String() string {
@@ -266,6 +271,9 @@ type AppearPayload struct {
 	Player PlayerInfo `json:"player"`
 	Hero   *Hero      `json:"hero,omitempty"`
 	Pos    Position   `json:"pos"`
+	Look   Look       `json:"look"`
+	HP     int        `json:"hp"`             // 0 with Dead
+	Dead   bool       `json:"dead,omitempty"` // killed and not entered again
 }
 
 // MovedPayload is another hero's new position (the original's 0x19).

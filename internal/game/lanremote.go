@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/lanfight"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
@@ -12,9 +13,12 @@ import (
 
 // Other players in a LAN world. The server tells where each hero is
 // (netplay.MsgAppear, MsgMoved, like the original's 0x5A and 0x19); a hero
-// on this map is a walker that walks to each reported cell. Remote heroes
-// cannot be clicked: no orders, dialogue or selection reach them, and the
-// cursor over one shows its name and clan in the status line.
+// on this map is a walker that walks to each reported cell, drawn with the
+// stance, weapon and equipment the server reports (MsgLook). Out of the
+// stance a remote hero takes no orders or dialogue; the cursor over one
+// shows its name and clan. In the stance it is a target like any other
+// (lanfight.go): blows and arrows that reach it go to the server, which
+// decides (MsgHit).
 
 // remoteWalkLimit: a reported cell farther than this (in cells, Chebyshev)
 // is a jump, not a walk; the hero is placed there at once.
@@ -24,7 +28,11 @@ type remotePlayer struct {
 	info   netplay.PlayerInfo
 	hero   *netplay.Hero
 	pos    netplay.Position
-	entity int // index in game.Entities, -1 until first placed
+	look   netplay.Look
+	hp     int
+	dead   bool
+	entity int    // index in game.Entities, -1 until first placed
+	items  [6]int // the equipment's item records in game (drawing only)
 }
 
 // remoteAt is the remote player whose hero is entity i, or nil.
@@ -47,7 +55,15 @@ func (s *startScene) remoteAppear(a netplay.AppearPayload) {
 		r = &remotePlayer{entity: -1}
 		s.remotes[a.Player.ID] = r
 	}
-	r.info, r.hero = a.Player, a.Hero
+	r.info, r.hero, r.look, r.hp, r.dead = a.Player, a.Hero, a.Look, a.HP, a.Dead
+	if n := s.byEntity[r.entity]; n != nil {
+		s.removeNPC(n) // entered again: placed anew, alive
+	}
+	if r.entity >= 0 {
+		e := &s.game.Entities[r.entity]
+		e.Flags4 &^= 0x80
+		e.HP = r.hp
+	}
 	s.remoteMove(a.Player.ID, a.Pos)
 }
 
@@ -61,6 +77,9 @@ func (s *startScene) remoteMove(id string, pos netplay.Position) {
 	}
 	r.pos = pos
 	n := s.byEntity[r.entity]
+	if r.dead {
+		return // the dead lie where they fell
+	}
 	if pos.Map != s.mapNumber {
 		if n != nil {
 			s.removeNPC(n)
@@ -94,7 +113,7 @@ func (s *startScene) remoteLeave(id string) {
 // change keeps the remotes and their entities).
 func (s *startScene) placeRemotes() {
 	for _, r := range s.remotes {
-		if r.pos.Map == s.mapNumber {
+		if r.pos.Map == s.mapNumber && !r.dead {
 			s.placeRemote(r)
 		}
 	}
@@ -114,23 +133,27 @@ func (s *startScene) placeRemote(r *remotePlayer) {
 		t := gamestate.NewHeroTemplate()
 		gamestate.SelectHero(&t, model)
 		// As the own hero's start (StartHero): model, name and palette from
-		// the selection; the equipment stays the template's (SelectHero's
-		// gear list is the creation screen's preview, not world items).
+		// the selection, the account's values on top.
 		e.Model, e.NameIndex, e.PaletteOffset = t.Model, t.NameIndex, t.PaletteOffset
-		e.WeaponMode, e.Type, e.Step = t.WeaponMode, 0, 0
 		if r.hero != nil {
-			applyLANHero(&e, r.hero)
+			lanfight.ApplyHero(&e, r.hero)
 		}
+		// Out of the stance, idle (type 6); its own items come with the
+		// look (applyLook), never the own hero's.
+		e.Flags3 &^= 0x04
+		e.Type, e.Step, e.Quiver, e.Bag, e.Equipment = 6, 0, 0, [32]int{}, [6]int{}
 		e.Group = len(s.game.Groups) - 1 // emptied by EnterLANWorld: no group rules
 		e.Index = len(s.game.Entities)
 		s.game.Entities = append(s.game.Entities, e)
 		r.entity = e.Index
+		s.applyLook(r)
 		if s.game.Names == nil {
 			s.game.Names = map[int][]byte{}
 		}
 		s.game.Names[e.Index] = cp866(r.info.Name)
 	}
 	e := &s.game.Entities[r.entity]
+	e.HP = r.hp
 	cell := mapdata.NearestFree(mapdata.Cell{Row: r.pos.Row, Col: r.pos.Col}, func(c mapdata.Cell) bool {
 		return s.walk.Blocked(c.Row, c.Col) || s.occ[c]
 	}, 6)
@@ -225,4 +248,58 @@ func (s *startScene) playerCounts() map[int]int {
 		c[r.pos.Map]++
 	}
 	return c
+}
+
+// applyLook puts r's look on its entity: the stance (type 0 or 6 with the
+// stance bit, as ToggleStance), the weapon mode and the equipment as item
+// records of this game that only drawing reads.
+func (s *startScene) applyLook(r *remotePlayer) {
+	if r.entity < 0 {
+		return
+	}
+	e := &s.game.Entities[r.entity]
+	if !e.Dead() && e.HP > 0 {
+		if r.look.Stance {
+			gamestate.EnterStance(e)
+		} else {
+			gamestate.LeaveStance(e)
+		}
+	}
+	e.WeaponMode = r.look.Weapon
+	for k, it := range r.look.Equip {
+		if !it.Item {
+			if r.items[k] != 0 {
+				s.game.SetItemKind(r.items[k], -1, 0)
+				r.items[k] = 0
+			}
+			e.Equipment[k] = 0
+			continue
+		}
+		r.items[k] = s.game.SetItemKind(r.items[k], it.Category, it.Type)
+		e.Equipment[k] = r.items[k]
+	}
+	if n := s.byEntity[r.entity]; n != nil {
+		n.look = lookOf(*e)
+	}
+}
+
+// remoteLook is another hero's new look (MsgLook).
+func (s *startScene) remoteLook(l netplay.LookPayload) {
+	if r := s.remotes[l.ID]; r != nil {
+		r.look = l.Look
+		s.applyLook(r)
+	}
+}
+
+// reportLook sends the own hero's look when its stance, weapon or equipment
+// changed (MsgLook).
+func (s *startScene) reportLook() {
+	if s.onLook == nil || len(s.party) == 0 {
+		return
+	}
+	l := lanfight.LookOf(s.game, s.party[0])
+	if l != s.lastLook {
+		s.lastLook = l
+		s.onLook(l)
+	}
 }

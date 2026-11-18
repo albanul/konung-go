@@ -199,13 +199,19 @@ func (s *startScene) swing(aw *walker, a *gamestate.Entity, target int, targetCe
 		aw.turnToward(d)
 		return false
 	}
-	if aw.actStep == 2 && a.Group == 0 {
+	remote := s.remoteAt(target) != nil
+	if aw.actStep == 2 && a.Group == 0 && !remote {
 		s.provoke(t.Group) // 0x00421F00: village anger, then 0x004248A0
 	}
 	if aw.advanceAct() {
 		return false
 	}
 	a.Variant, t.Variant = int(aw.dir), int(tw.dir)
+	if remote { // another player's hero: the server decides (lanfight.go)
+		s.strikeRemote(a, target, false)
+		aw.startAct(gamestate.ActAttack)
+		return false
+	}
 	switch r, _ := s.game.Strike(a, t, s.tables, s.rng.IntN); r {
 	case gamestate.StrikeDodged:
 		if a.Group == 0 {

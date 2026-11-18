@@ -42,6 +42,11 @@ type ServerConfig struct {
 	// Accounts checks logins; nil keeps no accounts (any name joins and
 	// nothing is saved), e.g. in tests.
 	Accounts AccountStore
+	// Combat resolves fights between players (fight.go); nil = no PvP.
+	// OnKill is called after a player's hero killed another's, with the
+	// killer's hero after the kill (nil without accounts) and both levels.
+	Combat Combat
+	OnKill func(killer, victim PlayerInfo, killerHero *Hero, killerLevel, victimLevel int)
 	// Speed is the world speed for everyone (0 normal … MaxSpeed triple,
 	// the single-player numpad +/−); clients cannot change it.
 	Speed int
@@ -101,6 +106,12 @@ type serverPlayer struct {
 	// entered: in the world (MsgEnter answered); pos is the last position.
 	entered bool
 	pos     Position
+	// The fight state (fight.go): the look, HP and death as the server
+	// keeps them, and the last strike (the swing rate).
+	look       Look
+	hp         int
+	dead       bool
+	lastStrike time.Time
 }
 
 // Server hosts one session: it accepts joins, keeps the player list, relays
@@ -337,6 +348,16 @@ func (s *Server) serve(conn *Conn) {
 			if m.Decode(&pos) == nil && pos.Valid() {
 				s.move(p, pos)
 			}
+		case MsgLook:
+			var l LookPayload
+			if m.Decode(&l) == nil {
+				s.look(p, l.Look)
+			}
+		case MsgAttack:
+			var a AttackPayload
+			if m.Decode(&a) == nil {
+				s.attack(p, a)
+			}
 		}
 		// Anything else from a joined client (a second join, pings are
 		// already filtered) is ignored.
@@ -461,6 +482,10 @@ func (s *Server) enter(p *serverPlayer, model int) {
 			}
 		}
 	}
+	look, hp := Look{Weapon: 2}, 1600 // HP 1600 on entry (0x0044B263)
+	if s.cfg.Combat != nil {
+		look, hp = s.cfg.Combat.Enter(p.info.ID, p.info.Model, p.hero)
+	}
 	at, err := s.cfg.Start(p.info)
 	if err != nil {
 		p.conn.Send(mustMessage(MsgError, ErrorPayload{Code: ErrServer, Message: err.Error()}))
@@ -471,14 +496,15 @@ func (s *Server) enter(p *serverPlayer, model int) {
 	// the new hero to everyone else (0x8C, then 0x5A).
 	s.mu.Lock()
 	p.entered, p.pos = true, at
+	p.look, p.hp, p.dead = look, hp, false
 	p.conn.Send(mustMessage(MsgEntered, at))
 	s.runClockLocked() // the clock runs with someone in the world
 	for _, id := range s.order {
 		if o := s.players[id]; o != p && o.entered {
-			p.conn.Send(mustMessage(MsgAppear, AppearPayload{Player: o.info, Hero: o.hero, Pos: o.pos}))
+			p.conn.Send(mustMessage(MsgAppear, o.appear()))
 		}
 	}
-	s.broadcastLocked(mustMessage(MsgAppear, AppearPayload{Player: p.info, Hero: p.hero, Pos: at}), p.info.ID)
+	s.broadcastLocked(mustMessage(MsgAppear, p.appear()), p.info.ID)
 	s.mu.Unlock()
 	if s.cfg.OnEnter != nil {
 		s.cfg.OnEnter(p.info)
@@ -496,8 +522,16 @@ func (s *Server) move(p *serverPlayer, pos Position) {
 	s.broadcastLocked(mustMessage(MsgMoved, MovedPayload{ID: p.info.ID, Pos: pos}), p.info.ID)
 }
 
+// appear is p's hero as others see it (MsgAppear); s.mu held.
+func (p *serverPlayer) appear() AppearPayload {
+	return AppearPayload{Player: p.info, Hero: p.hero, Pos: p.pos, Look: p.look, HP: p.hp, Dead: p.dead}
+}
+
 func (s *Server) leave(p *serverPlayer) {
 	p.conn.Close()
+	if s.cfg.Combat != nil {
+		s.cfg.Combat.Leave(p.info.ID)
+	}
 	s.mu.Lock()
 	delete(s.players, p.info.ID)
 	for i, id := range s.order {
