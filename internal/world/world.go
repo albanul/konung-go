@@ -55,4 +55,11 @@ type World struct {
 	FilmToMenu bool
 
 	Hooks Hooks
+
+	// LAN marks a map of the LAN server's world (lan.go): the party list
+	// holds the heroes of the player slots on this map (groups 0–15), each
+	// its own leader (no following, no shared selection), and a hero that
+	// walks onto an exit leaves alone (Hooks.MemberExit) instead of the
+	// whole party changing maps. Single-player never sets it.
+	LAN bool
 }

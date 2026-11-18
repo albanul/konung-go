@@ -28,6 +28,9 @@ type Hooks struct {
 	BuildingHit      func(placement int) func(x, y int) bool
 	// ChangeMap takes map exit x (the map is rebuilt; Step returns at once).
 	ChangeMap func(x gamestate.MapExit)
+	// MemberExit is a LAN hero ending its walk on exit x (World.LAN): the
+	// runner moves it to the target map after the step.
+	MemberExit func(m *Member, x gamestate.MapExit)
 	// Animate advances the animated map objects, once per tick after the AI.
 	Animate func()
 	// AfterStep runs at the end of every tick (the LAN reports).

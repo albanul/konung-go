@@ -32,6 +32,7 @@ import (
 
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/lanfight"
+	"konung1.5/internal/lanserver"
 	"konung1.5/internal/lanstore"
 	"konung1.5/internal/netplay"
 )
@@ -123,6 +124,13 @@ func run(dataDir string, st settings) error {
 		combat = w
 	}
 
+	// The whole world (docs/konung_lan.md#server-world): every map runs here.
+	sw, err := loadWorld(dataDir)
+	if err != nil {
+		log.Printf("world not running (players' games still run their own): %v", err)
+		sw = nil
+	}
+
 	store, err := lanstore.Open(filepath.Join(dataDir, "konung.db"))
 	if err != nil {
 		return err
@@ -161,8 +169,20 @@ func run(dataDir string, st settings) error {
 			if err := store.JoinSession(p.Name); err != nil {
 				log.Printf("session: %v", err)
 			}
+			if sw != nil {
+				hero, err := store.Hero(p.Name)
+				if err != nil {
+					hero = nil // the type's default hero
+				}
+				sw.enter(p, hero)
+			}
 		},
-		OnLeave: func(p netplay.PlayerInfo) { log.Printf("left: %s", p.Name) },
+		OnLeave: func(p netplay.PlayerInfo) {
+			log.Printf("left: %s", p.Name)
+			if sw != nil {
+				sw.leave(p.ID)
+			}
+		},
 	})
 	if err != nil {
 		return err
@@ -173,6 +193,12 @@ func run(dataDir string, st settings) error {
 	}
 	log.Printf("«%s»: TCP %s, %d players, %d-minute sessions, speed %d, team damage %v, data in %s",
 		sessionName, srv.Addr(), maxPlayers, sessionMinutes, srv.Clock().Speed, teamDamage, dataDir)
+	if sw != nil {
+		stopWorld := make(chan struct{})
+		defer close(stopWorld)
+		go sw.run(srv.Clock, stopWorld)
+		log.Printf("world: %d maps running on the server clock", lanserver.Maps)
+	}
 
 	// The session clock: at each end the participants' ratings move
 	// (0x00444150) and a new session starts. Players see the time left.

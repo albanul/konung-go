@@ -191,7 +191,7 @@ func (s *World) FlyArrows() {
 					return -1
 				}
 				vw, ve := s.Combatant(v)
-				if ve.Group != 0 {
+				if !s.PlayerGroup(ve.Group) {
 					s.Provoke(ve.Group) // 0x004214EE
 				}
 				if !Alive(vw, ve) {

@@ -73,7 +73,7 @@ func (s *World) NearestEnemy(h mapdata.Cell) int {
 	best, bestD := -1, 1<<30
 	for _, n := range s.NPCs {
 		e := &s.Game.Entities[n.Entity]
-		if e.Group <= 0 || !Alive(&n.Walker, e) {
+		if e.Group < 0 || s.PlayerGroup(e.Group) || !Alive(&n.Walker, e) {
 			continue
 		}
 		if r := s.isRemote(n.Entity); r && !s.canTarget(n.Entity) {
@@ -153,7 +153,9 @@ func (s *World) CombatTick() {
 		s.Upkeep()
 	}
 	if (s.GameTime()+gamestate.SettlementTickOffset)%gamestate.UpkeepTicks == 0 {
-		if len(s.Party) > 0 && s.Tables != nil {
+		if len(s.Party) > 0 && s.Tables != nil && !s.LAN {
+			// The LAN keeps the settlements' stocks per player slot (not
+			// ported): no settlement pass there yet.
 			// Healer and smith (0x0041768C, 0x00417A58) are frozen while
 			// window 7 is open; tribute, buildings and training are not.
 			s.StoreWorld()
@@ -207,7 +209,7 @@ func (s *World) Swing(aw *Walker, a *gamestate.Entity, target int, targetCell ma
 		return false
 	}
 	remote := s.isRemote(target)
-	if aw.ActStep == 2 && a.Group == 0 && !remote {
+	if aw.ActStep == 2 && s.PlayerGroup(a.Group) && !remote {
 		s.Provoke(t.Group) // 0x00421F00: village anger, then 0x004248A0
 	}
 	if aw.AdvanceAct() {
@@ -221,7 +223,7 @@ func (s *World) Swing(aw *Walker, a *gamestate.Entity, target int, targetCell ma
 	}
 	switch r, _ := s.Game.Strike(a, t, s.Tables, s.Rng.IntN); r {
 	case gamestate.StrikeDodged:
-		if a.Group == 0 {
+		if s.PlayerGroup(a.Group) {
 			s.playAt(gamestate.SoundDodge, tw.Cell) // 0x0042204B
 		}
 	case gamestate.StrikeKill:
@@ -230,7 +232,7 @@ func (s *World) Swing(aw *Walker, a *gamestate.Entity, target int, targetCell ma
 	case gamestate.StrikeHeavy:
 		s.Flinch(tw)
 	}
-	if a.Group == 0 {
+	if s.PlayerGroup(a.Group) {
 		aw.Look = LookOf(*a) // a worn-out weapon or armour disappears
 	}
 	if s.Retreat(a) {
@@ -517,7 +519,7 @@ func (s *World) CreatureTarget(n *NPC, tactic gamestate.Tactic, inside func(mapd
 			if m == n || m.Group != n.Group || m.Intent&IntentMelee == 0 || !Alive(&m.Walker, &s.Game.Entities[m.Entity]) {
 				continue
 			}
-			if tw, t := s.Combatant(m.Target); Alive(tw, t) && t.Group == 0 && (inside == nil || inside(tw.Cell)) {
+			if tw, t := s.Combatant(m.Target); Alive(tw, t) && s.PlayerGroup(t.Group) && (inside == nil || inside(tw.Cell)) {
 				return m.Target
 			}
 		}

@@ -89,7 +89,7 @@ func (s *World) PartyIndex(i int) int {
 func (s *World) WalkOrder(m *Member, c mapdata.Cell, pick bool) {
 	s.EndFight(m)
 	m.Intent = gamestate.IntentWalk | gamestate.IntentIdle
-	if m.K != 0 && !pick {
+	if m.K != 0 && !pick && !s.LAN {
 		m.Intent |= gamestate.IntentStrike
 	}
 	m.ResumeSet = false
@@ -308,7 +308,7 @@ func (s *World) IdleTick(m *Member) {
 	}
 	m.Intent &^= gamestate.IntentWalk
 	m.Intent |= gamestate.IntentIdle
-	if m.K != 0 && m.Intent&0x0F == 0 {
+	if m.K != 0 && m.Intent&0x0F == 0 && !s.LAN { // LAN heroes lead themselves
 		m.Intent |= gamestate.IntentFollow
 	}
 	if s.BowTargetInSight(m) {

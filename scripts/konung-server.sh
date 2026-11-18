@@ -21,8 +21,9 @@
 #                             KONUNG_NAME="Мой сервер" scripts/konung-server.sh restart
 #   KONUNG_PORT=              host port for the game (TCP) and LAN discovery (UDP);
 #                             default: "port" in the settings file, else 7777
-#   KONUNG_ASSETS=assets/Konung   folder with GAME.RES (required), SERVER (optional), and
-#                             konung.exe + GAME.0–GAME.2 (fights between players)
+#   KONUNG_ASSETS=assets/Konung   folder with GAME.RES (required), SERVER (optional),
+#                             konung.exe + GAME.0–GAME.2 (fights between players) and
+#                             MAPS.RES, GRAPH.RES, OBJECTS.RES (the world on the server)
 #   KONUNG_NETWORK=           set to "host" to use the host's network directly; LAN
 #                             discovery (UDP broadcast) may not pass a port mapping
 #   KONUNG_SERVER_ARGS=       extra server flags, e.g. '-minutes 60 -max 8 -speed 1 -team-damage=false'
@@ -83,11 +84,11 @@ copy_data() {
 		rm -f "$empty"
 	fi
 	local f
-	for f in SERVER konung.exe GAME.0 GAME.1 GAME.2; do
+	for f in SERVER konung.exe GAME.0 GAME.1 GAME.2 MAPS.RES GRAPH.RES OBJECTS.RES; do
 		if [[ -f $assets/$f ]]; then
 			"$engine" cp "$assets/$f" "$container:/data/$f"
 		elif [[ $f != SERVER ]]; then
-			say "Note: $assets/$f not found: players cannot hurt each other."
+			say "Note: $assets/$f not found: fights between players or the server's world are off."
 		fi
 	done
 }
