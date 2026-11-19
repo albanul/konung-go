@@ -70,6 +70,7 @@ func (w *World) Reset() error {
 		ticks[n] = w.Maps[n].Tick
 	}
 	w.sessions++
+	w.buildingsVersion++ // the buildings are GAME.RES's again
 	w.Game, w.exits = lw.Game, lw.Game.Exits
 	w.players, w.moving, w.hired = map[int]int{}, nil, map[int][]hireling{}
 	for si := range gamestate.LANSettlements {

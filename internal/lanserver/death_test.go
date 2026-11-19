@@ -64,7 +64,8 @@ func TestDeathRules(t *testing.T) {
 		}
 	}
 
-	// Olaf carries two herbs and 500 gold; Ivar kills him.
+	// Olaf carries two herbs and 500 gold; Ivar kills him, abroad.
+	abroad(t, ss, w, a, b)
 	ss.host.mu.Lock()
 	_, e := w.Maps[w.PlayerMap(b.at.Slot)].Member(b.at.Slot)
 	herbs := [2]int{w.Game.SetItemKind(0, gamestate.CatHerb, 1), w.Game.SetItemKind(0, gamestate.CatHerb, 2)}

@@ -106,10 +106,11 @@ type PlayerPayload struct {
 
 // Event kinds.
 const (
-	EventSound  = "sound"  // Sound at (Row, Col)
-	EventAction = "action" // Entity started action Act (its sound is the client's)
-	EventMsg    = "msg"    // a status-line message for the own hero (Text, CP866)
-	EventArrow  = "arrow"  // an arrow released at Tick (Arrow): the client flies it (the original's 0x12)
+	EventSound    = "sound"    // Sound at (Row, Col)
+	EventAction   = "action"   // Entity started action Act (its sound is the client's)
+	EventMsg      = "msg"      // a status-line message for the own hero (Text, CP866)
+	EventArrow    = "arrow"    // an arrow released at Tick (Arrow): the client flies it (the original's 0x12)
+	EventBuilding = "building" // a village building's state (Building; the original's 0x5E)
 )
 
 // Arrow is an arrow as it leaves the bow (gamestate.Arrow's flight
@@ -139,6 +140,16 @@ type Event struct {
 	Text   []byte `json:"x,omitempty"`
 	Tick   int    `json:"t,omitempty"`
 	Arrow  *Arrow `json:"ar,omitempty"`
+	// Building: EventBuilding's building.
+	Building *Building `json:"b,omitempty"`
+}
+
+// Building is a village building's state on the receiver's map (the
+// original's 0x5E): Placement is its KONUNG.N/MAPS.RES placement, State
+// 0–2 building, 3 standing, 4–5 burning, 6 a ruin.
+type Building struct {
+	Placement int `json:"p"`
+	State     int `json:"s"`
 }
 
 // EventsPayload is a tick's events.

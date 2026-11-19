@@ -138,7 +138,9 @@ func ParseLANWorld(data []byte) (*LANWorld, error) {
 	for i := range LANSettlements {
 		r := data[lanSettlementOffset+i*lanSettlementStride:][:lanSettlementStride]
 		copy(w.Settlements[i][:], r)
-		g.Settlements = append(g.Settlements, settlementFrom(i, lanSettlementToGameN(r)))
+		st := settlementFrom(i, lanSettlementToGameN(r))
+		st.Aggressors = uint16(u16(r, lanSetAggressors))
+		g.Settlements = append(g.Settlements, st)
 	}
 	return w, nil
 }

@@ -92,6 +92,10 @@ type hostPlayer struct {
 	// The items, piles, pile window, dialogue and party as last sent
 	// (JSON), so only changes go out.
 	inv, piles, pileWin, dialogue, party []byte
+	// The building states sent (by map and placement), the map and the
+	// buildings version checked last (buildings.go).
+	buildings      map[buildingKey]int
+	bmap, bversion int
 }
 
 // NewHost connects w; send is the session's Server.Send.
@@ -455,6 +459,13 @@ func (h *Host) report() ([]Kill, []save) {
 			}
 		}
 		evs := byMap[view.Map]
+		if hp.bmap != view.Map || hp.bversion != h.W.buildingsVersion {
+			if hp.buildings == nil {
+				hp.buildings = map[buildingKey]int{}
+			}
+			hp.bmap, hp.bversion = view.Map, h.W.buildingsVersion
+			evs = append(evs, h.W.buildingUpdates(view.Map, hp.buildings)...)
+		}
 		for _, text := range h.W.TakeMessages(hp.slot) {
 			evs = append(evs, netplay.Event{Kind: netplay.EventMsg, Text: text})
 		}

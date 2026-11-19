@@ -139,7 +139,10 @@ func (s *World) VillagerTick(n *NPC) {
 		}
 		return
 	}
-	partyOK := len(s.LivingMembers()) > 0
+	partyOK := false
+	for _, m := range s.LivingMembers() {
+		partyOK = partyOK || s.Foe(n, m)
+	}
 	if e.Flags4 == 0x51 || e.Flags4 == 0x52 {
 		if s.AIBudget <= 0 {
 			return
@@ -173,7 +176,8 @@ func (s *World) VillagerTick(n *NPC) {
 		}
 		n.Look = LookOf(*e)
 	}
-	if t := s.NearestMember(n.Cell, nil, nil); t >= 0 {
+	foe := func(i int) bool { m, _ := s.PartyMember(i); return m != nil && !s.Foe(n, m) }
+	if t := s.NearestMember(n.Cell, nil, foe); t >= 0 {
 		s.GoFor(n, t) // 0x004202A8: the nearest party member
 	}
 }

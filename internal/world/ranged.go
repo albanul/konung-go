@@ -142,7 +142,7 @@ func (s *World) NpcShoot(n *NPC) bool {
 	e := &s.Game.Entities[n.Entity]
 	e.WeaponMode = gamestate.WeaponBow // +0x12 = 1 before the shot test
 	for _, m := range s.LivingMembers() {
-		if s.LineOfFire(&n.Walker, e, m.Cell) <= 0 {
+		if !s.Foe(n, m) || s.LineOfFire(&n.Walker, e, m.Cell) <= 0 {
 			continue
 		}
 		n.Look = LookOf(*e)
@@ -199,7 +199,11 @@ func (s *World) FlyArrows() {
 				}
 				vw, ve := s.Combatant(v)
 				if !s.PlayerGroup(ve.Group) {
-					s.Provoke(ve.Group) // 0x004214EE
+					var by *gamestate.Entity
+					if _, se := s.Combatant(a.Shooter); se != nil {
+						by = se
+					}
+					s.ProvokeBy(by, ve.Group) // 0x004214EE
 				}
 				if !Alive(vw, ve) {
 					return -1 // the arrow passes the dying

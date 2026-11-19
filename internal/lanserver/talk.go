@@ -68,13 +68,27 @@ func (w *World) restock(si, slot int) {
 	})
 }
 
-// shopPass is the LAN settlement pass's shops (every 16 ticks, 0x00440C70).
-func (w *World) shopPass() {
+// settlementPass is the LAN settlement pass (every 16 ticks, 0x00440C70)
+// of every village (gamestate.LANSettlementPass): the alarm against its
+// aggressors among the players on its map, the buildings, the shops of
+// every player slot and the voevoda's training. A building that changed
+// state bumps buildingsVersion for the players' updates (Host).
+func (w *World) settlementPass() {
 	if w.Tables == nil {
 		return
 	}
 	for si := range w.shops {
-		w.Game.LANShopPass(si, w.shops[si][:], w.Tables)
+		m := w.Game.Settlements[si].Map
+		if m < 1 || m > Maps {
+			w.Game.LANShopPass(si, w.shops[si][:], w.Tables)
+			continue
+		}
+		s := w.Maps[m]
+		s.StoreWorld()
+		if w.Game.LANSettlementPass(si, w.shops[si][:], w.Tables, s.PartyOnCells()) {
+			w.buildingsVersion++
+		}
+		s.SyncParty()
 	}
 }
 

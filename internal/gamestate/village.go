@@ -43,6 +43,10 @@ type Settlement struct {
 	Posts [postCount]Post
 	Fence int  // +1: fence pieces (non-zero = fortified)
 	Flags byte // +0x4B2: SettlementHostile, SettlementStrangers, SettlementIndependent, … (anger.go)
+	// Aggressors is the LAN settlement's +0x4E: one bit per player slot that
+	// attacked the village or one of its nation's players (lanvillage.go);
+	// single player has no such field (0).
+	Aggressors uint16
 	// Raw is the record as loaded; encode writes the fields above over it.
 	// The dialogue scripts read and write a few more fields through it
 	// (tribute +0x10, building records +0x18, training times +0x3F8).

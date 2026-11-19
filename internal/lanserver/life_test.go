@@ -10,6 +10,26 @@ import (
 	"konung1.5/internal/netplay"
 )
 
+// abroad puts a's and b's heroes (both Драгомир's type) next to each other
+// in Волк's village (map 1): a fight between players of a village's own
+// nation there would make the attacker an aggressor whom the village's
+// guards attack (allyAttack), not what the death tests are about.
+func abroad(t *testing.T, ss *session, w *World, a, b *viewer) {
+	t.Helper()
+	ss.host.mu.Lock()
+	defer ss.host.mu.Unlock()
+	x, err := w.Start(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := mapdata.Cell{Row: x.Row, Col: x.Col}
+	if !w.MoveTo(b.at.Slot, x.To, c) || !w.MoveTo(a.at.Slot, x.To, mapdata.Cell{Row: c.Row + 2, Col: c.Col}) {
+		t.Fatal("MoveTo")
+	}
+	mem, _ := w.Maps[x.To].Member(b.at.Slot)
+	b.at.Map, b.at.Row, b.at.Col = x.To, mem.Cell.Row, mem.Cell.Col
+}
+
 // kill makes a's hero kill b's (stance, right click) and waits for b's
 // death as a sees it.
 func kill(t *testing.T, a, b *viewer) {
@@ -42,6 +62,7 @@ func TestDeadStaysAndRevives(t *testing.T) {
 	}
 	a := enter(t, ss, "Ivar", 1)
 	b := enter(t, ss, "Olaf", 1)
+	abroad(t, ss, w, a, b)
 	kill(t, a, b)
 	time.Sleep(300 * time.Millisecond)
 	if _, ok := ss.host.Slot(b.c.PlayerID); !ok {

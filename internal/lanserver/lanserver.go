@@ -71,6 +71,12 @@ type World struct {
 	gameRes  []byte
 	mapData  [Maps + 1][]byte
 	sessions int // session ends so far (Reset)
+
+	// buildingsVersion counts the building state changes (the settlement
+	// pass, Reset) for the players' updates; buildings0 is GAME.RES's
+	// states by map (buildings.go).
+	buildingsVersion int
+	buildings0       [Maps + 1]map[int]int
 }
 
 type move struct {
@@ -298,7 +304,7 @@ func (w *World) Step() {
 		w.Maps[n].Step()
 	}
 	if (w.Tick+gamestate.SettlementTickOffset)%gamestate.UpkeepTicks == 0 {
-		w.shopPass()
+		w.settlementPass()
 	}
 	moving := w.moving
 	w.moving = nil
@@ -381,8 +387,9 @@ func (w *World) RemovePlayer(slot int) {
 		return
 	}
 	w.closeItems(slot)
-	w.sendHome(slot)      // its hirelings go back to their villages
-	delete(w.items, slot) // a fresh hand and no pile window next time
+	w.Game.ClearAggressor(slot) // 0x0044B0A7: the villages forget it
+	w.sendHome(slot)            // its hirelings go back to their villages
+	delete(w.items, slot)       // a fresh hand and no pile window next time
 	delete(w.players, slot)
 	e, _ := w.Maps[m].RemoveMember(slot)
 	for _, i := range append(append(e.Equipment[:], e.Quiver), e.Bag[:]...) {
@@ -456,6 +463,7 @@ func (w *World) Right(slot int, sel []int, target, row, col int) {
 		if _, me := s.Member(slot); me != nil && w.protected(me, t) {
 			return // a teammate the server protects
 		}
+		w.allyAttack(slot, s.MapNumber, t)
 	}
 	for _, m := range ms {
 		s.RightOrder(m, target, mapdata.Cell{Row: row, Col: col}, 0)

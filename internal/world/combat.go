@@ -161,7 +161,12 @@ func (s *World) CombatTick() {
 			}
 			s.SyncParty()
 		}
-		s.SettlementTick()
+		if !s.LAN {
+			// The LAN server runs its own settlement pass for every
+			// village (lanserver; gamestate.LANSettlementPass): no surrender
+			// there, and the alarm is per player.
+			s.SettlementTick()
+		}
 	}
 	s.PartyTick()
 	// Path searches are shared round-robin (0x004116CC with the last served
@@ -209,7 +214,7 @@ func (s *World) Swing(aw *Walker, a *gamestate.Entity, target int, targetCell ma
 		return true // a teammate the server protects
 	}
 	if aw.ActStep == 2 && s.PlayerGroup(a.Group) {
-		s.Provoke(t.Group) // 0x00421F00: village anger, then 0x004248A0
+		s.ProvokeBy(a, t.Group) // 0x00421F00: village anger, then 0x004248A0
 	}
 	if aw.AdvanceAct() {
 		return false
@@ -309,9 +314,40 @@ func (s *World) Provoke(g int) {
 		return
 	}
 	if st := s.Game.SettlementOf(g); st != nil {
+		if s.LAN {
+			return // a LAN village is angry at its aggressors only (ProvokeBy)
+		}
 		s.Game.Anger(st) // only the village group itself (0x00421F39 tests +0x1E & 0x80)
 	}
 	s.AlarmGroup(g)
+}
+
+// ProvokeBy is Provoke by attacker a. In a LAN world a village does not get
+// angry as a whole: a player's hero or hireling (Group = its slot) that
+// hurts a villager becomes one of the village's aggressors (LAN_KONG.EXE
+// melee 0x00445B73, arrows 0x00444EDF) and the settlement pass alarms the
+// village against it (gamestate.LANVillageAlarm).
+func (s *World) ProvokeBy(a *gamestate.Entity, g int) {
+	if s.LAN && g > 0 && g < len(s.Game.Groups) {
+		if st := s.Game.SettlementOf(g); st != nil {
+			if a != nil && s.PlayerGroup(a.Group) {
+				st.MarkAggressor(a.Group)
+			}
+			return
+		}
+	}
+	s.Provoke(g)
+}
+
+// Foe reports whether villager or creature n may take party member m as
+// its enemy: always in single player; in a LAN world a village fights only
+// its aggressors (0x00442A7C picks among them).
+func (s *World) Foe(n *NPC, m *Member) bool {
+	if !s.LAN || n == nil || m == nil {
+		return true
+	}
+	st := s.Game.SettlementOf(n.Group)
+	return st == nil || st.Aggressor(s.Party[m.K].Group)
 }
 
 // kill is the kill path (0x00422082 party, 0x0041263E creatures, 0x004215BA

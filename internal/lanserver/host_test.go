@@ -66,16 +66,17 @@ type viewer struct {
 	ply   map[int]netplay.PlayerPayload
 	// Items (items_test.go): the last inventory, piles and pile window,
 	// the messages, and the inventory messages' bytes.
-	inv      netplay.InventoryPayload
-	invs     int
-	invBytes int
-	piles    netplay.PilesPayload
-	pileWin  netplay.PileWindowPayload
-	msgs     [][]byte
-	dlg      netplay.DialoguePayload
-	pty      netplay.PartyPayload
-	changes  []netplay.EnterPayload // map changes (MsgMapChange)
-	arrows   []netplay.Event        // EventArrow (arrows_test.go)
+	inv       netplay.InventoryPayload
+	invs      int
+	invBytes  int
+	piles     netplay.PilesPayload
+	pileWin   netplay.PileWindowPayload
+	msgs      [][]byte
+	dlg       netplay.DialoguePayload
+	pty       netplay.PartyPayload
+	changes   []netplay.EnterPayload // map changes (MsgMapChange)
+	arrows    []netplay.Event        // EventArrow (arrows_test.go)
+	buildings []netplay.Building     // EventBuilding (villages_test.go)
 }
 
 func enter(t *testing.T, ss *session, name string, model int) *viewer {
@@ -188,6 +189,9 @@ func (v *viewer) read() {
 					}
 					if e.Kind == netplay.EventArrow {
 						v.arrows = append(v.arrows, e)
+					}
+					if e.Kind == netplay.EventBuilding && e.Building != nil {
+						v.buildings = append(v.buildings, *e.Building)
 					}
 				}
 				v.mu.Unlock()

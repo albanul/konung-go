@@ -129,7 +129,7 @@ func (w *World) Item(slot int, o netplay.OrderPayload) {
 		}
 		msg = w.Game.ClickJewellery(h, e, t, o.Index)
 	case netplay.ItemBox:
-		msg = w.Game.ClickBox(h, e, t)
+		msg = w.Game.LANClickBox(h, e, t) // no poison or oil on items in the network game
 	case netplay.ItemSelf:
 		if h.Holding() {
 			msg = w.Game.ClickPortrait(h, e, e, t)

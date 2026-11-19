@@ -352,10 +352,22 @@ func (s *startScene) removeNPC(n *npc) {
 }
 
 // applyEvents plays the server's sounds (MsgEvents): a sound at a cell, or
-// an action's sound by the walker that started it.
+// an action's sound by the walker that started it; arrows fly, messages
+// show, and village buildings take the server's states (their sprites and
+// flames follow, updateBuildings).
 func (s *startScene) applyEvents(ev []netplay.Event) {
+	buildings := false
+	defer func() {
+		if buildings && s.Tables != nil {
+			s.updateBuildings()
+		}
+	}()
 	for _, e := range ev {
 		switch e.Kind {
+		case netplay.EventBuilding:
+			if e.Building != nil && s.Game.SetBuildingState(s.MapNumber, e.Building.Placement, e.Building.State) {
+				buildings = true
+			}
 		case netplay.EventSound:
 			s.playAt(e.Sound, mapdata.Cell{Row: e.Row, Col: e.Col})
 		case netplay.EventAction:
