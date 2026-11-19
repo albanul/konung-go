@@ -107,6 +107,7 @@ const (
 	EventMapChange                      // a player's hero (Entity = slot) took an exit from map From to Map
 	EventKill                           // a player's hero (Entity = slot) killed Victim (VictimPlayer: another player's hero)
 	EventArrow                          // an arrow was released on Map at Tick (Arrow; the original's 0x12)
+	EventAmulet                         // a player's hero (Entity = slot) delivered the amulet for nation Victim (amulets.go)
 )
 
 // Event is something that happened in a tick, for the clients on Map.
@@ -124,6 +125,7 @@ type Event struct {
 	Victim         int
 	VictimPlayer   bool
 	VictimHireling bool // a player's hireling
+	VictimAmulet   bool // the victim hero carried an amulet item (its kill scores double)
 
 	Tick  int             // EventArrow: the tick it was released
 	Arrow gamestate.Arrow // EventArrow

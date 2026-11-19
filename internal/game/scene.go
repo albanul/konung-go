@@ -125,14 +125,16 @@ type startScene struct {
 
 	hud *hud
 
-	font   *gameFont // small status-line font (resfmt.FontSmallVA)
-	inv    *charWindow
-	talk   *talkWindow     // dialogue (window 1) and quest log (window 2), dialogue.go
-	trade  *tradeWindow    // trade and pile window (window 7), trade.go
-	wmap   *worldMapWindow // world map (window 5), worldmap.go
-	hand   gamestate.Hand  // item being moved in the character window
-	msg    []byte          // status-line message (0x0042F9B8) and when it ends
-	msgEnd int
+	font  *gameFont // small status-line font (resfmt.FontSmallVA)
+	inv   *charWindow
+	talk  *talkWindow     // dialogue (window 1) and quest log (window 2), dialogue.go
+	trade *tradeWindow    // trade and pile window (window 7), trade.go
+	wmap  *worldMapWindow // world map (window 5), worldmap.go
+	// amulets is a LAN world's amulet state from the server (lanamulets.go).
+	amulets *netplay.AmuletsPayload
+	hand    gamestate.Hand // item being moved in the character window
+	msg     []byte         // status-line message (0x0042F9B8) and when it ends
+	msgEnd  int
 
 	hovered int // entity under the cursor in the last frame, -1 = none
 
@@ -1219,6 +1221,7 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	}
 	if s.lan && s.wmap.open {
 		s.wmap.counts = s.playerCounts()
+		s.setAmuletStatus()
 	}
 	s.wmap.draw(screen, s.hud, s.Game, s.MapNumber, s.tiling, s.font)
 	if text := s.statusText(); text != nil {

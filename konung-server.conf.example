@@ -29,6 +29,11 @@ minutes = 180
 # numpad +/−).
 speed = 0
 
+# Delivered amulets of the dragon that win a nation the session early
+# (0: the session runs its full length). The LAN version's SERVER file sets
+# it in TEAM mode (its second number; 3 in the shipped file), else 15.
+amulets = 15
+
 # Heroes of one team (the same hero type: Волк, Драгомир, Михаил) can hurt
 # each other, as in the original. false protects teammates from each other.
 team_damage = true

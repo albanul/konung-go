@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"konung1.5/internal/gamestate"
 	"konung1.5/internal/lanserver"
 	"konung1.5/internal/lanstore"
 	"konung1.5/internal/netplay"
@@ -31,7 +32,7 @@ func TestItemsThroughStore(t *testing.T) {
 	sword := lanserver.Item{Slot: lanserver.SlotEquip, Index: 2, Category: 2, Enchantment: -1, Type: 3, Condition: 40, MaxCondition: 50}
 	arrows := lanserver.Item{Slot: lanserver.SlotArrows, Category: 12, Type: 1, Count: 30}
 	items := []lanserver.Item{sword, arrows,
-		{Slot: lanserver.SlotBag, Index: 0, Category: 11, Type: 12}, // an amulet part
+		{Slot: lanserver.SlotBag, Index: 0, Category: gamestate.CatQuest, Type: gamestate.MiscAmuletBottom}, // an amulet part
 	}
 	saveHero(store, "Volk", &netplay.Hero{Level: 2, Gold: 300}, items)
 	got, _ := loadItems(store, "Volk")

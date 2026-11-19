@@ -115,5 +115,6 @@ func (w *World) Reset() error {
 				Row: mem.Cell.Row, Col: mem.Cell.Col, Facing: start.Facing})
 		}
 	}
+	w.startAmulets() // 0x00448C00: no amulets delivered, the parts at their places
 	return nil
 }

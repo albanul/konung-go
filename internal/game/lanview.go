@@ -409,9 +409,10 @@ func (s *startScene) viewChangeMap(at netplay.EnterPayload) {
 		return
 	}
 	s.view.arrows, s.view.arrowTick = nil, 0 // the arrows stay on the map left
-	hideHelp := s.hideHelp
+	hideHelp, amulets := s.hideHelp, s.amulets
 	*s = *ns
 	s.hideHelp = hideHelp // F1 stays as the player left it
+	s.amulets = amulets   // the amulet state is the world's, not the map's
 	s.installHooks()
 }
 

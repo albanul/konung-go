@@ -33,6 +33,7 @@ type Files struct {
 	Exe     []byte                 // konung.exe: the rule tables
 	Games   [netplay.Models][]byte // GAME.0–GAME.2: the hero types' gear
 	Quests  []byte                 // QUESTR.RES: dialogues (nil: nobody talks)
+	Amulets *AmuletRules           // the SERVER file's amulet places and limit (nil: DefaultAmuletRules)
 }
 
 // Maps is the number of LAN maps.
@@ -77,6 +78,8 @@ type World struct {
 	// states by map (buildings.go).
 	buildingsVersion int
 	buildings0       [Maps + 1]map[int]int
+
+	amulets amulets // the amulet of the dragon (amulets.go)
 }
 
 type move struct {
@@ -129,6 +132,11 @@ func Load(f Files) (*World, error) {
 			return nil, err
 		}
 	}
+	w.amulets.rules = DefaultAmuletRules
+	if f.Amulets != nil {
+		w.amulets.rules = *f.Amulets
+	}
+	w.startAmulets()
 	return w, nil
 }
 
@@ -252,9 +260,11 @@ func (w *World) hooks(n int) world.Hooks {
 			// port's rule); the victim a player's hero or a hireling.
 			if a.Index >= 0 && a.Index < world.LANPlayers {
 				player := v.Group >= 0 && v.Group < world.LANPlayers
+				victimHero := player && v.Index < world.LANPlayers
 				w.events = append(w.events, Event{Kind: EventKill, Map: n, Entity: a.Index,
-					Victim: v.Index, VictimPlayer: player && v.Index < world.LANPlayers,
-					VictimHireling: player && v.Index >= world.LANPlayers})
+					Victim: v.Index, VictimPlayer: victimHero,
+					VictimHireling: player && v.Index >= world.LANPlayers,
+					VictimAmulet:   victimHero && w.carriesAmulet(v.Index)})
 			}
 		},
 		Protected: w.protected,
@@ -300,11 +310,13 @@ func (w *World) team(e *gamestate.Entity) int {
 // the heroes that ended a walk on an exit to the exit's target.
 func (w *World) Step() {
 	w.Tick++
+	w.scanAmulets() // who carries the amulet items (a kill of a carrier scores double)
 	for n := 1; n <= Maps; n++ {
 		w.Maps[n].Step()
 	}
 	if (w.Tick+gamestate.SettlementTickOffset)%gamestate.UpkeepTicks == 0 {
 		w.settlementPass()
+		w.amuletPass()
 	}
 	moving := w.moving
 	w.moving = nil
@@ -387,6 +399,7 @@ func (w *World) RemovePlayer(slot int) {
 		return
 	}
 	w.closeItems(slot)
+	w.amuletsLeave(slot)        // 0x00443E92: its amulet items vanish, the parts are put out again
 	w.Game.ClearAggressor(slot) // 0x0044B0A7: the villages forget it
 	w.sendHome(slot)            // its hirelings go back to their villages
 	delete(w.items, slot)       // a fresh hand and no pile window next time

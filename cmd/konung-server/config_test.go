@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"konung1.5/internal/gamestate"
 )
 
 // The example config is valid and sets every setting.
@@ -13,11 +15,12 @@ func TestExampleConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := defaultSettings()
-	st.Name, st.Port, st.MaxPlayers, st.Minutes, st.Speed, st.TeamDamage = "", 0, 0, 0, -1, false
+	st.Name, st.Port, st.MaxPlayers, st.Minutes, st.Speed, st.TeamDamage, st.Amulets = "", 0, 0, 0, -1, false, -1
 	if err := st.applyConfig(data); err != nil {
 		t.Fatal(err)
 	}
-	want := settings{Name: "Мой сервер", Port: 7777, MaxPlayers: 16, Minutes: 180, Speed: 0, TeamDamage: true}
+	want := settings{Name: "Мой сервер", Port: 7777, MaxPlayers: 16, Minutes: 180, Speed: 0, TeamDamage: true,
+		Amulets: 15, AmuletPoints: gamestate.DefaultAmuletPoints}
 	if st != want {
 		t.Errorf("example = %+v, want %+v", st, want)
 	}
@@ -59,5 +62,22 @@ func TestLoadSettings(t *testing.T) {
 	}
 	if _, err := loadSettings(dir, dir+"/missing.conf"); err == nil {
 		t.Error("a missing -config file was accepted")
+	}
+}
+
+// The SERVER file sets the amulet limit in TEAM mode only and the six
+// amulet places (its lines over the exe's defaults).
+func TestServerFileAmulets(t *testing.T) {
+	st := defaultSettings()
+	if err := st.applyServerFile([]byte("TEAM 3 180\r\nHome\r\n5 64 32\r\n6 59 32\r\n===\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	want := gamestate.DefaultAmuletPoints
+	want[0], want[1] = [3]int{5, 64, 32}, [3]int{6, 59, 32}
+	if st.Amulets != 3 || st.AmuletPoints != want {
+		t.Errorf("TEAM: amulets %d, points %v", st.Amulets, st.AmuletPoints)
+	}
+	if err := st.applyServerFile([]byte("FREE 3 180\r\nHome\r\n===\r\n")); err != nil || st.Amulets != 0 {
+		t.Errorf("not TEAM: amulets %d (%v), want none", st.Amulets, err)
 	}
 }

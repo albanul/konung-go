@@ -38,6 +38,15 @@ func (g *gameFont) drawLine(dst *ebiten.Image, text []byte, x, y int) {
 	}
 }
 
+// width is text's width in pixels on one line.
+func (g *gameFont) width(text []byte) int {
+	w := 0
+	for _, c := range text {
+		w += g.font.Advance(c)
+	}
+	return w
+}
+
 // drawWrapped draws text wrapped to width like 0x0042CBBC (15 px lines).
 func (g *gameFont) drawWrapped(dst *ebiten.Image, text []byte, x, y, width int) {
 	for _, line := range g.font.Wrap(text, width) {

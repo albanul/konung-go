@@ -14,9 +14,9 @@ const (
 
 // HeroKillPoints is the score for killing another player's hero:
 // max(1, 2·victim level − killer level + 1), doubled when the victim
-// carries an amulet part (a category-11 item of type ≥ 10). Kills of
-// hirelings and monsters are counted but score nothing (their call sites
-// pass 0 points).
+// carries an amulet item (LAN_KONG.EXE: a category-11 item of type ≥ 10;
+// AmuletKind). Kills of hirelings and monsters are counted but score
+// nothing (their call sites pass 0 points).
 func HeroKillPoints(victimLevel, killerLevel int, victimHasAmulet bool) int {
 	p := max(1, 2*victimLevel-killerLevel+1)
 	if victimHasAmulet {

@@ -72,7 +72,7 @@ func TestSessionReset(t *testing.T) {
 	_, e := w.Maps[7].Member(0)
 	e.HP, e.Poison, e.Enchants = 300, 5, [2]int{3, -1}
 	gamestate.EnterStance(e)
-	amulet := w.Game.SetItemKind(0, gamestate.CatQuest, 10)
+	amulet := w.Game.SetItemKind(0, gamestate.CatQuest, gamestate.MiscAmuletRight)
 	words := w.Game.SetItemKind(0, gamestate.CatQuest, gamestate.MiscWords)
 	e.Bag[0], e.Bag[1] = amulet, words
 	w.state(0).quests[0] |= 0x80
@@ -104,7 +104,7 @@ func TestSessionReset(t *testing.T) {
 		t.Errorf("%d piles after the reset, the dropped one still there (%d before)", len(w.Game.Piles), piles)
 	}
 	for _, p := range w.Game.Piles {
-		if p.Index < 0 {
+		if p.Index < 0 && w.amuletKind(p.Items[0]) == 0 { // the amulet parts are put out anew
 			t.Errorf("a dropped pile is still there: %+v", p)
 		}
 	}

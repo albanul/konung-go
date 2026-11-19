@@ -176,6 +176,10 @@ func (w *World) Item(slot int, o netplay.OrderPayload) {
 func (w *World) drop(s *world.World, mem *world.Member, h *gamestate.Hand) {
 	item := h.Item
 	h.Cursor = gamestate.CursorPointer
+	if w.deliver(s, mem, mem.Entity, item) {
+		h.Item = 0 // the amulet delivered on the nation's spot (0x00437B24); its record is free
+		return
+	}
 	at, on := s.PileAt[mem.Cell]
 	if !on {
 		if len(s.PileAt) >= gamestate.MaxActivePiles {

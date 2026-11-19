@@ -51,6 +51,12 @@ type Host struct {
 	Load func(p netplay.PlayerInfo) (items []Item, starter bool)
 	Save func(p netplay.PlayerInfo, hero *netplay.Hero, items []Item)
 	Died func(p netplay.PlayerInfo, hero *netplay.Hero, worn []Item)
+	// OnAmulet is called (without the lock) when a player delivered the
+	// amulet for its nation (0x00437B69: 25 points to the player); OnWin
+	// when a nation reached the win limit (0x00434438): the session is to
+	// end now (the dedicated server ends it as at its time).
+	OnAmulet func(p netplay.PlayerInfo, nation int)
+	OnWin    func(nation int)
 
 	// Linger is how long a hero stays after its player left away from its
 	// home village (LingerTime when 0); now is the clock (time.Now when
@@ -78,7 +84,14 @@ type Kill struct {
 	Victim         netplay.PlayerInfo // set when VictimPlayer
 	VictimPlayer   bool
 	VictimHireling bool // a player's hireling (counted, 0 points)
+	VictimAmulet   bool // the victim hero carried an amulet item: double points
 	VictimLevel    int
+}
+
+// delivery is an OnAmulet call to make after the lock.
+type delivery struct {
+	p      netplay.PlayerInfo
+	nation int
 }
 
 type hostPlayer struct {
@@ -91,7 +104,7 @@ type hostPlayer struct {
 	looks map[int]netplay.Look // players' heroes sent to this player, as sent
 	// The items, piles, pile window, dialogue and party as last sent
 	// (JSON), so only changes go out.
-	inv, piles, pileWin, dialogue, party []byte
+	inv, piles, pileWin, dialogue, party, amulets []byte
 	// The building states sent (by map and placement), the map and the
 	// buildings version checked last (buildings.go).
 	buildings      map[buildingKey]int
@@ -145,7 +158,7 @@ func (h *Host) Start(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPay
 	}
 	hp.info, hp.hero, hp.dead = p, hero, false
 	hp.view, hp.looks = Viewer{}, map[int]netplay.Look{}
-	hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party = nil, nil, nil, nil, nil
+	hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party, hp.amulets = nil, nil, nil, nil, nil, nil
 	m, c, err := h.W.AddPlayer(hp.slot, p.Model, hero)
 	if err != nil {
 		delete(h.players, p.ID)
@@ -242,7 +255,7 @@ func (h *Host) EndSession() error {
 	for _, hp := range h.players {
 		hp.dead = false
 		hp.view, hp.looks = Viewer{}, map[int]netplay.Look{}
-		hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party = nil, nil, nil, nil, nil
+		hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party, hp.amulets = nil, nil, nil, nil, nil, nil
 		saves = append(saves, h.saveOf(hp))
 	}
 	h.mu.Unlock()
@@ -381,23 +394,34 @@ func (h *Host) Advance(target, max int) int {
 	for ; h.W.Tick < target && n < max; n++ {
 		h.W.Step()
 	}
-	kills, saves := h.report()
+	kills, delivered, saves := h.report()
 	saves = append(saves, h.deaths()...)
 	saves = h.expire(saves)
+	nation, won := h.W.TakeWin()
 	h.mu.Unlock()
 	if h.OnKill != nil {
 		for _, k := range kills {
 			h.OnKill(k)
 		}
 	}
+	if h.OnAmulet != nil {
+		for _, d := range delivered {
+			h.OnAmulet(d.p, d.nation)
+		}
+	}
 	h.save(saves)
+	if won && h.OnWin != nil {
+		h.OnWin(nation)
+	}
 	return n
 }
 
 // report sends the tick's events, views and item changes; h.mu held. It
-// returns the kills for OnKill and the dead players' saves.
-func (h *Host) report() ([]Kill, []save) {
+// returns the kills for OnKill, the deliveries for OnAmulet and the dead
+// players' saves.
+func (h *Host) report() ([]Kill, []delivery, []save) {
 	var kills []Kill
+	var delivered []delivery
 	var saves []save
 	byMap := map[int][]netplay.Event{}
 	for _, ev := range h.W.TakeEvents() {
@@ -433,8 +457,12 @@ func (h *Host) report() ([]Kill, []save) {
 			if v := h.bySlot[ev.Victim]; v != nil && ev.VictimPlayer {
 				k.Victim, k.VictimPlayer = v.info, true // its death: deaths
 			}
-			k.VictimHireling = ev.VictimHireling
+			k.VictimHireling, k.VictimAmulet = ev.VictimHireling, ev.VictimAmulet
 			kills = append(kills, k)
+		case EventAmulet:
+			if hp := h.bySlot[ev.Entity]; hp != nil {
+				delivered = append(delivered, delivery{p: hp.info, nation: ev.Victim})
+			}
 		}
 	}
 	for _, hp := range h.players {
@@ -474,10 +502,15 @@ func (h *Host) report() ([]Kill, []save) {
 		}
 		h.sendTo(hp, netplay.MsgView, view)
 	}
+	amulets := h.W.Amulets()
 	for _, hp := range h.players {
 		h.sendItems(hp)
+		if b, err := json.Marshal(amulets); err == nil && !bytes.Equal(b, hp.amulets) {
+			hp.amulets = b
+			h.sendTo(hp, netplay.MsgAmulets, amulets)
+		}
 	}
-	return kills, saves
+	return kills, delivered, saves
 }
 
 // sendItems sends hp its hero's items, its map's piles and its pile window

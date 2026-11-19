@@ -116,7 +116,7 @@ func ParseLANWorld(data []byte) (*LANWorld, error) {
 		return nil, fmt.Errorf("GAME.RES has %d bytes, want %d", len(data), LANWorldSize)
 	}
 	data = append([]byte(nil), data...)
-	g := &Game{items: data[lanItemOffset : lanItemOffset+0x20000], Options: [2]int32{1, 1}}
+	g := &Game{items: data[lanItemOffset : lanItemOffset+0x20000], Options: [2]int32{1, 1}, LAN: true}
 	for i := range LANGroups {
 		g.Groups = append(g.Groups, parseGroup(i, data[lanGroupOffset+i*groupStride:][:groupStride]))
 	}

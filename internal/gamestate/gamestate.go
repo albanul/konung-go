@@ -98,6 +98,9 @@ type Game struct {
 	// the heroes are named by their players' accounts, not the first-name
 	// table. nil = every name from the tables (Name).
 	Names map[int][]byte
+	// LAN is a LAN world (ParseLANWorld): the few rules LAN_KONG.EXE
+	// changed in shared code (joining amulet parts gives no experience).
+	LAN bool
 	// Lit is 0x00A3E758: the visible piles glow (resfmt.LightsGlow). Set by
 	// «Чистая слеза» (UseHerb) and the torch (UseMisc); the map loader
 	// clears it (0x0043C11B).

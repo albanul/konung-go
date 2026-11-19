@@ -62,8 +62,12 @@ func (g *Game) EnterLANWorld(m, row, col, facing int, exits []MapExit) {
 
 // LANKeepsOnLoad is the item filter of the LAN server's SAVITEMS.DAT read
 // (0x0044444C, at «Ok» and at a new session): bag items of these kinds do
-// not come back (amulet parts, category 11 type ≥ 10, start every session
-// anew); equipment, jewellery and arrows always do.
+// not come back (amulet parts and the amulet: LAN_KONG.EXE's category 11
+// type ≥ 10, which are the port's AmuletKind items, lanamulet.go; they start
+// every session anew); equipment, jewellery and arrows always do.
+// The gear (≥ 70) and herb (≥ 14) limits need no mapping: both exes have
+// the same 70 gear and 14 herb types in the same order (LAN herb records
+// are 64 bytes, single player's 128), so they only catch invalid types.
 func LANKeepsOnLoad(bag bool, category, typ int) bool {
 	if !bag {
 		return true
@@ -72,7 +76,7 @@ func LANKeepsOnLoad(bag bool, category, typ int) bool {
 	case category > 12,
 		category <= 5 && typ >= 70,
 		category == 9 && typ >= 14,
-		category == 11 && typ >= 10:
+		category == CatQuest && AmuletKind(typ) != 0:
 		return false
 	}
 	return true

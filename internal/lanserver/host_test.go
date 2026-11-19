@@ -74,9 +74,20 @@ type viewer struct {
 	msgs      [][]byte
 	dlg       netplay.DialoguePayload
 	pty       netplay.PartyPayload
-	changes   []netplay.EnterPayload // map changes (MsgMapChange)
-	arrows    []netplay.Event        // EventArrow (arrows_test.go)
-	buildings []netplay.Building     // EventBuilding (villages_test.go)
+	changes   []netplay.EnterPayload  // map changes (MsgMapChange)
+	arrows    []netplay.Event         // EventArrow (arrows_test.go)
+	buildings []netplay.Building      // EventBuilding (villages_test.go)
+	amulets   *netplay.AmuletsPayload // MsgAmulets (amulets_test.go)
+}
+
+// amuletState is the last MsgAmulets, false before one came.
+func (v *viewer) amuletState() (netplay.AmuletsPayload, bool) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.amulets == nil {
+		return netplay.AmuletsPayload{}, false
+	}
+	return *v.amulets, true
 }
 
 func enter(t *testing.T, ss *session, name string, model int) *viewer {
@@ -170,6 +181,13 @@ func (v *viewer) read() {
 			if m.Decode(&p) == nil {
 				v.mu.Lock()
 				v.pty = p
+				v.mu.Unlock()
+			}
+		case netplay.MsgAmulets:
+			var p netplay.AmuletsPayload
+			if m.Decode(&p) == nil {
+				v.mu.Lock()
+				v.amulets = &p
 				v.mu.Unlock()
 			}
 		case netplay.MsgDialogue:

@@ -346,7 +346,9 @@ func (g *Game) wine(e *Entity) {
 }
 
 // joinAmulet is 0x00410010(e, target, item): two parts of the dragon's
-// amulet (target a misc item) join in the target; e gains 100 experience.
+// amulet (target a misc item) join in the target; e gains 100 experience
+// (not in a LAN world: LAN_KONG.EXE's 0x0044DB54, client 0x00413462 and
+// server 0x00439039, only joins them).
 func (g *Game) joinAmulet(e *Entity, t *resfmt.ExeTables, typ, target int, tgt Item) bool {
 	if tgt.Category != CatQuest {
 		return false
@@ -361,7 +363,9 @@ func (g *Game) joinAmulet(e *Entity, t *resfmt.ExeTables, typ, target int, tgt I
 		return false
 	}
 	g.items[target*itemStride+3] = byte(to)
-	g.GainExperience(e, t, 100)
+	if !g.LAN {
+		g.GainExperience(e, t, 100)
+	}
 	return true
 }
 

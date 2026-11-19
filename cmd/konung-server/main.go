@@ -110,7 +110,7 @@ func run(dataDir string, st settings) error {
 	// The whole world (docs/konung_lan.md#server-world): every map runs
 	// here; players see their hero's map. Without its files players can
 	// log in but not enter (the server answers «Ok» with an error).
-	sw, err := loadWorld(dataDir)
+	sw, err := loadWorld(dataDir, lanserver.AmuletRules{Points: st.AmuletPoints, Limit: st.Amulets})
 	if err != nil {
 		log.Printf("world not running, players cannot enter: %v", err)
 		sw = nil
@@ -122,6 +122,7 @@ func run(dataDir string, st settings) error {
 	}
 	defer store.Close()
 
+	won := make(chan int, 1) // a nation reached the amulet limit: the session ends now (0x00434438)
 	addr := ":" + strconv.Itoa(port)
 	var srv *netplay.Server
 	cfg := netplay.ServerConfig{
@@ -153,6 +154,14 @@ func run(dataDir string, st settings) error {
 		sw.w.TeamSafe = !teamDamage
 		sw.host = lanserver.NewHost(sw.w, func(id string, m *netplay.Message) error { return srv.Send(id, m) })
 		sw.host.OnKill = func(k lanserver.Kill) { scoreKill(store, k) }
+		sw.host.OnAmulet = func(p netplay.PlayerInfo, nation int) { scoreAmulet(store, p, nation) }
+		sw.host.OnWin = func(nation int) {
+			log.Printf("%s", gamestate.NationWins[nation])
+			select {
+			case won <- nation:
+			default:
+			}
+		}
 		sw.host.Load = func(p netplay.PlayerInfo) ([]lanserver.Item, bool) { return loadItems(store, p.Name) }
 		sw.host.Save = func(p netplay.PlayerInfo, hero *netplay.Hero, items []lanserver.Item) {
 			saveHero(store, p.Name, hero, items)
@@ -196,6 +205,27 @@ func run(dataDir string, st settings) error {
 	// The world clock is resent now and then, so clients stay in step.
 	sync := time.NewTicker(30 * time.Second)
 	defer sync.Stop()
+	// endSession is a session's end: the world anew, the ratings, a new
+	// session.
+	endSession := func() {
+		srv.SetSessionEnd(time.Now().Add(length))
+		if sw != nil {
+			// The world anew from GAME.RES, every hero back at its
+			// start, alive and healed, then saved (0x0044687C,
+			// 0x00448BB8).
+			if err := sw.host.EndSession(); err != nil {
+				log.Printf("session end: the world: %v", err)
+			}
+		}
+		if err := store.EndSession(); err != nil {
+			log.Printf("session end: %v", err)
+		} else {
+			log.Print("session over: ratings updated")
+		}
+		for _, p := range srv.Session().Players {
+			store.JoinSession(p.Name) // still online: in the next session too
+		}
+	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	for {
@@ -203,23 +233,13 @@ func run(dataDir string, st settings) error {
 		case <-sync.C:
 			srv.SyncClock()
 		case <-sessions.C:
-			srv.SetSessionEnd(time.Now().Add(length))
-			if sw != nil {
-				// The world anew from GAME.RES, every hero back at its
-				// start, alive and healed, then saved (0x0044687C,
-				// 0x00448BB8).
-				if err := sw.host.EndSession(); err != nil {
-					log.Printf("session end: the world: %v", err)
-				}
-			}
-			if err := store.EndSession(); err != nil {
-				log.Printf("session end: %v", err)
-			} else {
-				log.Print("session over: ratings updated")
-			}
-			for _, p := range srv.Session().Players {
-				store.JoinSession(p.Name) // still online: in the next session too
-			}
+			endSession()
+		case n := <-won:
+			// A nation delivered the limit's amulets: the session ends
+			// now (0x00434438) and the next one gets its full length.
+			log.Printf("session ends early: %s", gamestate.NationWins[n])
+			sessions.Reset(length)
+			endSession()
 		case s := <-stop:
 			log.Printf("%v: stopping", s)
 			if sw != nil {
@@ -230,12 +250,21 @@ func run(dataDir string, st settings) error {
 	}
 }
 
+// scoreAmulet scores a delivered amulet (0x00437B69): 25 points and the
+// account's amulet counter.
+func scoreAmulet(store *lanstore.Store, p netplay.PlayerInfo, nation int) {
+	log.Printf("%s delivered the amulet for %s: %d points", p.Name, gamestate.NationNames[nation], gamestate.AmuletPoints)
+	if err := store.Score(p.Name, lanstore.Amulet, gamestate.AmuletPoints); err != nil {
+		log.Printf("score: %v", err)
+	}
+}
+
 // scoreKill scores a player's kill (0x0043B67C): a player victim gives
 // HeroKillPoints, a creature or villager is counted with 0 points; the
 // killer's experience is saved (0x00448970).
 func scoreKill(store *lanstore.Store, k lanserver.Kill) {
 	if k.VictimPlayer {
-		points := gamestate.HeroKillPoints(k.VictimLevel, k.KillerLevel, false)
+		points := gamestate.HeroKillPoints(k.VictimLevel, k.KillerLevel, k.VictimAmulet)
 		log.Printf("%s killed %s: %d points", k.Killer.Name, k.Victim.Name, points)
 		if err := store.Score(k.Killer.Name, lanstore.KillHero, points); err != nil {
 			log.Printf("score: %v", err)

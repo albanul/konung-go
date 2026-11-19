@@ -101,14 +101,17 @@ func cString(b []byte) []byte {
 }
 
 // ServerFile is the LAN server's settings file SERVER (CP866 text, parsed by
-// 0x00431481): "<mode> <teams> <minutes>" (mode TEAM: team play), the
-// session name, then "map x y" lines up to a line of '=' (the shipped file
-// has six; their meaning is not traced), then comments.
+// 0x00431481): "<mode> <amulets> <minutes>" (mode TEAM: team play; amulets
+// 0x00E24408 is how many delivered amulets win a nation the session, read
+// only in TEAM mode, else never), the session name, then six "map row col"
+// lines (0x0043153C: the three amulet parts' places 0x004826CC and the three
+// nations' delivery spots 0x004826F0, gamestate.LANAmuletPoints) up to a
+// line of '=', then comments.
 type ServerFile struct {
-	Mode           string
-	Teams, Minutes int
-	Name           []byte // CP866
-	Points         [][3]int
+	Mode             string
+	Amulets, Minutes int
+	Name             []byte // CP866
+	Points           [][3]int
 }
 
 // DefaultServerName is the session name without a SERVER file:
@@ -129,7 +132,7 @@ func ParseServerFile(data []byte) (ServerFile, error) {
 	if !ok {
 		return f, fmt.Errorf("SERVER: empty")
 	}
-	if _, err := fmt.Sscanf(first, "%s %d %d", &f.Mode, &f.Teams, &f.Minutes); err != nil {
+	if _, err := fmt.Sscanf(first, "%s %d %d", &f.Mode, &f.Amulets, &f.Minutes); err != nil {
 		return f, fmt.Errorf("SERVER: first line %q: %w", first, err)
 	}
 	name, ok := line()

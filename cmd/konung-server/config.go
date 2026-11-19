@@ -23,6 +23,11 @@ type settings struct {
 	Minutes    int    // rating session length
 	Speed      int    // world speed: 0 normal, 1 double, 2 triple
 	TeamDamage bool   // heroes of one team (hero type) can hurt each other
+	// Amulets is how many delivered amulets win a nation the session (0:
+	// none); AmuletPoints are the amulet parts' places and the nations'
+	// delivery spots (the SERVER file's six lines).
+	Amulets      int
+	AmuletPoints gamestate.LANAmuletPoints
 }
 
 func defaultSettings() settings {
@@ -32,17 +37,22 @@ func defaultSettings() settings {
 		MaxPlayers: 16, // the original's limit
 		Minutes:    180,
 		TeamDamage: true, // the original has no team rule
+		// Without a SERVER file LAN_KONG.EXE's own values (0x0043162C,
+		// 0x004826CC).
+		Amulets:      gamestate.DefaultAmuletLimit,
+		AmuletPoints: gamestate.DefaultAmuletPoints,
 	}
 }
 
-// applyServerFile takes the session name and length from a SERVER file
-// (0x00431481).
+// applyServerFile takes the session name and length, the amulet win limit
+// (TEAM mode only) and the amulet places from a SERVER file (0x00431481).
 func (s *settings) applyServerFile(data []byte) error {
 	f, err := gamestate.ParseServerFile(data)
 	if err != nil {
 		return err
 	}
 	s.Name, s.Minutes = resfmt.CP866ToUTF8(f.Name), f.Minutes
+	s.Amulets, s.AmuletPoints = gamestate.AmuletLimitFrom(f), gamestate.AmuletPointsFrom(f)
 	return nil
 }
 
@@ -59,6 +69,7 @@ var configKeys = map[string]func(s *settings, v string) error{
 	"max_players": intSetting(func(s *settings) *int { return &s.MaxPlayers }, 1, 16),
 	"minutes":     intSetting(func(s *settings) *int { return &s.Minutes }, 1, 100000),
 	"speed":       intSetting(func(s *settings) *int { return &s.Speed }, 0, netplay.MaxSpeed),
+	"amulets":     intSetting(func(s *settings) *int { return &s.Amulets }, 0, 1000),
 	"team_damage": func(s *settings, v string) error {
 		switch strings.ToLower(v) {
 		case "true", "yes", "on", "1":

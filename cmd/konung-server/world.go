@@ -33,8 +33,9 @@ type serverWorld struct {
 // worldFiles are the files the world needs in the data folder.
 var worldFiles = []string{"GAME.RES", "MAPS.RES", "GRAPH.RES", "OBJECTS.RES", "konung.exe", "GAME.0", "GAME.1", "GAME.2"}
 
-// loadWorld builds the world from dir; an error names a missing file.
-func loadWorld(dir string) (*serverWorld, error) {
+// loadWorld builds the world from dir with the amulet rules; an error names
+// a missing file.
+func loadWorld(dir string, amulets lanserver.AmuletRules) (*serverWorld, error) {
 	data := map[string][]byte{}
 	for _, name := range worldFiles {
 		b, err := os.ReadFile(filepath.Join(dir, name))
@@ -44,7 +45,7 @@ func loadWorld(dir string) (*serverWorld, error) {
 		data[name] = b
 	}
 	f := lanserver.Files{GameRes: data["GAME.RES"], MapsRes: data["MAPS.RES"], Graph: data["GRAPH.RES"],
-		Objects: data["OBJECTS.RES"], Exe: data["konung.exe"]}
+		Objects: data["OBJECTS.RES"], Exe: data["konung.exe"], Amulets: &amulets}
 	for m := range f.Games {
 		f.Games[m] = data["GAME."+strconv.Itoa(m)]
 	}

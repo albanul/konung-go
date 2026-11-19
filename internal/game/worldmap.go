@@ -33,6 +33,12 @@ type worldMapWindow struct {
 	// counts are the players per LAN map (the own hero and the remote
 	// heroes, startScene.playerCounts), set before each draw.
 	counts map[int]int
+	// amuletIcons and amuletLine are the LAN map's amulet status (draw
+	// 0x0041ED44), set before each draw: the three amulet items' icons
+	// (INTR slots, −1 none) and the line "славяне : викинги : византийцы
+	// minutes:seconds" (nil: no status).
+	amuletIcons [3]int
+	amuletLine  []byte
 	// lan, when set, is the LAN version's map (draw 0x0041E8EC): its own
 	// picture (INTO640R.RES slot 179) and runs, every location shown,
 	// regions = map numbers, no travel by click.
@@ -107,6 +113,7 @@ func (w *worldMapWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, mapN
 	h.draw(view, resfmt.WorldMapSlot, viewLeft, viewTop)
 	if w.lan != nil {
 		w.drawLAN(view, mapNumber, font)
+		w.drawAmulets(dst, h, font)
 		return
 	}
 	if w.overlay == nil || w.known != g.KnownMaps || w.here != mapNumber {
@@ -179,5 +186,28 @@ func (w *worldMapWindow) drawLAN(view *ebiten.Image, mapNumber int, font *gameFo
 		}
 		p := l.markers[m]
 		font.drawLine(view, []byte(strconv.Itoa(n)), ox+p.X+3, oy+p.Y+3)
+	}
+}
+
+// drawAmulets is the LAN map window's amulet status (0x0041ED44): the
+// nations' delivered amulets and the session's time left (font 0x0078C1A0)
+// and the three amulet items' icons below each other (LAN_KONG.EXE's
+// 800×600 places 0x0047EFE4: the line at (678, 5), the icons at x 700, y 15,
+// 70, 125, right of its map area). Port rule: the single-player HUD on the
+// left moves the map area 140 px right, so the line is drawn right-aligned
+// at the screen's right edge and the icons in the column right of the map
+// picture, at the original's heights.
+func (w *worldMapWindow) drawAmulets(dst *ebiten.Image, h *hud, font *gameFont) {
+	if w.amuletLine == nil || font == nil {
+		return
+	}
+	font.drawLine(dst, w.amuletLine, viewRight-4-font.width(w.amuletLine), 5)
+	for k, n := range w.amuletIcons {
+		img := h.slot(n)
+		if n < 0 || img == nil {
+			continue
+		}
+		x := viewRight + 1 - 8 - img.Bounds().Dx()
+		drawAt(dst, img, x, [3]int{15, 70, 125}[k])
 	}
 }

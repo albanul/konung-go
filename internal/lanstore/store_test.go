@@ -135,7 +135,7 @@ func TestItems(t *testing.T) {
 		{Slot: SlotEquip, Index: 0, Category: 0, Enchantment: -1, Type: 3, Condition: 40, MaxCondition: 50},
 		{Slot: SlotArrows, Category: 12, Type: 1, Count: 30},
 		{Slot: SlotBag, Index: 0, Category: 9, Type: 2, Condition: 1, MaxCondition: 1},
-		{Slot: SlotBag, Index: 1, Category: 11, Type: 12}, // an amulet part: dropped on load
+		{Slot: SlotBag, Index: 1, Category: gamestate.CatQuest, Type: gamestate.MiscAmuletBottom}, // an amulet part: dropped on load
 	}
 	if err := s.SaveItems("Volk", items); err != nil {
 		t.Fatal(err)

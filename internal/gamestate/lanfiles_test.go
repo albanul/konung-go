@@ -42,7 +42,7 @@ func TestParseServerFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Mode != "TEAM" || f.Teams != 3 || f.Minutes != 180 || string(f.Name) != "Home Server" || len(f.Points) != 6 || f.Points[0] != [3]int{5, 64, 32} {
+	if f.Mode != "TEAM" || f.Amulets != 3 || f.Minutes != 180 || string(f.Name) != "Home Server" || len(f.Points) != 6 || f.Points[0] != [3]int{5, 64, 32} {
 		t.Errorf("SERVER = %+v", f)
 	}
 }
