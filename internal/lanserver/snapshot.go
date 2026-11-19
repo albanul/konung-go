@@ -47,6 +47,7 @@ func (f *frameCache) counter(live func() gamestate.Entity) world.FrameCounter {
 type Char struct {
 	Entity  int  // index in the world's entities (players: their slot)
 	Player  bool // a player's hero
+	Owner   int  // a hireling: its player's slot + 1; 0 none
 	Row     int  // the cell held (while walking: the one being entered)
 	Col     int
 	FromRow int // while walking: the cell being left
@@ -78,8 +79,12 @@ func (w *World) Snapshot(m int) MapState {
 	}
 	s := w.Maps[m]
 	add := func(wk *world.Walker, e *gamestate.Entity, player bool) {
+		owner := 0
+		if player && wk.Entity >= world.LANPlayers {
+			player, owner = false, e.Group+1 // a hireling: drawn as its GAME.RES record
+		}
 		out.Chars = append(out.Chars, Char{
-			Entity: wk.Entity, Player: player, Row: wk.Cell.Row, Col: wk.Cell.Col,
+			Entity: wk.Entity, Player: player, Owner: owner, Row: wk.Cell.Row, Col: wk.Cell.Col,
 			FromRow: wk.From.Row, FromCol: wk.From.Col, Walking: wk.Walking, Step: wk.StepT, Facing: int(wk.Dir),
 			Act: wk.Act, ActStep: wk.ActStep, HP: e.HP, Dead: e.Dead(), Stance: e.InStance(), Weapon: e.WeaponMode,
 		})
@@ -115,6 +120,7 @@ type Event struct {
 	Row, Col int
 	Facing   int
 
-	Victim       int
-	VictimPlayer bool
+	Victim         int
+	VictimPlayer   bool
+	VictimHireling bool // a player's hireling
 }

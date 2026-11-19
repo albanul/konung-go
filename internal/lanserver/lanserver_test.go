@@ -112,7 +112,7 @@ func TestPlayerWalksAndChangesMap(t *testing.T) {
 	if best == 1<<30 {
 		t.Fatal("no open exit on the start map")
 	}
-	w.Walk(3, goal.Row, goal.Col)
+	w.Walk(3, nil, goal.Row, goal.Col)
 	for i := 0; i < 3000 && w.PlayerMap(3) == m; i++ {
 		w.Step()
 	}
@@ -160,8 +160,8 @@ func TestFightCreature(t *testing.T) {
 		t.Fatal("no creature on map 2")
 	}
 	w.MoveTo(0, 2, target.Cell)
-	w.Stance(0, true)
-	w.Right(0, target.Entity, target.Cell.Row, target.Cell.Col)
+	w.Stance(0, nil, true)
+	w.Right(0, nil, target.Entity, target.Cell.Row, target.Cell.Col)
 	creatureHP := s.Game.Entities[target.Entity].HP
 	fought := false
 	for range 3000 {
@@ -201,8 +201,8 @@ func TestPlayersFight(t *testing.T) {
 	if (mapdata.Cell{Row: h0.Row, Col: h0.Col}) == c {
 		t.Fatal("two heroes on one cell")
 	}
-	w.Stance(0, true)
-	w.Right(0, 1, c.Row, c.Col)
+	w.Stance(0, nil, true)
+	w.Right(0, nil, 1, c.Row, c.Col)
 	for range 3000 {
 		w.Step()
 		if h, _ := w.Hero(1); h.HP < gamestate.HPFull || h.Dead() {

@@ -39,6 +39,7 @@ const (
 	OrderItem   = "item"   // an item click (Item: ItemBag…), applied on the server (items.go)
 	OrderTalk   = "talk"   // right click on a character with a dialogue out of the stance: Target (the original's 0x43)
 	OrderReply  = "reply"  // a click on reply Index of the open dialogue (talk.go)
+	OrderGather = "gather" // F, the HUD button «Все ко мне»: the hirelings follow the hero again (party.go)
 )
 
 // OrderPayload is an order for the own hero.
@@ -54,6 +55,9 @@ type OrderPayload struct {
 	Item  string                         `json:"item,omitempty"`
 	Index int                            `json:"index,omitempty"`
 	Lists *[PileLists][PileListSlots]int `json:"lists,omitempty"`
+	// Sel is the player's selection (entity indices: its hero and
+	// hirelings) for walk, right, stance and weapon; empty: the hero.
+	Sel []int `json:"sel,omitempty"`
 }
 
 // CharState is a character on the own hero's map at a tick: entity, cell
@@ -63,6 +67,7 @@ type OrderPayload struct {
 type CharState struct {
 	Entity  int  `json:"e"`
 	Player  bool `json:"p,omitempty"`
+	Owner   int  `json:"o,omitempty"` // a hireling: its player's slot + 1
 	Row     int  `json:"r"`
 	Col     int  `json:"c"`
 	FromRow int  `json:"fr,omitempty"`

@@ -100,12 +100,12 @@ func TestTalkAndTrade(t *testing.T) {
 		t.Fatal("talked to a hero or nobody")
 	}
 	// In the stance: nothing.
-	w.Stance(slot, true)
+	w.Stance(slot, nil, true)
 	w.Talk(slot, merchant7)
 	if st.talk != nil {
 		t.Fatal("talked in the stance")
 	}
-	w.Stance(slot, false)
+	w.Stance(slot, nil, false)
 	w.Talk(slot, merchant7)
 	if st.talk == nil || len(st.talk.Replies) == 0 {
 		t.Fatal("no dialogue with the merchant")

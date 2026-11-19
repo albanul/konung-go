@@ -768,6 +768,11 @@ func (m *Menu) applyLAN() {
 			if msg.Decode(&d) == nil {
 				w.applyDialogue(d)
 			}
+		case netplay.MsgParty:
+			var p netplay.PartyPayload
+			if msg.Decode(&p) == nil {
+				w.applyParty(p)
+			}
 		}
 	}
 }

@@ -293,7 +293,7 @@ func (g *Game) smithPass(s *Settlement, t *resfmt.ExeTables) {
 			item, _ := g.Item(it)
 			for m := range vg.Count {
 				e := &g.Entities[vg.First+m]
-				if !g.CanUse(*e, t, item) {
+				if e.Group != s.Group || !g.CanUse(*e, t, item) { // a LAN hireling left the village
 					continue
 				}
 				if i < 3 {

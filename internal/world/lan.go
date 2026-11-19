@@ -144,3 +144,87 @@ func (s *World) AttackNearest(m *Member) {
 	m.Path = m.Path[:min(len(m.Path), 1)]
 	m.Intent = gamestate.IntentMelee | gamestate.IntentIdle
 }
+
+// Leads reports whether member m leads itself: the hero in single player
+// (party index 0); in a LAN world every player's hero (entity < LANPlayers),
+// while its hirelings (entities of the world in its group) follow it.
+func (s *World) Leads(m *Member) bool {
+	if s.LAN {
+		return s.Party[m.K].Index < LANPlayers
+	}
+	return m.K == 0
+}
+
+// leaderOf is whom member m follows: the hero (Lead) in single player; in
+// a LAN world its player's hero (the member whose entity is m's group),
+// nil when that hero is not on this map.
+func (s *World) leaderOf(m *Member) *Member {
+	if !s.LAN {
+		return s.Lead()
+	}
+	l, _ := s.PartyMember(s.Party[m.K].Group)
+	return l
+}
+
+// Hire makes character i on this map (a villager, an NPC here) a member of
+// player group group (a LAN hireling, the server's 291, 0x0044BED7: the
+// entity's group byte +5 becomes the player's slot, +2 = 0x60, +0x9C =
+// 0xFF): its walker leaves the NPCs and comes back as a party member on its
+// cell, idle and following its player's hero. The entity keeps its index
+// (the LAN server keeps groups as member lists; GAME.RES's village group
+// range still spans it, so code over a group's range checks the entity's
+// own group). It returns nil when i is not an NPC here.
+func (s *World) Hire(i, group int, attach Attach) *Member {
+	n := s.ByEntity[i]
+	if n == nil {
+		return nil
+	}
+	s.dropNPC(n)
+	e := &s.Game.Entities[i]
+	e.Group, e.Flags2 = group, gamestate.IntentGather
+	e.Raw[0x14] = 0xFF
+	m := s.AddMember(i, n.Cell, int(n.Dir), attach)
+	m.Intent = gamestate.IntentGather
+	return m
+}
+
+// dropNPC takes NPC n off this map: the NPC list, the index and its cells.
+func (s *World) dropNPC(n *NPC) {
+	delete(s.Occ, n.Cell)
+	if n.Walking {
+		delete(s.Occ, n.From)
+	}
+	delete(s.ByEntity, n.Entity)
+	for k, o := range s.NPCs {
+		if o == n {
+			s.NPCs = append(s.NPCs[:k], s.NPCs[k+1:]...)
+			if s.AINext > k {
+				s.AINext--
+			}
+			break
+		}
+	}
+}
+
+// AddNPC puts character i (its record in Game.Entities, of a world group)
+// on this map as an NPC on cell c, or the nearest free cell, facing dir,
+// with the AI its group gives it (as the map entry, Populate). A LAN
+// hireling going back to its village (lanserver).
+func (s *World) AddNPC(i int, c mapdata.Cell, dir int, attach Attach) *NPC {
+	c = mapdata.NearestFree(c, s.Blocked, 8)
+	e := &s.Game.Entities[i]
+	e.Row, e.Col, e.Variant = c.Row, c.Col, dir&7
+	if !e.Dead() {
+		s.Occ[c] = true
+	}
+	return s.addNPC(gamestate.Placed{Entity: *e, Row: c.Row, Col: c.Col}, true, attach)
+}
+
+// Gather is «Все ко мне» (GatherOrder) for member m: idle, following its
+// leader, the walk ending after the current step.
+func (s *World) Gather(m *Member) {
+	s.EndFight(m)
+	m.Intent = gamestate.IntentGather
+	m.PickIntent, m.ResumeSet = false, false
+	m.StopWalk()
+}

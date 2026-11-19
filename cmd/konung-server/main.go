@@ -237,6 +237,11 @@ func scoreKill(store *lanstore.Store, k lanserver.Kill) {
 		if err := store.Score(k.Killer.Name, lanstore.KillHero, points); err != nil {
 			log.Printf("score: %v", err)
 		}
+	} else if k.VictimHireling {
+		// A player's hireling: its own counter, 0 points (0x0043B67C).
+		if err := store.Score(k.Killer.Name, lanstore.KillHireling, 0); err != nil {
+			log.Printf("score: %v", err)
+		}
 	} else if err := store.Score(k.Killer.Name, lanstore.KillMonster, 0); err != nil {
 		log.Printf("score: %v", err)
 	}

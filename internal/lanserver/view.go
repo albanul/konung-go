@@ -46,7 +46,7 @@ func (w *World) View(slot int, v *Viewer) (out netplay.ViewPayload, ok bool) {
 
 func charState(c Char) netplay.CharState {
 	cs := netplay.CharState{
-		Entity: c.Entity, Player: c.Player, Row: c.Row, Col: c.Col, Walking: c.Walking, Facing: c.Facing,
+		Entity: c.Entity, Player: c.Player, Owner: c.Owner, Row: c.Row, Col: c.Col, Walking: c.Walking, Facing: c.Facing,
 		Act: c.Act, ActStep: c.ActStep, HP: c.HP, Dead: c.Dead, Stance: c.Stance, Weapon: c.Weapon,
 	}
 	if c.Walking {

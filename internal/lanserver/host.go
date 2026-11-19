@@ -72,12 +72,13 @@ type save struct {
 
 // Kill is a kill by a player's hero.
 type Kill struct {
-	Killer       netplay.PlayerInfo
-	KillerHero   *netplay.Hero
-	KillerLevel  int
-	Victim       netplay.PlayerInfo // set when VictimPlayer
-	VictimPlayer bool
-	VictimLevel  int
+	Killer         netplay.PlayerInfo
+	KillerHero     *netplay.Hero
+	KillerLevel    int
+	Victim         netplay.PlayerInfo // set when VictimPlayer
+	VictimPlayer   bool
+	VictimHireling bool // a player's hireling (counted, 0 points)
+	VictimLevel    int
 }
 
 type hostPlayer struct {
@@ -88,9 +89,9 @@ type hostPlayer struct {
 	until time.Time // lingering after its player left: removed then
 	view  Viewer
 	looks map[int]netplay.Look // players' heroes sent to this player, as sent
-	// The items, piles and pile window as last sent (JSON), so only
-	// changes go out.
-	inv, piles, pileWin, dialogue []byte
+	// The items, piles, pile window, dialogue and party as last sent
+	// (JSON), so only changes go out.
+	inv, piles, pileWin, dialogue, party []byte
 }
 
 // NewHost connects w; send is the session's Server.Send.
@@ -140,7 +141,7 @@ func (h *Host) Start(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPay
 	}
 	hp.info, hp.hero, hp.dead = p, hero, false
 	hp.view, hp.looks = Viewer{}, map[int]netplay.Look{}
-	hp.inv, hp.piles, hp.pileWin, hp.dialogue = nil, nil, nil, nil
+	hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party = nil, nil, nil, nil, nil
 	m, c, err := h.W.AddPlayer(hp.slot, p.Model, hero)
 	if err != nil {
 		delete(h.players, p.ID)
@@ -322,15 +323,17 @@ func (h *Host) Order(p netplay.PlayerInfo, o netplay.OrderPayload) {
 	}
 	switch o.Kind {
 	case netplay.OrderWalk:
-		h.W.Walk(hp.slot, o.Row, o.Col)
+		h.W.Walk(hp.slot, o.Sel, o.Row, o.Col)
 	case netplay.OrderRight:
-		h.W.Right(hp.slot, o.Target, o.Row, o.Col)
+		h.W.Right(hp.slot, o.Sel, o.Target, o.Row, o.Col)
 	case netplay.OrderStance:
-		h.W.Stance(hp.slot, o.On)
+		h.W.Stance(hp.slot, o.Sel, o.On)
 	case netplay.OrderWeapon:
-		h.W.Weapon(hp.slot, o.Mode)
+		h.W.Weapon(hp.slot, o.Sel, o.Mode)
 	case netplay.OrderAttack:
 		h.W.Attack(hp.slot)
+	case netplay.OrderGather:
+		h.W.Gather(hp.slot)
 	case netplay.OrderItem:
 		h.W.Item(hp.slot, o)
 	case netplay.OrderTalk:
@@ -400,6 +403,7 @@ func (h *Host) report() ([]Kill, []save) {
 			if hp := h.bySlot[ev.Entity]; hp != nil {
 				st := h.W.state(hp.slot)
 				st.pile, st.talk, st.trade = nil, nil, nil // the windows stay behind
+				hp.party = nil                             // the client's new scene gets its party again
 				h.sendTo(hp, netplay.MsgMapChange, netplay.EnterPayload{
 					Position: netplay.Position{Map: ev.Map, Row: ev.Row, Col: ev.Col, Facing: ev.Facing}, Slot: hp.slot})
 			}
@@ -418,6 +422,7 @@ func (h *Host) report() ([]Kill, []save) {
 			if v := h.bySlot[ev.Victim]; v != nil && ev.VictimPlayer {
 				k.Victim, k.VictimPlayer = v.info, true // its death: deaths
 			}
+			k.VictimHireling = ev.VictimHireling
 			kills = append(kills, k)
 		}
 	}
@@ -483,6 +488,9 @@ func (h *Host) sendItems(hp *hostPlayer) {
 	}
 	if d := h.W.Dialogue(hp.slot); changed(&hp.dialogue, d) {
 		h.sendTo(hp, netplay.MsgDialogue, d)
+	}
+	if p := (netplay.PartyPayload{Hirelings: h.W.Party(hp.slot)}); changed(&hp.party, p) {
+		h.sendTo(hp, netplay.MsgParty, p)
 	}
 }
 

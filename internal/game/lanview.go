@@ -28,9 +28,12 @@ import (
 // A as in single player. The own hero is party member 0 (group 0 here; its
 // entity is its server slot) and feeds the HUD.
 //
-// Items, piles and the pile window are the server's (lanitems.go). Not
-// synchronised yet, so off in a LAN world: dialogues and trade, «Все ко
-// мне», the shovel's dig mode.
+// Items, piles and the pile window are the server's (lanitems.go), and so
+// are dialogues and trade. The own hirelings (MsgParty) are party members
+// here too: their portraits, the selection (portrait clicks, Shift, a right
+// click on them) and «Все ко мне»; orders carry the selection. Not
+// synchronised yet, so off in a LAN world: the shovel's dig mode, a
+// hireling's character window.
 
 // lanView is a viewer scene's link to the server.
 type lanView struct {
@@ -38,6 +41,12 @@ type lanView struct {
 	order   func(o netplay.OrderPayload) // sends an order
 	players map[int]*viewPlayer          // the players' heroes by slot
 	tmpl    [netplay.Models]*gamestate.Game
+	attach  world.Attach // sprites for a new party member (the scene's)
+	// party is the own hirelings as the server last said (MsgParty);
+	// home is a hired character's GAME.RES group (to put back when it
+	// leaves a party).
+	party []int
+	home  map[int]int
 }
 
 // viewPlayer is a player's hero as the server described it.
@@ -83,7 +92,7 @@ func (a *sceneAssets) lanView(gameDir string, exe *gamestate.LANExe, at netplay.
 			log.Printf("LAN map window: %v", err)
 		}
 	}
-	v := &lanView{slot: at.Slot, players: map[int]*viewPlayer{}}
+	v := &lanView{slot: at.Slot, players: map[int]*viewPlayer{}, home: map[int]int{}}
 	for m := range v.tmpl {
 		la.gamePath = filepath.Join(a.mapDir, fmt.Sprintf("GAME.%d", m))
 		data, err := os.ReadFile(la.gamePath)
@@ -250,13 +259,12 @@ func (s *startScene) applyChar(c netplay.CharState) {
 	}
 	var w *walker
 	var e *gamestate.Entity
-	if c.Entity == s.view.slot {
-		m, pe := s.PartyMember(c.Entity)
-		if m == nil {
-			return
-		}
-		w, e = &m.Walker, pe
+	if m, pe := s.PartyMember(c.Entity); m != nil {
+		w, e = &m.Walker, pe // the own hero, an own hireling
+	} else if c.Entity == s.view.slot {
+		return
 	} else {
+		s.view.ownerGroup(s.Game, c)
 		n := s.ByEntity[c.Entity]
 		if n == nil {
 			n = s.viewNPC(c)
@@ -405,10 +413,17 @@ func (s *startScene) viewFrame() {
 	}
 }
 
-// viewOrder sends an order for the own hero.
+// viewOrder sends an order for the own hero; walks, right clicks and the
+// stance go to the selection (its hero and hirelings).
 func (s *startScene) viewOrder(o netplay.OrderPayload) {
 	if len(s.Party) > 0 && s.Party[0].Dead() {
 		return // the dead give no orders; the server ignores them too
+	}
+	switch o.Kind {
+	case netplay.OrderWalk, netplay.OrderRight, netplay.OrderStance:
+		if o.Sel == nil {
+			o.Sel = append([]int(nil), s.Sel...)
+		}
 	}
 	if s.view != nil && s.view.order != nil {
 		s.view.order(o)
@@ -422,6 +437,8 @@ func (s *startScene) viewOrder(o netplay.OrderPayload) {
 func (s *startScene) viewClick(mx, my int, right bool) {
 	c := mapdata.CellAt(mx+s.camX, my+s.camY)
 	switch {
+	case right && s.hovered >= 0 && s.PartyIndex(s.hovered) >= 0:
+		s.selectInWorld(s.hovered) // 0x004239EE: an own party member: the selection
 	case right && s.lanCanTalk():
 		// The original's 0x43: the server opens the dialogue (talk.go).
 		s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderTalk, Target: s.hovered})
@@ -464,4 +481,69 @@ func (s *startScene) playerCounts() map[int]int {
 		}
 	}
 	return c
+}
+
+// ownerGroup puts a character's group as the view says: another player's
+// hireling (Owner) is drawn in that player's group, a character back from
+// a party in its GAME.RES group.
+func (v *lanView) ownerGroup(game *gamestate.Game, c netplay.CharState) {
+	if c.Entity < world.LANPlayers || c.Entity >= len(game.Entities) {
+		return
+	}
+	e := &game.Entities[c.Entity]
+	switch {
+	case c.Owner > 0:
+		if _, ok := v.home[c.Entity]; !ok {
+			v.home[c.Entity] = e.Group
+		}
+		e.Group = v.viewGroup(c.Owner - 1)
+	default:
+		if g, ok := v.home[c.Entity]; ok {
+			e.Group = g
+			delete(v.home, c.Entity)
+		}
+	}
+}
+
+// applyParty takes the own hirelings (MsgParty): characters hired become
+// party members (group 0 here, with portraits and the selection), ones
+// gone from the party walkers of the world again.
+func (s *startScene) applyParty(p netplay.PartyPayload) {
+	v := s.view
+	v.party = append([]int(nil), p.Hirelings...)
+	want := map[int]bool{}
+	for _, i := range p.Hirelings {
+		want[i] = true
+	}
+	for _, e := range append([]gamestate.Entity(nil), s.Party...) {
+		i := e.Index
+		if i == v.slot || want[i] {
+			continue
+		}
+		m, pe := s.PartyMember(i)
+		if m == nil {
+			continue
+		}
+		cs := netplay.CharState{Entity: i, Row: m.Cell.Row, Col: m.Cell.Col, Facing: int(m.Dir),
+			HP: pe.HP, Dead: pe.Dead(), Stance: pe.InStance(), Weapon: pe.WeaponMode}
+		s.RemoveMember(i)
+		s.applyChar(cs) // a walker of the world again (ownerGroup puts its group back)
+	}
+	for _, i := range p.Hirelings {
+		if m, _ := s.PartyMember(i); m != nil || i < world.LANPlayers || i >= len(s.Game.Entities) {
+			continue
+		}
+		e := &s.Game.Entities[i]
+		if _, ok := v.home[i]; !ok {
+			v.home[i] = e.Group
+		}
+		cell, dir := mapdata.Cell{Row: e.Row, Col: e.Col}, e.Variant
+		if n := s.ByEntity[i]; n != nil {
+			cell, dir = n.Cell, int(n.Dir)
+			s.removeNPC(n)
+		}
+		e.Group = 0 // the own party here
+		s.AddMember(i, cell, dir, v.attach)
+	}
+	s.Cur = 0 // the character window shows the own hero only
 }

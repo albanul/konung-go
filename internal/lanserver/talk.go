@@ -6,7 +6,6 @@ import (
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
-	"konung1.5/internal/resfmt"
 	"konung1.5/internal/world"
 )
 
@@ -26,20 +25,6 @@ import (
 // original's client only sends 0x43 for a character under the cursor; its
 // server does not check; a port rule).
 const TalkRange = 800
-
-// deferredHire is the status-line text for 291 (hire), not ported yet in
-// LAN parties.
-var deferredHire = cp866("Наёмники в сетевой игре пока не перенесены.")
-
-func cp866(s string) []byte {
-	var out []byte
-	for _, r := range s {
-		if c, ok := resfmt.RuneToCP866(r); ok {
-			out = append(out, c)
-		}
-	}
-	return out
-}
 
 // settlementOf is the index of map m's settlement, −1 when it has none.
 func (w *World) settlementOf(m int) int {
@@ -177,7 +162,7 @@ func (w *World) runTalk(slot int, s *world.World, f func(*gamestate.Talk) *games
 	saved := g.Quests
 	g.Quests = st.quests
 	tk := &gamestate.Talk{G: g, Q: w.Quests, T: w.Tables, Hero: slot, Map: s.MapNumber, Time: s.GameTime(),
-		Rand: s.Rng.IntN, LAN: true, Party: slot, Slot: slot}
+		Rand: s.Rng.IntN, LAN: true, Party: slot, Slot: slot, PartySize: w.PartySize(slot)}
 	var d *gamestate.Dialogue
 	run := func() { d = f(tk) }
 	if si >= 0 {
@@ -196,7 +181,10 @@ func (w *World) runTalk(slot int, s *world.World, f func(*gamestate.Talk) *games
 		log.Printf("lan dialogue: script functions not ported: %v", tk.Events.Unported)
 	}
 	if len(tk.Events.Deferred) > 0 {
-		w.say(slot, deferredHire)
+		log.Printf("lan dialogue: script functions not ported: %v", tk.Events.Deferred)
+	}
+	for _, i := range tk.Events.Hired {
+		w.hire(slot, i)
 	}
 	st.talk = d
 	if tk.Events.Trade != nil {

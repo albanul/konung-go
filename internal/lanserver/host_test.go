@@ -73,6 +73,7 @@ type viewer struct {
 	pileWin  netplay.PileWindowPayload
 	msgs     [][]byte
 	dlg      netplay.DialoguePayload
+	pty      netplay.PartyPayload
 }
 
 func enter(t *testing.T, ss *session, name string, model int) *viewer {
@@ -152,6 +153,13 @@ func (v *viewer) read() {
 			if m.Decode(&p) == nil {
 				v.mu.Lock()
 				v.pileWin = p
+				v.mu.Unlock()
+			}
+		case netplay.MsgParty:
+			var p netplay.PartyPayload
+			if m.Decode(&p) == nil {
+				v.mu.Lock()
+				v.pty = p
 				v.mu.Unlock()
 			}
 		case netplay.MsgDialogue:

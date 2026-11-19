@@ -103,40 +103,74 @@ func (s *World) Populate(restore bool, attach Attach) {
 			}
 			continue
 		}
-		n := &NPC{Walker: w, Rng: s.Rng.IntN}
-		if k := p.Flags4; k == 0x4D || k == 0x4F {
-			n.Hold = n.PauseHold
-		}
-		gr := game.Groups[p.Group]
-		area, hasArea := gr.WanderArea()
-		n.Area = area
-		n.Target = -1
-		switch {
-		case gr.CreatureGroup():
-			n.Mode, n.Group = NPCCreature, p.Group
-			n.Blocked = s.Blocked
-			if !restore {
-				game.Groups[p.Group].Alarm = gamestate.AlarmCalm // 0x0043C66D
-			}
-			if p.Type%6 == gamestate.ActShoot {
-				n.Act = gamestate.ActShoot // dormant (kinds 0x46, 0x4C, 0x55)
-			}
-			s.SetStopAt(n)
-		case gr.VillageGroup() && hasArea:
-			n.Group = p.Group
-			s.SetStopAt(n)
-			n.Mode = NPCVillager
-			n.Post, n.Posted = game.PostOf(p.Entity)
-			n.MoveAt = gamestate.VillageMoveThreshold(p.Entity)
-			n.Blocked = s.Blocked
-		default:
-			n.Blocked = s.Blocked
-		}
-		n.LiveMode = n.Mode
-		s.NPCs = append(s.NPCs, n)
-		s.ByEntity[p.Index] = n
+		s.newNPC(w, p, restore)
 	}
 }
+
+// newNPC makes walker w (character p, placed) an NPC of this map with the
+// AI its group gives it: creatures (calm unless restoring, dormant
+// shooters), villagers with an area (posts, the move roll), others
+// standing.
+func (s *World) newNPC(w Walker, p gamestate.Placed, restore bool) *NPC {
+	n := &NPC{Walker: w, Rng: s.Rng.IntN}
+	if k := p.Flags4; k == 0x4D || k == 0x4F {
+		n.Hold = n.PauseHold
+	}
+	gr := s.Game.Groups[p.Group]
+	area, hasArea := gr.WanderArea()
+	n.Area = area
+	n.Target = -1
+	switch {
+	case gr.CreatureGroup():
+		n.Mode, n.Group = NPCCreature, p.Group
+		n.Blocked = s.Blocked
+		if !restore {
+			s.Game.Groups[p.Group].Alarm = gamestate.AlarmCalm // 0x0043C66D
+		}
+		if p.Type%6 == gamestate.ActShoot {
+			n.Act = gamestate.ActShoot // dormant (kinds 0x46, 0x4C, 0x55)
+		}
+		s.SetStopAt(n)
+	case gr.VillageGroup() && hasArea:
+		n.Group = p.Group
+		s.SetStopAt(n)
+		n.Mode = NPCVillager
+		n.Post, n.Posted = s.Game.PostOf(p.Entity)
+		n.MoveAt = gamestate.VillageMoveThreshold(p.Entity)
+		n.Blocked = s.Blocked
+	default:
+		n.Blocked = s.Blocked
+	}
+	n.LiveMode = n.Mode
+	s.NPCs = append(s.NPCs, n)
+	s.ByEntity[p.Index] = n
+	return n
+}
+
+// addNPC is newNPC with a new walker for p (AddNPC).
+func (s *World) addNPC(p gamestate.Placed, restore bool, attach Attach) *NPC {
+	w := Walker{
+		Entity: p.Index, Cell: mapdata.Cell{Row: p.Row, Col: p.Col}, Dir: mapdata.Direction(p.Variant & 7), Idle: -1,
+		Look:    LookOf(p.Entity),
+		Reserve: s.reserveCell, Release: s.releaseCell,
+		Sound: s.actionSound,
+	}
+	i := p.Index
+	if attach != nil {
+		attach(&w, p, func() gamestate.Entity { return s.Game.Entities[i] })
+	}
+	return s.newNPC(w, p, restore)
+}
+
+func (s *World) reserveCell(c mapdata.Cell) bool {
+	if s.Occ[c] {
+		return false
+	}
+	s.Occ[c] = true
+	return true
+}
+
+func (s *World) releaseCell(c mapdata.Cell) { delete(s.Occ, c) }
 
 // InitSelection keeps the selection of the world left (Sel as carried
 // over) for the members on this map that can act; an empty selection

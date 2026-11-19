@@ -89,7 +89,7 @@ func (s *World) PartyIndex(i int) int {
 func (s *World) WalkOrder(m *Member, c mapdata.Cell, pick bool) {
 	s.EndFight(m)
 	m.Intent = gamestate.IntentWalk | gamestate.IntentIdle
-	if m.K != 0 && !pick && !s.LAN {
+	if !s.Leads(m) && !pick {
 		m.Intent |= gamestate.IntentStrike
 	}
 	m.ResumeSet = false
@@ -137,13 +137,9 @@ func (s *World) RightOrder(m *Member, hovered int, c mapdata.Cell, building int)
 // the leader) with +0x14 = 0xFF (the walk ends after the current step).
 func (s *World) GatherOrder() {
 	for _, m := range s.LivingMembers() {
-		if m.K == 0 {
-			continue
+		if !s.Leads(m) {
+			s.Gather(m)
 		}
-		s.EndFight(m)
-		m.Intent = gamestate.IntentGather
-		m.PickIntent, m.ResumeSet = false, false
-		m.StopWalk()
 	}
 }
 
@@ -308,7 +304,7 @@ func (s *World) IdleTick(m *Member) {
 	}
 	m.Intent &^= gamestate.IntentWalk
 	m.Intent |= gamestate.IntentIdle
-	if m.K != 0 && m.Intent&0x0F == 0 && !s.LAN { // LAN heroes lead themselves
+	if !s.Leads(m) && m.Intent&0x0F == 0 { // LAN heroes lead themselves, their hirelings follow
 		m.Intent |= gamestate.IntentFollow
 	}
 	if s.BowTargetInSight(m) {
@@ -333,10 +329,10 @@ func (s *World) BowTargetInSight(m *Member) bool {
 }
 
 // followLeader is 0x0041FA5D for member m: at FollowDistance or more from the
-// leader (group 0's first entity) it walks to a free formation cell near
-// it (+2 |= 0x48; the follow bit stays).
+// leader (group 0's first entity; a LAN hireling's player's hero) it walks
+// to a free formation cell near it (+2 |= 0x48; the follow bit stays).
 func (s *World) FollowLeader(m *Member) {
-	l := s.Lead()
+	l := s.leaderOf(m)
 	if l == nil || l == m || s.Tables == nil {
 		return
 	}

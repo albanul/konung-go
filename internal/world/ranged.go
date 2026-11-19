@@ -119,9 +119,13 @@ func (s *World) FirstShootable(w *Walker, e *gamestate.Entity) int {
 	if near < 0 {
 		return -1
 	}
-	gr := s.Game.Groups[s.Game.Entities[near].Group]
+	gi := s.Game.Entities[near].Group
+	gr := s.Game.Groups[gi]
 	for k := 0; k < gr.Count; k++ {
 		i := gr.First + k
+		if s.Game.Entities[i].Group != gi {
+			continue // a LAN hireling, no longer of the village it was hired from
+		}
 		if tw, t := s.Combatant(i); Alive(tw, t) && s.LineOfFire(w, e, tw.Cell) > 0 {
 			return i
 		}

@@ -25,9 +25,11 @@ import "konung1.5/internal/resfmt"
 //     0x0044C38D); the healer's skill does not grow.
 //   - 363: the client returns 1, the server's case is empty: nobody
 //     vanishes.
-//   - 291 hire, 332 dismiss: the original hires into the player's group
-//     (0x0044BED7); the port has no hirelings in LAN parties yet: 0
-//     (Events.Deferred for 291).
+//   - 291 hire: Events.Hired, the server moves the character into the
+//     player's group (0x0044BED7, lanserver); 332 dismiss: not reached by
+//     the LAN dialogues, 0 (Events.Deferred).
+//   - 349 party full: the hero and its hirelings (PartySize) against
+//     LANMaxParty (0x0042BFA0).
 //   - the rest: the single-player functions (scriptFuncs), on the hero's
 //     own group (Talk.Party).
 
@@ -79,10 +81,25 @@ func (t *Talk) lanScript(id int) int {
 	case 363:
 		return 1
 	case 291:
+		// The server's 0x0044BED7 moves the character into the player's
+		// group; the client's 0x0042B094 returns 1. Already the player's:
+		// nothing more.
+		if t.npc().Group != t.Party {
+			t.Events.Hired = append(t.Events.Hired, t.NPC)
+		}
+		return 1
+	case 332:
+		// Dismiss (server 0x0044C154: back to the current map's village
+		// group): only the roles' dialogues offer it, for a role character
+		// in the party, which the LAN dialogues never hire (their 291
+		// needs a village that is the player's, 302 = 0); not ported.
 		t.Events.Deferred = append(t.Events.Deferred, id)
 		return 0
-	case 332:
-		return 0
+	case 349:
+		// 0x0042BFA0: the player group's member count against
+		// «Макс. отряд» (0x0044D798, the hero's class and base Хар).
+		h := t.hero()
+		return b2i(t.PartySize >= LANMaxParty(h.Flags4&7, h.BaseStats[0]))
 	}
 	if f, ok := scriptFuncs[id]; ok {
 		return f(t)
@@ -99,15 +116,34 @@ func (t *Talk) lanScript(id int) int {
 // (108, 112) and the three objects (6) open single-player quest dialogues
 // that do not belong to the network game. The installed QUESTR.RES files
 // are both the single-player one, and the original opens the number as it
-// is (0x0042CA18), so it would show those; the port opens only the roles'.
+// is (0x0042CA18), so it would show those. The port opens the roles'
+// dialogues, and for the plain villagers (109–111, the original server's
+// hirelings) single player's village hire dialogue 1 (LANHireDialogue):
+// the price by level and village (310), the party limit (349), hire (291).
+// Elders, guards, animals and objects are silent.
 const (
 	LANTalkFirst = 100
 	LANTalkLast  = 103
+	// LANHireDialogue is single player's dialogue of a villager to hire
+	// (the same as 8 and 9 up to the refusal's last words).
+	LANHireDialogue = 1
 )
 
-// LANTalks reports whether a character with dialogue d can be talked to in
-// a LAN world.
-func LANTalks(d int) bool { return d >= LANTalkFirst && d <= LANTalkLast }
+// LANDialogue is the dialogue a character with GAME.RES dialogue d opens
+// in a LAN world, NoDialogue for none.
+func LANDialogue(d int) int {
+	switch {
+	case d >= LANTalkFirst && d <= LANTalkLast:
+		return d
+	case d >= 109 && d <= 111:
+		return LANHireDialogue
+	}
+	return NoDialogue
+}
+
+// LANTalks reports whether a character with GAME.RES dialogue d can be
+// talked to in a LAN world.
+func LANTalks(d int) bool { return LANDialogue(d) != NoDialogue }
 
 // LAN shops: what the port does not sell in a network game (the original
 // server's rules, docs/konung_lan.md#dialogues-and-trade): the misc items

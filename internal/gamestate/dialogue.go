@@ -64,6 +64,9 @@ type Talk struct {
 	LAN   bool
 	Loans *uint16
 	Slot  int
+	// PartySize is the LAN hero's party: the hero and its hirelings (the
+	// player group's member count +0x1C, 349).
+	PartySize int
 }
 
 // TalkEvents report what the scripts changed beyond the records, so the
@@ -74,9 +77,12 @@ type TalkEvents struct {
 	Greeting     int    // greeting sound to play on open, 0 = none
 	Trade        *Trade // script 275 opened the trade window (window 7)
 	Unported     []int
-	// Deferred are LAN script functions the port does not run yet (291
-	// hire: no hirelings in LAN parties yet).
+	// Deferred are LAN script functions the port does not run (332
+	// dismiss).
 	Deferred []int
+	// Hired are the characters a LAN hero hired (291): the server makes
+	// them its hirelings (lanserver) after the dialogue step.
+	Hired []int
 }
 
 func (t *Talk) rand(n int) int {
@@ -142,11 +148,15 @@ const (
 func (t *Talk) OpenDialogue(npc int, lastGreeting *int) *Dialogue {
 	t.lastGreeting = lastGreeting
 	e := t.G.Entities[npc]
-	if e.Dialogue == NoDialogue || e.Dialogue >= resfmt.QuestDialogues {
+	dl := e.Dialogue
+	if t.LAN {
+		dl = LANDialogue(dl)
+	}
+	if dl == NoDialogue || dl >= resfmt.QuestDialogues {
 		return nil
 	}
 	t.NPC = npc
-	start := t.Q.Starts[e.Dialogue]
+	start := t.Q.Starts[dl]
 	d := &Dialogue{NPC: npc, Node: start, Prev: start}
 	sound := 0
 	if e.Flags4&0x40 != 0 {

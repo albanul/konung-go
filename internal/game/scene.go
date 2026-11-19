@@ -441,6 +441,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		if prev != nil {
 			s.view = prev.view
 		}
+		s.view.attach = attach
 		s.placeOwn(attach)
 	} else {
 		s.Populate(restore != nil, attach)
@@ -534,7 +535,8 @@ func (s *startScene) updateControls(mx, my int) {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
 		s.returnHand(cur)
 		if s.view != nil {
-			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderStance, On: !s.Party[0].InStance()})
+			// The first selected decides, as ToggleSelectionStance.
+			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderStance, On: !s.ButtonEntity().InStance()})
 		} else {
 			s.ToggleSelectionStance()
 		}
@@ -544,7 +546,13 @@ func (s *startScene) updateControls(mx, my int) {
 		s.returnHand(cur)
 		before := gamestate.HUDButtonSlots(*s.ButtonEntity())[hudWeaponButton]
 		if s.view != nil {
-			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderWeapon, Mode: mode})
+			// The first selected member, the whole selection with Shift
+			// (SelectWeapon).
+			sel := append([]int(nil), s.Sel...)
+			if !shiftHeld() && len(sel) > 1 {
+				sel = sel[:1]
+			}
+			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderWeapon, Mode: mode, Sel: sel})
 		} else {
 			s.selectWeapon(mode)
 		}
@@ -560,8 +568,14 @@ func (s *startScene) updateControls(mx, my int) {
 	if button == hudWeaponButton {
 		weapon(gamestate.WeaponCycle)
 	}
-	if (inpututil.IsKeyJustPressed(ebiten.KeyF) || button == hudGatherButton) && s.view == nil {
-		s.gatherOrder() // a LAN hero has no party to gather
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) || button == hudGatherButton {
+		if s.view != nil {
+			s.returnHand(cur)
+			s.hud.press(hudGatherButton, hudGatherImage)
+			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderGather}) // the server's hirelings
+		} else {
+			s.gatherOrder()
+		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyA) || button == hudAttackButton {
 		if s.view != nil {

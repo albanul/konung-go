@@ -106,7 +106,9 @@ func (s *World) Step() {
 			// village's exit needs its bridge (ExitOpen, 0x00421C82).
 			if x, ok := s.Game.ExitAt(s.MapNumber, m.Cell.Row, m.Cell.Col); ok && s.Game.ExitOpen(x) {
 				if s.LAN {
-					if s.Hooks.MemberExit != nil {
+					// Only a player's hero takes an exit; its hirelings
+					// follow it to the target (lanserver).
+					if s.Hooks.MemberExit != nil && s.Leads(m) {
 						s.Hooks.MemberExit(m, x) // this hero alone; the runner moves it after the step
 					}
 					continue

@@ -63,6 +63,8 @@ type World struct {
 	// TeamSafe: heroes of one type (the same model) cannot hurt each other
 	// (the server's team-damage option).
 	TeamSafe bool
+
+	hired map[int][]hireling // by slot: its hirelings (party.go)
 }
 
 type move struct {
@@ -90,7 +92,7 @@ func Load(f Files) (*World, error) {
 	if len(maps) < Maps {
 		return nil, fmt.Errorf("MAPS.RES has %d maps, want %d", len(maps), Maps)
 	}
-	w := &World{Game: lw.Game, Tables: tables, exits: lw.Game.Exits, players: map[int]int{},
+	w := &World{Game: lw.Game, Tables: tables, exits: lw.Game.Exits, players: map[int]int{}, hired: map[int][]hireling{},
 		frames: &frameCache{graph: f.Graph, objects: f.Objects, n: map[frameKey]int{}}}
 	if f.Quests != nil {
 		if w.Quests, err = resfmt.ParseQuests(f.Quests); err != nil {
@@ -221,9 +223,13 @@ func (w *World) hooks(n int) world.Hooks {
 			w.moving = append(w.moving, move{slot: m.Entity, x: x})
 		},
 		Killed: func(a, v *gamestate.Entity) {
-			if a.Group >= 0 && a.Group < world.LANPlayers {
+			// A player's hero's kills (its hirelings' do not count, the
+			// port's rule); the victim a player's hero or a hireling.
+			if a.Index >= 0 && a.Index < world.LANPlayers {
+				player := v.Group >= 0 && v.Group < world.LANPlayers
 				w.events = append(w.events, Event{Kind: EventKill, Map: n, Entity: a.Index,
-					Victim: v.Index, VictimPlayer: v.Group >= 0 && v.Group < world.LANPlayers})
+					Victim: v.Index, VictimPlayer: player && v.Index < world.LANPlayers,
+					VictimHireling: player && v.Index >= world.LANPlayers})
 			}
 		},
 		Protected: w.protected,
@@ -241,10 +247,25 @@ func (w *World) hooks(n int) world.Hooks {
 	}
 }
 
-// protected is the team-damage option: two players' heroes of one type.
+// protected is the team-damage option: two players' heroes of one type,
+// or their hirelings (a hireling is of its hero's team).
 func (w *World) protected(a, t *gamestate.Entity) bool {
-	player := func(e *gamestate.Entity) bool { return e.Group >= 0 && e.Group < world.LANPlayers }
-	return w.TeamSafe && player(a) && player(t) && a.Model == t.Model
+	ta, tt := w.team(a), w.team(t)
+	return w.TeamSafe && ta >= 0 && ta == tt
+}
+
+// team is a player's hero's type (model), its hirelings' hero's; −1 for
+// the world's characters.
+func (w *World) team(e *gamestate.Entity) int {
+	switch {
+	case e.Index >= 0 && e.Index < world.LANPlayers:
+		return e.Model
+	case e.Group >= 0 && e.Group < world.LANPlayers:
+		if _, ok := w.players[e.Group]; ok {
+			return w.Game.Entities[e.Group].Model
+		}
+	}
+	return -1
 }
 
 // Step runs one game tick (60 ms at normal speed) of every map, then moves
@@ -268,6 +289,7 @@ func (w *World) Step() {
 			continue
 		}
 		w.place(mv.slot, mv.x.To, mapdata.Cell{Row: mv.x.Row, Col: mv.x.Col}, mv.x.Facing)
+		w.moveParty(mv.slot)
 		m := w.Maps[mv.x.To]
 		c := mv.x.Row
 		col := mv.x.Col
@@ -337,6 +359,7 @@ func (w *World) RemovePlayer(slot int) {
 		return
 	}
 	w.closeItems(slot)
+	w.sendHome(slot)      // its hirelings go back to their villages
 	delete(w.items, slot) // a fresh hand and no pile window next time
 	delete(w.players, slot)
 	e, _ := w.Maps[m].RemoveMember(slot)
@@ -363,6 +386,7 @@ func (w *World) MoveTo(slot, m int, c mapdata.Cell) bool {
 	}
 	e, _ := w.Maps[from].RemoveMember(slot)
 	w.place(slot, m, c, e.Variant)
+	w.moveParty(slot)
 	return true
 }
 
@@ -381,53 +405,65 @@ func (w *World) member(slot int) (*world.World, *world.Member, *gamestate.Entity
 	return s, mem, e
 }
 
+// The orders go to the player's selection sel (its hero and hirelings on
+// the hero's map; none: the hero), as single player's go to the selection
+// (orderMembers).
+
 // Walk is the left click on the map: walk to cell (row, col).
-func (w *World) Walk(slot, row, col int) {
-	if s, m, _ := w.member(slot); m != nil {
+func (w *World) Walk(slot int, sel []int, row, col int) {
+	s, ms := w.orderMembers(slot, sel)
+	for _, m := range ms {
 		s.WalkOrder(m, mapdata.Cell{Row: row, Col: col}, false)
 	}
 }
 
 // Right is the right click (world.RightOrder): with target ≥ 0 (an entity
-// on the hero's map) a shot with the bow ready, a melee attack in the
-// stance, nothing out of it; with target −1 a walk with a pick-up on
-// (row, col).
-func (w *World) Right(slot, target, row, col int) {
-	s, m, _ := w.member(slot)
-	if m == nil {
+// on the hero's map, not of the player's party) a shot with the bow ready,
+// a melee attack in the stance, nothing out of it; with target −1 a walk
+// with a pick-up on (row, col).
+func (w *World) Right(slot int, sel []int, target, row, col int) {
+	s, ms := w.orderMembers(slot, sel)
+	if s == nil {
 		return
 	}
 	if target >= 0 {
 		tw, t := s.Combatant(target)
-		if tw == nil || target == slot {
-			return // not on this map
+		if tw == nil || target == slot || w.hireling(slot, target) {
+			return // not on this map, or the player's own (0x446264 ignores its group)
 		}
 		if _, me := s.Member(slot); me != nil && w.protected(me, t) {
 			return // a teammate the server protects
 		}
 	}
-	s.RightOrder(m, target, mapdata.Cell{Row: row, Col: col}, 0)
+	for _, m := range ms {
+		s.RightOrder(m, target, mapdata.Cell{Row: row, Col: col}, 0)
+	}
 }
 
-// Stance puts slot's hero into the combat stance or out of it.
-func (w *World) Stance(slot int, on bool) {
-	if s, m, _ := w.member(slot); m != nil {
+// Stance puts the selection into the combat stance or out of it.
+func (w *World) Stance(slot int, sel []int, on bool) {
+	s, ms := w.orderMembers(slot, sel)
+	for _, m := range ms {
 		s.SetStance(m, on)
 	}
 }
 
-// Weapon selects slot's hero's weapon (gamestate.WeaponAxe, WeaponBow,
-// WeaponBlade or WeaponCycle).
-func (w *World) Weapon(slot, mode int) {
-	if s, m, _ := w.member(slot); m != nil {
+// Weapon selects the selection's weapon (gamestate.WeaponAxe, WeaponBow,
+// WeaponBlade or WeaponCycle; the client sends its first member, or all
+// with Shift).
+func (w *World) Weapon(slot int, sel []int, mode int) {
+	s, ms := w.orderMembers(slot, sel)
+	for _, m := range ms {
 		s.SetWeapon(m, mode)
 	}
 }
 
-// Attack is the A key: the stance and the nearest enemy (creatures and
-// hostile villagers; not other players).
+// Attack is the A key: every living member of the party on the hero's map
+// (single player's AttackOrder) takes the stance and the nearest enemy
+// (creatures and hostile villagers; not other players).
 func (w *World) Attack(slot int) {
-	if s, m, _ := w.member(slot); m != nil {
+	s, ms := w.partyMembers(slot)
+	for _, m := range ms {
 		s.AttackNearest(m)
 	}
 }
@@ -490,6 +526,7 @@ func (w *World) ToStart(slot, model int) bool {
 		return false
 	}
 	w.closeItems(slot)
+	w.sendHome(slot) // the session's end: the hirelings go back to their villages
 	e, ok := w.Maps[from].RemoveMember(slot)
 	if !ok {
 		return false

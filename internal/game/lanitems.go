@@ -45,11 +45,20 @@ func (s *startScene) clearBox() {
 // orders): the held item on the own portrait, the bag strip, the character
 // window, a drop on the map; otherwise an order on the map (viewClick).
 func (s *startScene) lanClick(cur *gamestate.Entity, mx, my, spot int, right bool) {
+	portrait := -1
+	if k := spot - hotspotPortrait; k >= 0 && k < len(portraitCells) && k < len(s.Party) {
+		portrait = k
+	}
 	switch {
-	case spot == hotspotPortrait:
-		if s.hand.Holding() && !right {
-			s.itemOrder(netplay.ItemSelf, 0, false) // 0x00422E21: use or drink
-		}
+	case portrait == 0 && s.hand.Holding() && !right:
+		s.itemOrder(netplay.ItemSelf, 0, false) // 0x00422E21: use or drink
+	case portrait >= 0 && s.hand.Holding():
+		// Giving a hireling an item is not ported in a LAN world.
+	case portrait >= 0 && right:
+		s.Sel = gamestate.Deselect(s.Sel, s.Party[portrait].Index) // 0x00423D02 (no Ctrl dialogue here)
+	case portrait >= 0:
+		s.portraitClick(portrait) // 0x00422EA8: the selection
+		s.Cur = 0                 // the character window and the strip show the own hero only
 	case !inView(mx, my):
 		// HUD: the buttons were handled by updateControls.
 	case s.inv.showStrip() && (spot == hotspotBagLeft || spot == hotspotBagRight):
@@ -193,6 +202,9 @@ func (s *startScene) lanCanTalk() bool {
 		return false
 	}
 	e := s.Entity(s.hovered)
+	if e.Group < world.LANPlayers {
+		return false // a party's: the own (group 0 here) or another player's hireling
+	}
 	return gamestate.LANTalks(e.Dialogue) && !e.Dead() && !s.Party[0].InStance() &&
 		!ebiten.IsKeyPressed(ebiten.KeyControl)
 }
