@@ -83,6 +83,11 @@ type ClanLister interface {
 // ErrWrongPassword is an AccountStore's answer to a wrong password.
 var ErrWrongPassword = errors.New("netplay: wrong password")
 
+// ErrHeroLeaving is a Start's answer while the player's hero is still in
+// the world after leaving it (the original server's message 8, «На сервере
+// идет выход персонажа из игры»).
+var ErrHeroLeaving = errors.New("netplay: the hero is still leaving the world")
+
 // ErrBadHero is an AccountStore's answer to a NewHero it refuses.
 var ErrBadHero = errors.New("netplay: invalid hero")
 
@@ -479,7 +484,11 @@ func (s *Server) enter(p *serverPlayer, model int) {
 	s.mu.Unlock()
 	at, err := s.cfg.Start(info, hero)
 	if err != nil {
-		p.conn.Send(mustMessage(MsgError, ErrorPayload{Code: ErrServer, Message: err.Error()}))
+		code := ErrServer
+		if errors.Is(err, ErrHeroLeaving) {
+			code = ErrLeaving
+		}
+		p.conn.Send(mustMessage(MsgError, ErrorPayload{Code: code, Message: err.Error()}))
 		return
 	}
 	s.mu.Lock()

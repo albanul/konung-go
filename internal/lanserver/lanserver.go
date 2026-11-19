@@ -107,9 +107,79 @@ func Load(f Files) (*World, error) {
 		s.WorldW, s.WorldH = mp.WorldSize()
 		s.Hooks = w.hooks(n)
 		s.Populate(false, w.attach)
+		villageBounds(s)
 		w.Maps[n] = s
 	}
 	return w, nil
+}
+
+// LAN village AI (0x00437E28, the single-player 0x00413A84 with fixed
+// ranges): random steps of rand()%40 rows and rand()%20 columns.
+const (
+	lanVillageRows = 20
+	lanVillageCols = 10
+)
+
+// villageMargin is how far (rows, columns) a village's wander area reaches
+// beyond its villagers' and posts' cells.
+const villageRowMargin, villageColMargin = 4, 2
+
+// villageBounds keeps the villagers of map s inside their village (a port
+// rule). The original server steps them inside their group's rectangle as
+// single player does, but GAME.RES gives every LAN village the whole map
+// (rows 0–128, columns 0–64: a MAPS.RES map's fine grid), so there they
+// roam the map. Here the area is the box around the village's villagers
+// and its posts as GAME.RES places them, widened by villageRowMargin and
+// villageColMargin; the step ranges are the LAN server's.
+func villageBounds(s *world.World) {
+	boxes := map[int]*gamestate.Area{}
+	grow := func(g, r, c int) {
+		a := boxes[g]
+		if a == nil {
+			a = &gamestate.Area{RowMin: r, RowMax: r, ColMin: c, ColMax: c}
+			boxes[g] = a
+		}
+		a.RowMin, a.RowMax = min(a.RowMin, r), max(a.RowMax, r)
+		a.ColMin, a.ColMax = min(a.ColMin, c), max(a.ColMax, c)
+	}
+	for _, n := range s.NPCs {
+		if n.Mode == world.NPCVillager {
+			grow(n.Group, n.Cell.Row, n.Cell.Col)
+		}
+	}
+	for _, st := range s.Game.Settlements {
+		if boxes[st.Group] == nil {
+			continue
+		}
+		for _, p := range st.Posts {
+			if p.Entity != 0 {
+				grow(st.Group, p.Row, p.Col)
+			}
+		}
+	}
+	for _, n := range s.NPCs {
+		a := boxes[n.Group]
+		if n.Mode != world.NPCVillager || a == nil {
+			continue
+		}
+		n.Area = gamestate.Area{RowMin: max(a.RowMin-villageRowMargin, 0), RowMax: a.RowMax + villageRowMargin,
+			ColMin: max(a.ColMin-villageColMargin, 0), ColMax: a.ColMax + villageColMargin}
+		n.StepRows, n.StepCols = lanVillageRows, lanVillageCols
+	}
+}
+
+// VillageArea is map m's village area (villageBounds), false without a
+// village.
+func (w *World) VillageArea(m int) (gamestate.Area, bool) {
+	if m < 1 || m > Maps {
+		return gamestate.Area{}, false
+	}
+	for _, n := range w.Maps[m].NPCs {
+		if n.Mode == world.NPCVillager {
+			return n.Area, true
+		}
+	}
+	return gamestate.Area{}, false
 }
 
 // attach gives a walker its frame counts (world.Attach).
@@ -201,7 +271,8 @@ func (w *World) Start(model int) (gamestate.MapExit, error) {
 
 // AddPlayer puts slot's hero into the world: the hero type's GAME.N hero
 // with the account's values (lanfight.Hero; hero nil: the type's default),
-// out of the stance, full HP, on the type's start (the nearest free cell),
+// out of the stance, with the health it left with (full without an
+// account), on the type's start (the nearest free cell),
 // carrying a new hero's starting gear: only the knife, the item the
 // template carries in the blade slot (category 2, type 18 in all three
 // GAME.N; the original server: a new hero gets a knife). A player with saved
@@ -225,7 +296,9 @@ func (w *World) AddPlayer(slot, model int, hero *netplay.Hero) (int, mapdata.Cel
 	gamestate.LeaveStance(&e)
 	e.Flags4 &^= 0x80
 	e.Flags3 &^= 0x80
-	e.HP = gamestate.HPFull
+	if hero == nil {
+		e.HP, e.Poison = gamestate.HPFull, 0
+	} // else the health it left with (lanfight.ApplyHero)
 	e.Index, e.Group = slot, slot
 	w.Game.Entities[slot] = e
 	g := &w.Game.Groups[slot]
@@ -357,4 +430,56 @@ func (w *World) TakeEvents() []Event {
 	ev := w.events
 	w.events = nil
 	return ev
+}
+
+// reviveHeroes is «Слова Воскрешения» read on map m in a LAN world: every
+// dead player's hero there comes back (world.World.Revive, the single-player
+// 0x00414B3C: its cell or a free one next to it, its HP rule), wearing what
+// it wore; its bag already lies where it fell (the original server: "кто-то
+// из живых игроков прочтет на той же локации слова воскрешения"). Unlike
+// single player's 0x00414FFB, dead creatures and villagers stay dead. It
+// returns the slots revived.
+func (w *World) reviveHeroes(m int) []int {
+	if m < 1 || m > Maps {
+		return nil
+	}
+	s := w.Maps[m]
+	var out []int
+	for _, mem := range s.Members {
+		e := &s.Party[mem.K]
+		if e.Dead() && e.Index >= 0 && e.Index < world.LANPlayers && s.Revive(e) {
+			out = append(out, e.Index)
+		}
+	}
+	return out
+}
+
+// ToStart puts slot's hero back at its type's start (the session's end,
+// 0x00448BB8): alive (a dead hero revived, wearing what it wore), full HP,
+// no poison, out of the stance, idle; a map change is reported
+// (EventMapChange) when it was elsewhere.
+func (w *World) ToStart(slot, model int) bool {
+	from, ok := w.players[slot]
+	if !ok {
+		return false
+	}
+	start, err := w.Start(model)
+	if err != nil {
+		return false
+	}
+	w.closeItems(slot)
+	e, ok := w.Maps[from].RemoveMember(slot)
+	if !ok {
+		return false
+	}
+	e.Flags4 &^= 0x80
+	e.HP, e.Poison = gamestate.HPFull, 0
+	gamestate.LeaveStance(&e)
+	w.Game.Entities[slot] = e
+	mem := w.place(slot, start.To, mapdata.Cell{Row: start.Row, Col: start.Col}, start.Facing)
+	if start.To != from {
+		w.events = append(w.events, Event{Kind: EventMapChange, Map: start.To, From: from, Entity: slot,
+			Row: mem.Cell.Row, Col: mem.Cell.Col, Facing: start.Facing})
+	}
+	return true
 }

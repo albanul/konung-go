@@ -5,10 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
+	"konung1.5/internal/gamestate"
 	"konung1.5/internal/netplay"
 	"konung1.5/internal/world"
 )
+
+// LingerTime is how long a hero stays in the world after its player left
+// it away from the hero's home village (the original server: "оставался
+// там неконтролируем 3 минуты").
+const LingerTime = 3 * time.Minute
 
 // Host connects the world to the session (netplay.Server): it puts an
 // entering player's hero into a free slot (ServerConfig.Start), takes its
@@ -44,6 +51,15 @@ type Host struct {
 	Load func(p netplay.PlayerInfo) (items []Item, starter bool)
 	Save func(p netplay.PlayerInfo, hero *netplay.Hero, items []Item)
 	Died func(p netplay.PlayerInfo, hero *netplay.Hero, worn []Item)
+
+	// Linger is how long a hero stays after its player left away from its
+	// home village (LingerTime when 0); now is the clock (time.Now when
+	// nil), for tests.
+	Linger time.Duration
+	now    func() time.Time
+	// lingering are the heroes whose players left, by account name, until
+	// their time is up; the player cannot enter again meanwhile.
+	lingering map[string]*hostPlayer
 }
 
 // save is a Save call to make after the lock.
@@ -68,7 +84,8 @@ type hostPlayer struct {
 	info  netplay.PlayerInfo
 	hero  *netplay.Hero
 	slot  int
-	dead  bool // died; kept by Died, not saved again
+	dead  bool      // died; kept by Died, not saved again
+	until time.Time // lingering after its player left: removed then
 	view  Viewer
 	looks map[int]netplay.Look // players' heroes sent to this player, as sent
 	// The items, piles and pile window as last sent (JSON), so only
@@ -78,7 +95,22 @@ type hostPlayer struct {
 
 // NewHost connects w; send is the session's Server.Send.
 func NewHost(w *World, send func(id string, m *netplay.Message) error) *Host {
-	return &Host{W: w, send: send, players: map[string]*hostPlayer{}, bySlot: map[int]*hostPlayer{}}
+	return &Host{W: w, send: send, players: map[string]*hostPlayer{}, bySlot: map[int]*hostPlayer{},
+		lingering: map[string]*hostPlayer{}}
+}
+
+func (h *Host) clock() time.Time {
+	if h.now != nil {
+		return h.now()
+	}
+	return time.Now()
+}
+
+func (h *Host) linger() time.Duration {
+	if h.Linger > 0 {
+		return h.Linger
+	}
+	return LingerTime
 }
 
 // Start is ServerConfig.Start: the player's hero (hero: the account's;
@@ -87,6 +119,10 @@ func NewHost(w *World, send func(id string, m *netplay.Message) error) *Host {
 func (h *Host) Start(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPayload, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.lingering[p.Name] != nil {
+		// Its hero is still in the world (the original's message 8).
+		return netplay.EnterPayload{}, netplay.ErrHeroLeaving
+	}
 	hp := h.players[p.ID]
 	if hp == nil {
 		slot := -1
@@ -130,17 +166,76 @@ func (h *Host) Slot(id string) (int, bool) {
 	return 0, false
 }
 
-// Leave takes player id's hero out of the world (ServerConfig.OnLeave).
+// Leave is player id leaving (ServerConfig.OnLeave): in its hero's home
+// village (map model·3 + 1), or dead, the hero goes at once (saved unless
+// dead: Died kept it); elsewhere it stays in the world uncontrolled for
+// Linger (it can be attacked and killed) and goes then (expire). Its
+// player cannot enter again meanwhile (Start: ErrHeroLeaving).
 func (h *Host) Leave(id string) {
 	h.mu.Lock()
 	var saves []save
 	if hp := h.players[id]; hp != nil {
-		if !hp.dead {
-			saves = append(saves, h.saveOf(hp))
-		}
-		h.W.RemovePlayer(hp.slot)
 		delete(h.players, id)
-		delete(h.bySlot, hp.slot)
+		if hp.dead || h.W.PlayerMap(hp.slot) == gamestate.LANStartMap(hp.info.Model) {
+			saves = h.remove(hp, saves)
+		} else {
+			hp.until = h.clock().Add(h.linger())
+			h.lingering[hp.info.Name] = hp
+		}
+	}
+	h.mu.Unlock()
+	h.save(saves)
+}
+
+// remove takes hp's hero out of the world, saving it unless dead; h.mu
+// held.
+func (h *Host) remove(hp *hostPlayer, saves []save) []save {
+	if !hp.dead {
+		saves = append(saves, h.saveOf(hp))
+	}
+	h.W.RemovePlayer(hp.slot)
+	delete(h.bySlot, hp.slot)
+	if h.lingering[hp.info.Name] == hp {
+		delete(h.lingering, hp.info.Name)
+	}
+	return saves
+}
+
+// expire removes the lingering heroes whose time is up; h.mu held.
+func (h *Host) expire(saves []save) []save {
+	now := h.clock()
+	for _, hp := range h.lingering {
+		if !now.Before(hp.until) {
+			saves = h.remove(hp, saves)
+		}
+	}
+	return saves
+}
+
+// Lingering reports whether the hero of account name is still in the
+// world after its player left.
+func (h *Host) Lingering(name string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lingering[name] != nil
+}
+
+// EndSession is the session's end for the heroes in the world (0x00448BB8):
+// every hero goes back to its type's start alive, with full HP, out of the
+// stance (a dead one revived, wearing what it wore; its bag lay where it
+// fell), then all are saved (SaveAll's rule). Lingering heroes go.
+func (h *Host) EndSession() {
+	h.mu.Lock()
+	var saves []save
+	for _, hp := range h.lingering {
+		hp.dead = false // back alive at the session's end: saved as such
+		h.W.ToStart(hp.slot, hp.info.Model)
+		saves = h.remove(hp, saves)
+	}
+	for _, hp := range h.players {
+		h.W.ToStart(hp.slot, hp.info.Model)
+		hp.dead = false
+		saves = append(saves, h.saveOf(hp))
 	}
 	h.mu.Unlock()
 	h.save(saves)
@@ -183,12 +278,18 @@ func (h *Host) save(saves []save) {
 }
 
 // deaths finds the players' heroes that died since the last tick (HP 0,
-// whoever or whatever killed them) and returns their Died saves: the worn
-// items only (DropLoot put the bag into the pile); h.mu held.
+// whoever or whatever killed them; lingering ones too) and returns their
+// Died saves: the worn items only (DropLoot put the bag into the pile); a
+// dead hero that came back («Слова Воскрешения») is saved alive (Save,
+// which clears the account's dead flag); h.mu held.
 func (h *Host) deaths() []save {
 	var out []save
-	for _, hp := range h.players {
+	for _, hp := range h.bySlot {
 		if hp.dead {
+			if e, ok := h.W.Hero(hp.slot); ok && e.HP > 0 && !e.Dead() {
+				hp.dead = false
+				out = append(out, h.saveOf(hp))
+			}
 			continue
 		}
 		if e, ok := h.W.Hero(hp.slot); !ok || e.HP > 0 {
@@ -267,6 +368,7 @@ func (h *Host) Advance(target, max int) int {
 	}
 	kills, saves := h.report()
 	saves = append(saves, h.deaths()...)
+	saves = h.expire(saves)
 	h.mu.Unlock()
 	if h.OnKill != nil {
 		for _, k := range kills {

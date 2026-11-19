@@ -63,6 +63,10 @@ var migrations = []string{
 	`ALTER TABLE accounts ADD COLUMN starter INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE accounts ADD COLUMN dead INTEGER NOT NULL DEFAULT 0;
 	UPDATE accounts SET starter = 1 WHERE id NOT IN (SELECT DISTINCT account_id FROM items);`,
+	// 5: the hero's health and poison as it left the world (a port rule
+	// against leaving to heal: the original enters with HP 1600).
+	`ALTER TABLE accounts ADD COLUMN hp INTEGER NOT NULL DEFAULT 1600;
+	ALTER TABLE accounts ADD COLUMN poison INTEGER NOT NULL DEFAULT 0;`,
 }
 
 const schema = `
@@ -275,7 +279,7 @@ func rebuild(tx *sql.Tx, id int64, e gamestate.Entity, look int) error {
 	_, err := tx.Exec(`UPDATE accounts SET level = 1, gold = 1000, class = ?, free_points = ?,
 		charisma = ?, strength = ?, dexterity = ?, endurance = ?,
 		fencing = ?, archery = ?, herbalism = ?, smithing = ?, trade = ?, carpentry = ?, identification = ?,
-		unknown_4c = 0, unknown_62 = 10, look = ?, starter = 1, dead = 0
+		unknown_4c = 0, unknown_62 = 10, look = ?, starter = 1, dead = 0, hp = 1600, poison = 0
 		WHERE id = ?`,
 		int(e.Flags4&7), e.FreeExp,
 		e.BaseStats[0], e.BaseStats[1], e.BaseStats[2], e.BaseStats[3],
@@ -365,12 +369,12 @@ func hero(q querier, id int64) (*netplay.Hero, error) {
 	err := q.QueryRow(`SELECT level, class, model, palette, free_points, gold,
 		charisma, strength, dexterity, endurance,
 		fencing, archery, identification, trade, smithing, carpentry, herbalism,
-		rating, kills_heroes, kills_hirelings, kills_monsters, amulets, look
+		rating, kills_heroes, kills_hirelings, kills_monsters, amulets, look, hp, poison
 		FROM accounts WHERE id = ?`, id).Scan(
 		&h.Level, &h.Class, &h.Model, &h.Palette, &h.FreePoints, &h.Gold,
 		&h.Charisma, &h.Strength, &h.Dexterity, &h.Endurance,
 		&h.Fencing, &h.Archery, &h.Identification, &h.Trade, &h.Smithing, &h.Carpentry, &h.Herbalism,
-		&h.Rating, &h.KillsHeroes, &h.KillsHirelings, &h.KillsMonsters, &h.Amulets, &h.Look)
+		&h.Rating, &h.KillsHeroes, &h.KillsHirelings, &h.KillsMonsters, &h.Amulets, &h.Look, &h.HP, &h.Poison)
 	return h, err
 }
 
@@ -389,12 +393,12 @@ func (s *Store) SaveHero(name string, h *netplay.Hero) error {
 	res, err := s.db.Exec(`UPDATE accounts SET level = ?, class = ?, model = ?, palette = ?, free_points = ?, gold = ?,
 		charisma = ?, strength = ?, dexterity = ?, endurance = ?,
 		fencing = ?, archery = ?, identification = ?, trade = ?, smithing = ?, carpentry = ?, herbalism = ?,
-		rating = ?, kills_heroes = ?, kills_hirelings = ?, kills_monsters = ?, amulets = ?
+		rating = ?, kills_heroes = ?, kills_hirelings = ?, kills_monsters = ?, amulets = ?, hp = ?, poison = ?
 		WHERE name = ?`,
 		h.Level, h.Class, h.Model, h.Palette, h.FreePoints, h.Gold,
 		h.Charisma, h.Strength, h.Dexterity, h.Endurance,
 		h.Fencing, h.Archery, h.Identification, h.Trade, h.Smithing, h.Carpentry, h.Herbalism,
-		h.Rating, h.KillsHeroes, h.KillsHirelings, h.KillsMonsters, h.Amulets, name)
+		h.Rating, h.KillsHeroes, h.KillsHirelings, h.KillsMonsters, h.Amulets, healthOf(h), h.Poison, name)
 	if err != nil {
 		return err
 	}
@@ -410,10 +414,12 @@ func (s *Store) SaveHero(name string, h *netplay.Hero) error {
 func (s *Store) SaveProgress(name string, h *netplay.Hero) error {
 	res, err := s.db.Exec(`UPDATE accounts SET level = ?, gold = ?, free_points = ?,
 		charisma = ?, strength = ?, dexterity = ?, endurance = ?,
-		fencing = ?, archery = ?, identification = ?, trade = ?, smithing = ?, carpentry = ?, herbalism = ?
+		fencing = ?, archery = ?, identification = ?, trade = ?, smithing = ?, carpentry = ?, herbalism = ?,
+		hp = ?, poison = ?
 		WHERE name = ?`,
 		h.Level, h.Gold, h.FreePoints, h.Charisma, h.Strength, h.Dexterity, h.Endurance,
-		h.Fencing, h.Archery, h.Identification, h.Trade, h.Smithing, h.Carpentry, h.Herbalism, name)
+		h.Fencing, h.Archery, h.Identification, h.Trade, h.Smithing, h.Carpentry, h.Herbalism,
+		healthOf(h), h.Poison, name)
 	if err != nil {
 		return err
 	}
@@ -488,6 +494,10 @@ func (s *Store) EndSession() error {
 	if _, err := tx.Exec(`UPDATE accounts SET dead = 0 WHERE dead != 0`); err != nil {
 		return err
 	}
+	// Everyone is healed at a session's end (0x00448BB8).
+	if _, err := tx.Exec(`UPDATE accounts SET hp = 1600, poison = 0`); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -548,10 +558,27 @@ func (s *Store) Revive(name string) (bool, error) {
 	if _, err := tx.Exec(`DELETE FROM items WHERE account_id = ?`, id); err != nil {
 		return false, err
 	}
-	if _, err := tx.Exec(`UPDATE accounts SET dead = 0 WHERE id = ?`, id); err != nil {
+	// Naked and healed: re-entering after death (the original).
+	if _, err := tx.Exec(`UPDATE accounts SET dead = 0, hp = 1600, poison = 0 WHERE id = ?`, id); err != nil {
 		return false, err
 	}
 	return true, tx.Commit()
+}
+
+// Alive clears an account's dead flag: its hero was revived in the world
+// («Слова Воскрешения»), so its next entry is not naked.
+func (s *Store) Alive(name string) error {
+	_, err := s.db.Exec(`UPDATE accounts SET dead = 0 WHERE name = ?`, name)
+	return err
+}
+
+// healthOf is the HP to store for h: full for 0 (unknown) and above
+// gamestate.HPFull.
+func healthOf(h *netplay.Hero) int {
+	if h.HP <= 0 || h.HP > gamestate.HPFull {
+		return gamestate.HPFull
+	}
+	return h.HP
 }
 
 // RatingRow is one row of the «Рейтинг» table (0x00446FA0).

@@ -367,8 +367,11 @@ func (m *Menu) Update() error {
 			})
 			return nil
 		}
-		if m.world.GameOver() {
+		if m.world.GameOver() && !m.lanWorld {
 			// 0x004376A8: the hero died; no game is running any more
+			// (in a LAN world the dead hero lies in the world and its
+			// player watches: a living player's «Слова Воскрешения» or the
+			// session's end bring it back; «Закончить игру» leaves).
 			// ([0x00A3E728] = 0), GAMEOVER.FLM plays, then the menu (state 7).
 			m.running = false
 			lan := m.lanWorld

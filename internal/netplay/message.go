@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 6
+const ProtocolVersion = 7
 
 // MsgType identifies a message.
 type MsgType int
@@ -227,6 +227,12 @@ type Hero struct {
 	// Look is the chosen look (0–7, gamestate.LANLooks), one index for
 	// every hero type; Palette is its palette for Model, this session's type.
 	Look int `json:"look"`
+
+	// HP and Poison as the hero left the world (a port rule: the original
+	// enters with HP 1600, 0x0042105C, so leaving and entering again
+	// healed); 0 HP means full (gamestate.HPFull).
+	HP     int `json:"hp,omitempty"`
+	Poison int `json:"poison,omitempty"`
 }
 
 // ErrorPayload explains a refusal.
@@ -243,6 +249,7 @@ const (
 	ErrPassword = "password" // message 7, «Неправильный пароль»
 	ErrHero     = "hero"     // NewHero is not something «Новый герой» can produce
 	ErrServer   = "server"   // the server cannot check the login
+	ErrLeaving  = "leaving"  // message 8: the hero is still leaving the world (Start returned ErrHeroLeaving)
 	ErrClan     = "clan"
 	ErrVersion  = "version"
 	ErrProtocol = "protocol"

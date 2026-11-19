@@ -28,7 +28,8 @@ func Hero(tmpl *gamestate.Game, model int, hero *netplay.Hero) gamestate.Entity 
 // ApplyHero puts an account's hero (LANUSERS.DAT record) on e: level, gold,
 // free points, the class (entity +4, as SelectClass; record +0x6B), the
 // skills and stats, the model and its palette (index × 512 = the palette's
-// byte offset in GRAPH.RES), and full HP.
+// byte offset in GRAPH.RES), and the health and poison it left with (full
+// when unknown).
 func ApplyHero(e *gamestate.Entity, h *netplay.Hero) {
 	e.Level, e.Gold, e.FreeExp = h.Level, h.Gold, h.FreePoints
 	if h.Class >= gamestate.ClassMerchant && h.Class <= gamestate.ClassWarrior {
@@ -40,7 +41,12 @@ func ApplyHero(e *gamestate.Entity, h *netplay.Hero) {
 	e.Stats = e.BaseStats
 	e.Model = h.Model
 	e.PaletteOffset = uint32(h.Palette) * 512
-	e.HP = gamestate.HPFull // 0x0042105C: 1600 on entry
+	// 0x0042105C enters with 1600; the port keeps the health and poison
+	// the hero left with (lanstore), so leaving does not heal.
+	e.HP, e.Poison = gamestate.HPFull, h.Poison
+	if h.HP > 0 && h.HP < gamestate.HPFull {
+		e.HP = h.HP
+	}
 }
 
 // LookOf is how e looks to other players: stance, weapon mode and the

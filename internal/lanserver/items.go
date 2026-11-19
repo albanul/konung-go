@@ -153,6 +153,10 @@ func (w *World) Item(slot int, o netplay.OrderPayload) {
 	if msg != 0 {
 		w.say(slot, t.CString(msg))
 	}
+	if w.Game.ReviveAll { // «Слова Воскрешения» read (gamestate.UseMisc)
+		w.Game.ReviveAll = false
+		w.reviveHeroes(m)
+	}
 }
 
 // drop puts the held item on the ground under the hero (game.dropHeld):

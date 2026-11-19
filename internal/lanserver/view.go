@@ -74,6 +74,7 @@ func (w *World) Progress(slot int, h netplay.Hero) netplay.Hero {
 		h.Fencing, h.Archery = e.Fencing, e.Marksmanship
 		h.Charisma, h.Strength, h.Dexterity, h.Endurance = e.BaseStats[0], e.BaseStats[1], e.BaseStats[2], e.BaseStats[3]
 		h.Herbalism, h.Smithing, h.Trade, h.Carpentry, h.Identification = e.Skills[0], e.Skills[1], e.Skills[2], e.Skills[3], e.Skills[4]
+		h.HP, h.Poison = e.HP, e.Poison
 	}
 	return h
 }

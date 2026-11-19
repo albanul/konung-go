@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"konung1.5/internal/gamestate"
 	"konung1.5/internal/netplay"
 )
 
@@ -407,5 +408,73 @@ func TestMigrateV3(t *testing.T) {
 	}
 	if items, _ := s.LoadItems("Rich"); len(items) != 1 {
 		t.Errorf("Rich's items %+v", items)
+	}
+}
+
+// The health a hero left with is kept (a port rule against leaving to
+// heal); re-entering after death and the session's end heal; Alive clears
+// the dead flag (a revival in the world).
+func TestHealthKept(t *testing.T) {
+	s, _ := open(t)
+	s.Login(netplay.JoinInfo{Name: "Volk", Password: "p", Model: 1})
+	h, _ := s.Hero("Volk")
+	if h.HP != gamestate.HPFull || h.Poison != 0 {
+		t.Fatalf("a new hero: HP %d poison %d", h.HP, h.Poison)
+	}
+	h.HP, h.Poison = 700, 4
+	if err := s.SaveProgress("Volk", h); err != nil {
+		t.Fatal(err)
+	}
+	if h, _ = s.Hero("Volk"); h.HP != 700 || h.Poison != 4 {
+		t.Errorf("kept HP %d poison %d, want 700 and 4", h.HP, h.Poison)
+	}
+	// Died, revived in the world: alive again, the items stay.
+	s.Died("Volk", []Item{{Slot: SlotEquip, Index: 2, Category: 2, Type: 18}})
+	if err := s.Alive("Volk"); err != nil {
+		t.Fatal(err)
+	}
+	if dead, _ := s.Revive("Volk"); dead {
+		t.Error("Alive did not clear the dead flag")
+	}
+	if items, _ := s.LoadItems("Volk"); len(items) != 1 {
+		t.Errorf("a revived hero's items %+v", items)
+	}
+	// Died and entering again: naked and healed.
+	s.Died("Volk", nil)
+	if dead, _ := s.Revive("Volk"); !dead {
+		t.Fatal("not dead")
+	}
+	if h, _ = s.Hero("Volk"); h.HP != gamestate.HPFull || h.Poison != 0 {
+		t.Errorf("after death: HP %d poison %d", h.HP, h.Poison)
+	}
+	// The session's end heals everyone.
+	h.HP = 300
+	s.SaveProgress("Volk", h)
+	s.EndSession()
+	if h, _ = s.Hero("Volk"); h.HP != gamestate.HPFull {
+		t.Errorf("after the session's end HP %d", h.HP)
+	}
+}
+
+// A version-4 database (before the health) opens with full health.
+func TestMigrateV4(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "konung.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(schema + migrations[0] + migrations[1] + migrations[2] + `INSERT INTO clans VALUES (0, 'Византийцы');
+		INSERT INTO accounts (id, name, password, palette, model, created_at, last_login) VALUES (1, 'Old', 'x', 28, 1, '', '');
+		PRAGMA user_version = 4;`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if h, err := s.Hero("Old"); err != nil || h.HP != gamestate.HPFull {
+		t.Errorf("migrated hero %+v, %v", h, err)
 	}
 }

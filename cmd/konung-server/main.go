@@ -205,7 +205,9 @@ func run(dataDir string, st settings) error {
 		case <-sessions.C:
 			srv.SetSessionEnd(time.Now().Add(length))
 			if sw != nil {
-				sw.host.SaveAll() // heroes and items kept at the session's end
+				// Every hero back at its start, alive and healed, then
+				// saved (0x00448BB8).
+				sw.host.EndSession()
 			}
 			if err := store.EndSession(); err != nil {
 				log.Printf("session end: %v", err)
@@ -289,13 +291,17 @@ func heroDied(store *lanstore.Store, name string, hero *netplay.Hero, worn []lan
 	}
 }
 
-// saveHero keeps a player's hero (level, gold, stats, skills, experience)
-// and items (logout, death, the session's end).
+// saveHero keeps a living player's hero (level, gold, stats, skills,
+// experience, health) and items (logout, the session's end, a revival):
+// a hero saved alive is not dead any more (a revived one, lanstore.Alive).
 func saveHero(store *lanstore.Store, name string, hero *netplay.Hero, items []lanserver.Item) {
 	if hero != nil {
 		if err := store.SaveProgress(name, hero); err != nil {
 			log.Printf("save %s: %v", name, err)
 		}
+	}
+	if err := store.Alive(name); err != nil {
+		log.Printf("save %s: %v", name, err)
 	}
 	saved := make([]lanstore.Item, len(items))
 	for i, it := range items {

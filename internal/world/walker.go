@@ -295,6 +295,10 @@ type NPC struct {
 	Post     gamestate.Post
 	Posted   bool
 	MoveAt   int // village roll threshold (gamestate.VillageMoveThreshold)
+	// StepRows, StepCols are a villager's random-step ranges; 0 takes the
+	// single-player view-size globals (gamestate.VillageRowRange,
+	// VillageColRange). The LAN server's 0x00437E28 uses 20 and 10.
+	StepRows, StepCols int
 
 	// Creature combat state (NPCCreature): group index, the attack target
 	// (entity +6, -1 = none) and its cell (+0x0C/+0x0E), and the +2 intent
@@ -351,8 +355,11 @@ func (n *NPC) VillageTick(budget int, apprentice func() (gamestate.Post, bool)) 
 		return 0
 	}
 	blocked := func(r, c int) bool { return n.Blocked(mapdata.Cell{Row: r, Col: c}) }
-	r, c, ok := gamestate.VillageStepTarget(n.Cell.Row, n.Cell.Col, n.Area,
-		gamestate.VillageRowRange, gamestate.VillageColRange, n.Rng, blocked)
+	rr, cr := gamestate.VillageRowRange, gamestate.VillageColRange
+	if n.StepRows > 0 {
+		rr, cr = n.StepRows, n.StepCols
+	}
+	r, c, ok := gamestate.VillageStepTarget(n.Cell.Row, n.Cell.Col, n.Area, rr, cr, n.Rng, blocked)
 	if !ok {
 		return 0
 	}

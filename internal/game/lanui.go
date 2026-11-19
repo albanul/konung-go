@@ -392,6 +392,9 @@ func (u *lanUI) readSession() {
 				log.Printf("LAN: %s", e.Message)
 				if u.state == lanWaiting {
 					u.state, u.msg = lanLogin, gamestate.MsgUnavailable
+					if e.Code == netplay.ErrLeaving {
+						u.msg = gamestate.MsgLeaving // «На сервере идет выход персонажа из игры»
+					}
 				}
 			}
 		default:

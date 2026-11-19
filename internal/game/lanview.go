@@ -407,6 +407,9 @@ func (s *startScene) viewFrame() {
 
 // viewOrder sends an order for the own hero.
 func (s *startScene) viewOrder(o netplay.OrderPayload) {
+	if len(s.Party) > 0 && s.Party[0].Dead() {
+		return // the dead give no orders; the server ignores them too
+	}
 	if s.view != nil && s.view.order != nil {
 		s.view.order(o)
 	}
