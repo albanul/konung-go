@@ -301,3 +301,37 @@ func (v *viewer) dialogue() netplay.DialoguePayload {
 	defer v.mu.Unlock()
 	return v.dlg
 }
+
+// Only the post roles' dialogues open in a LAN world (gamestate.LANTalks):
+// village 7's elder (entity 16, dialogue 105) and a guard (dialogue 104)
+// stay silent next to the hero; the merchant talks.
+func TestOnlyRolesTalk(t *testing.T) {
+	w := load(t)
+	const slot = 0
+	if _, _, err := w.AddPlayer(slot, 2, nil); err != nil {
+		t.Fatal(err)
+	}
+	st := w.state(slot)
+	guard := -1
+	for i, e := range w.Game.Entities {
+		if i >= 16 && e.Dialogue == 104 && w.Game.Groups[e.Group].Map == 7 {
+			guard = i
+			break
+		}
+	}
+	if guard < 0 {
+		t.Fatal("no guard on map 7")
+	}
+	for _, npc := range []int{16, guard} {
+		nextTo(t, w, slot, npc)
+		w.Talk(slot, npc)
+		if st.talk != nil || st.trade != nil {
+			t.Fatalf("entity %d (dialogue %d) talked", npc, w.Game.Entities[npc].Dialogue)
+		}
+	}
+	nextTo(t, w, slot, merchant7)
+	w.Talk(slot, merchant7)
+	if st.talk == nil {
+		t.Fatal("the merchant did not talk")
+	}
+}

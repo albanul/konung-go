@@ -108,7 +108,8 @@ func (w *World) ResetShops() {
 
 // Talk is a right click on character npc out of the stance (the
 // original's 0x43): its dialogue opens when it is a character of the
-// world (not a player's hero) on the hero's map, alive, with a dialogue,
+// world (not a player's hero) on the hero's map, alive, with a dialogue
+// the LAN world opens (gamestate.LANTalks),
 // within TalkRange, and no other window is open.
 func (w *World) Talk(slot, npc int) {
 	s, mem, e := w.member(slot)
@@ -124,7 +125,7 @@ func (w *World) Talk(slot, npc int) {
 		return
 	}
 	ne := w.Game.Entities[npc]
-	if ne.Dead() || ne.Dialogue == gamestate.NoDialogue || ne.Dialogue >= resfmt.QuestDialogues {
+	if ne.Dead() || !gamestate.LANTalks(ne.Dialogue) {
 		return
 	}
 	ax, ay := mapdata.CellCenter(mem.Cell)

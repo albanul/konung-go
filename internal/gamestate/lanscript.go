@@ -91,6 +91,24 @@ func (t *Talk) lanScript(id int) int {
 	return 0
 }
 
+// LAN dialogues the port opens (a port rule, docs/konung_lan.md#dialogues-and-trade).
+// GAME.RES gives its characters single-player dialogue numbers: the post
+// roles' shared dialogues fit (100 the voevoda, 101 the healer, 102 the
+// smith, 103 the merchant: training, healing, trade), but the elders (105,
+// 106, 107), the guards (104), the villagers (109, 110, 111), the animals
+// (108, 112) and the three objects (6) open single-player quest dialogues
+// that do not belong to the network game. The installed QUESTR.RES files
+// are both the single-player one, and the original opens the number as it
+// is (0x0042CA18), so it would show those; the port opens only the roles'.
+const (
+	LANTalkFirst = 100
+	LANTalkLast  = 103
+)
+
+// LANTalks reports whether a character with dialogue d can be talked to in
+// a LAN world.
+func LANTalks(d int) bool { return d >= LANTalkFirst && d <= LANTalkLast }
+
 // LAN shops: what the port does not sell in a network game (the original
 // server's rules, docs/konung_lan.md#dialogues-and-trade): the misc items
 // removed from it (Яблоко познания, Дупликатор, Лопата, Медное зеркало

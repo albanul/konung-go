@@ -187,13 +187,13 @@ func (s *startScene) applyPileWindow(pw netplay.PileWindowPayload) {
 // lanCanTalk is the LAN client's right-click test (0x00416536,
 // 0x00416689): a character of the world (group ≥ 16: not a player's hero)
 // with a dialogue, the hero out of the stance, Ctrl up; the port also
-// skips the dead.
+// skips the dead and opens only the roles' dialogues (gamestate.LANTalks).
 func (s *startScene) lanCanTalk() bool {
 	if s.hovered < world.LANPlayers || s.assets == nil || s.assets.quests == nil || len(s.Party) == 0 {
 		return false
 	}
 	e := s.Entity(s.hovered)
-	return e.Dialogue != gamestate.NoDialogue && !e.Dead() && !s.Party[0].InStance() &&
+	return gamestate.LANTalks(e.Dialogue) && !e.Dead() && !s.Party[0].InStance() &&
 		!ebiten.IsKeyPressed(ebiten.KeyControl)
 }
 
