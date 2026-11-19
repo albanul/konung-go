@@ -633,8 +633,8 @@ func (s *startScene) click(cur *gamestate.Entity, mx, my, spot int, right bool) 
 		return
 	}
 	if s.view != nil {
-		// A LAN viewer: item clicks and map clicks are orders
-		// (lanitems.go); dialogues are not synchronised yet.
+		// A LAN viewer: item clicks, map clicks and talking are orders
+		// (lanitems.go, lanview.go).
 		s.lanClick(cur, mx, my, spot, right)
 		return
 	}
@@ -1046,7 +1046,7 @@ func (s *startScene) escape() bool {
 	switch {
 	case s.trade.open():
 		if s.view != nil {
-			s.lanPileApply(false) // the server closes its pile window too
+			s.itemOrder(netplay.ItemClose, 0, false) // the server closes its window 7 too
 		}
 		s.trade.tr = nil // closes without applying: nothing changed yet
 		return false

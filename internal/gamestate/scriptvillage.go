@@ -73,7 +73,7 @@ func init() {
 		344: (*Talk).curse,
 		345: install(4), 346: install(1), 347: install(3), 348: install(2),
 		349: (*Talk).partyFull,
-		350: func(t *Talk) int { return b2i(t.npc().Group == 0) },
+		350: func(t *Talk) int { return b2i(t.npc().Group == t.Party) },
 		351: func(t *Talk) int { return b2i(t.npc().HP <= HPFull/2) },
 		353: func(t *Talk) int { return b2i(t.npc().Flags4&0x38 != 0) },
 		354: (*Talk).startApprentice,
@@ -145,7 +145,7 @@ func (t *Talk) curse() int {
 // partyFull is 349 (0x0043536C): the party's size limit (group +0x18 =
 // 0x00411078(hero), MaxParty) is reached.
 func (t *Talk) partyFull() int {
-	g0 := &t.G.Groups[0]
+	g0 := &t.G.Groups[t.Party]
 	g0.Target = MaxParty(*t.hero(), t.T)
 	return b2i(g0.Count >= g0.Target)
 }
@@ -233,7 +233,7 @@ func (t *Talk) installAtPost(k int) int {
 // L + (max − L)·0.7, and the condition (+4) becomes the maximum. (The
 // skill gain after it never runs: it reads the repaired difference, 0.)
 func (t *Talk) repair() int {
-	n, g0 := t.npc(), t.G.Groups[0]
+	n, g0 := t.npc(), t.G.Groups[t.Party]
 	limit := float64(n.Skills[1]) * 10
 	fix := func(i int) {
 		if i <= 0 || (i+1)*itemStride > len(t.G.items) {

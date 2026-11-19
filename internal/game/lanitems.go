@@ -1,9 +1,11 @@
 package game
 
 import (
+	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
+	"konung1.5/internal/world"
 )
 
 // Items in a LAN world (netplay/items.go): the server keeps them; the
@@ -88,8 +90,9 @@ func (s *startScene) lanWindowClick(spot int) {
 	}
 }
 
-// lanPileApply is the pile window's «Ok» or «Закрыть» (applyTrade) as an
-// order with the lists as the player arranged them; «Закрыть» closes the
+// lanPileApply is window 7's «Ok» or «Закрыть» (applyTrade: the pile
+// window or a trade) as an order with the lists as the player arranged
+// them; «Закрыть» closes the
 // window at once, «Ok» waits for the server's window.
 func (s *startScene) lanPileApply(accept bool) {
 	tr := s.trade.tr
@@ -97,7 +100,11 @@ func (s *startScene) lanPileApply(accept bool) {
 		return
 	}
 	lists := tr.Lists
-	s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderItem, Item: netplay.ItemPile, On: accept, Lists: &lists})
+	act := netplay.ItemPile
+	if tr.NPC >= 0 {
+		act = netplay.ItemTrade // a trade (talk.go on the server)
+	}
+	s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderItem, Item: act, On: accept, Lists: &lists})
 	if !accept {
 		s.trade.tr = nil
 	}
@@ -157,8 +164,52 @@ func (s *startScene) applyPileWindow(pw netplay.PileWindowPayload) {
 	hero := s.Party[0].Index
 	tr := &gamestate.Trade{NPC: -1, Shown: hero, Hero: hero, Pile: pw.Pile, Mode: pw.Pile, Map: pw.Map, Lists: pw.Lists}
 	tr.HeroMoney = s.Party[0].Gold
-	if old := s.trade.tr; old != nil && old.Pile == pw.Pile {
+	if t := pw.Trader; t != nil {
+		// A trade: the goods' records, the trader's trade skill (the
+		// prices) and both sides' money as the server has them.
+		if t.NPC < 0 || t.NPC >= len(s.Game.Entities) {
+			return
+		}
+		for i, r := range pw.Items {
+			s.Game.SetItemRecord(i, r)
+		}
+		s.Game.Entities[t.NPC].Skills[2] = t.Skill
+		tr.NPC, tr.Pile, tr.Mode = t.NPC, -1, t.Mode
+		tr.HeroMoney, tr.OtherMoney = t.HeroMoney, t.OtherMoney
+	}
+	if old := s.trade.tr; old != nil && old.Pile == tr.Pile && old.NPC == tr.NPC {
 		tr.Scroll = old.Scroll
 	}
 	s.trade.tr = tr
+	s.talk.show(nil) // window 7 replaces the dialogue
+}
+
+// lanCanTalk is the LAN client's right-click test (0x00416536,
+// 0x00416689): a character of the world (group ≥ 16: not a player's hero)
+// with a dialogue, the hero out of the stance, Ctrl up; the port also
+// skips the dead.
+func (s *startScene) lanCanTalk() bool {
+	if s.hovered < world.LANPlayers || s.assets == nil || s.assets.quests == nil || len(s.Party) == 0 {
+		return false
+	}
+	e := s.Entity(s.hovered)
+	return e.Dialogue != gamestate.NoDialogue && !e.Dead() && !s.Party[0].InStance() &&
+		!ebiten.IsKeyPressed(ebiten.KeyControl)
+}
+
+// applyDialogue shows the dialogue as the server has it (MsgDialogue); the
+// greeting plays when it opens.
+func (s *startScene) applyDialogue(dp netplay.DialoguePayload) {
+	if !dp.Open {
+		s.talk.show(nil)
+		return
+	}
+	d := &gamestate.Dialogue{NPC: dp.NPC, Lines: dp.Lines}
+	for _, t := range dp.Replies {
+		d.Replies = append(d.Replies, gamestate.DialogueReply{Text: t})
+	}
+	if s.talk.d == nil && dp.Greeting != 0 {
+		sfx.play(dp.Greeting, 0, 0)
+	}
+	s.talk.show(d)
 }

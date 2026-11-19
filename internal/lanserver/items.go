@@ -22,6 +22,13 @@ type itemState struct {
 	hand gamestate.Hand
 	pile *gamestate.Trade // the open pile window, nil when closed
 	msgs [][]byte         // status-line messages for the client
+
+	// Dialogues and trade (talk.go): the open dialogue and trade, the
+	// quest flags, the last greeting (no repeat) and the open dialogue's.
+	talk                   *gamestate.Dialogue
+	trade                  *gamestate.Trade
+	quests                 [gamestate.QuestFlagsSize]byte
+	lastGreeting, greeting int
 }
 
 // state is slot's item state (made on first use).
@@ -60,11 +67,11 @@ func (w *World) openPile(n, slot, i int) {
 	w.state(slot).pile = w.Game.OpenPileTrade(slot, slot, i)
 }
 
-// closeItems ends what slot holds: the held item goes back, the pile window
-// closes (logout, death, a map change).
+// closeItems ends what slot holds: the held item goes back, the pile
+// window, the dialogue and the trade close (logout, death, a map change).
 func (w *World) closeItems(slot int) {
 	st := w.state(slot)
-	st.pile = nil
+	st.pile, st.talk, st.trade = nil, nil, nil
 	if m, ok := w.players[slot]; ok {
 		if _, e := w.Maps[m].Member(slot); e != nil {
 			st.hand.Return(e)
@@ -143,6 +150,10 @@ func (w *World) Item(slot int, o netplay.OrderPayload) {
 		w.Game.ToggleAutoLevel(e, t)
 	case netplay.ItemPile:
 		msg = w.pileOrder(s, slot, o.On, o.Lists)
+	case netplay.ItemTrade:
+		msg = w.tradeOrder(s, slot, o.On, o.Lists)
+	case netplay.ItemClose:
+		st.pile, st.trade = nil, nil // Escape (0x00437447): no deal
 	default:
 		return
 	}
@@ -293,6 +304,9 @@ func (w *World) Piles(m int) netplay.PilesPayload {
 // PileWindow is slot's pile window (MsgPileWindow).
 func (w *World) PileWindow(slot int) netplay.PileWindowPayload {
 	st := w.state(slot)
+	if st.trade != nil {
+		return w.tradeWindow(st)
+	}
 	if st.pile == nil {
 		return netplay.PileWindowPayload{}
 	}

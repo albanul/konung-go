@@ -129,6 +129,8 @@ The shop lists are empty in `GAME.0`–`GAME.2`; the game fills them at runtime.
 
 **When stock leaves:** see [apply](#apply-0x00420634accept). The bought items' entries are zeroed and get refilled; items sold to a shop are destroyed.
 
+The LAN version keeps these stocks per player slot and runs the healer and smith for every slot: [LAN: dialogues and trade](konung_lan.md#dialogues-and-trade).
+
 ## Open questions
 
 * Building construction, burning and the voevoda's training, which share the settlement pass, are in [buildings](konung_buildings.md).

@@ -90,7 +90,7 @@ type hostPlayer struct {
 	looks map[int]netplay.Look // players' heroes sent to this player, as sent
 	// The items, piles and pile window as last sent (JSON), so only
 	// changes go out.
-	inv, piles, pileWin []byte
+	inv, piles, pileWin, dialogue []byte
 }
 
 // NewHost connects w; send is the session's Server.Send.
@@ -140,7 +140,7 @@ func (h *Host) Start(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPay
 	}
 	hp.info, hp.hero, hp.dead = p, hero, false
 	hp.view, hp.looks = Viewer{}, map[int]netplay.Look{}
-	hp.inv, hp.piles, hp.pileWin = nil, nil, nil
+	hp.inv, hp.piles, hp.pileWin, hp.dialogue = nil, nil, nil, nil
 	m, c, err := h.W.AddPlayer(hp.slot, p.Model, hero)
 	if err != nil {
 		delete(h.players, p.ID)
@@ -237,6 +237,7 @@ func (h *Host) EndSession() {
 		hp.dead = false
 		saves = append(saves, h.saveOf(hp))
 	}
+	h.W.ResetShops()
 	h.mu.Unlock()
 	h.save(saves)
 }
@@ -332,6 +333,10 @@ func (h *Host) Order(p netplay.PlayerInfo, o netplay.OrderPayload) {
 		h.W.Attack(hp.slot)
 	case netplay.OrderItem:
 		h.W.Item(hp.slot, o)
+	case netplay.OrderTalk:
+		h.W.Talk(hp.slot, o.Target)
+	case netplay.OrderReply:
+		h.W.Reply(hp.slot, o.Index)
 	}
 }
 
@@ -393,7 +398,8 @@ func (h *Host) report() ([]Kill, []save) {
 			byMap[ev.Map] = append(byMap[ev.Map], netplay.Event{Kind: netplay.EventAction, Entity: ev.Entity, Act: ev.Act, Row: ev.Row, Col: ev.Col})
 		case EventMapChange:
 			if hp := h.bySlot[ev.Entity]; hp != nil {
-				h.W.state(hp.slot).pile = nil // the pile window stays behind
+				st := h.W.state(hp.slot)
+				st.pile, st.talk, st.trade = nil, nil, nil // the windows stay behind
 				h.sendTo(hp, netplay.MsgMapChange, netplay.EnterPayload{
 					Position: netplay.Position{Map: ev.Map, Row: ev.Row, Col: ev.Col, Facing: ev.Facing}, Slot: hp.slot})
 			}
@@ -474,6 +480,9 @@ func (h *Host) sendItems(hp *hostPlayer) {
 	}
 	if pw := h.W.PileWindow(hp.slot); changed(&hp.pileWin, pw) {
 		h.sendTo(hp, netplay.MsgPileWindow, pw)
+	}
+	if d := h.W.Dialogue(hp.slot); changed(&hp.dialogue, d) {
+		h.sendTo(hp, netplay.MsgDialogue, d)
 	}
 }
 

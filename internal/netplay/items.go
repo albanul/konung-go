@@ -25,6 +25,8 @@ const (
 	ItemRaise    = "raise"    // a raise button (Index: the row)
 	ItemAuto     = "auto"     // «АВТО»
 	ItemPile     = "pile"     // the pile window's «Ok» (On) or «Закрыть», with Lists
+	ItemTrade    = "trade"    // a trade's «Ok» (On) or «Закрыть», with Lists (talk.go)
+	ItemClose    = "close"    // Escape: window 7 closes without a deal (0x00437447)
 )
 
 // The pile window's lists (gamestate.Trade.Lists).
@@ -69,11 +71,28 @@ type PilesPayload struct {
 	Items map[int]ItemRecord `json:"items"`
 }
 
-// PileWindowPayload is the pile window (window 7 with a pile, 0x004170A0):
-// open with its lists (the bag, the offer, the pile, the take) or closed.
+// PileWindowPayload is window 7: the pile window (0x004170A0) or a trade
+// (script 275), open with its lists (the bag, the offer, the pile or the
+// goods, the take) or closed.
 type PileWindowPayload struct {
 	Open  bool                          `json:"open"`
 	Pile  int                           `json:"pile"`
 	Map   int                           `json:"map"`
 	Lists [PileLists][PileListSlots]int `json:"lists"`
+	// Trader is set for a trade (dialogue script 275): the window's lists
+	// are then the bag, the offer, the trader's goods and the take, and
+	// Items has the goods' records.
+	Trader *TraderState       `json:"trader,omitempty"`
+	Items  map[int]ItemRecord `json:"items,omitempty"`
+}
+
+// TraderState is a trade's other side as the window needs it for the
+// prices (gamestate.Trade): the trader, the mode (a shop's post slot, ±; 6
+// a barter), both sides' money and the trader's trade skill.
+type TraderState struct {
+	NPC        int `json:"npc"`
+	Mode       int `json:"mode"`
+	HeroMoney  int `json:"heroMoney"`
+	OtherMoney int `json:"otherMoney"`
+	Skill      int `json:"skill"`
 }

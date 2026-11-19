@@ -763,6 +763,11 @@ func (m *Menu) applyLAN() {
 			if msg.Decode(&pw) == nil {
 				w.applyPileWindow(pw)
 			}
+		case netplay.MsgDialogue:
+			var d netplay.DialoguePayload
+			if msg.Decode(&d) == nil {
+				w.applyDialogue(d)
+			}
 		}
 	}
 }

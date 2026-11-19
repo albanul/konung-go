@@ -55,6 +55,15 @@ type Talk struct {
 	Drop func(item int)
 	// lastGreeting is 0x00A3E7C0, the last greeting sound (no repeat).
 	lastGreeting *int
+	// Party is the hero's group (single player: group 0, the party; a
+	// LAN hero: its slot's group): 278–281, 335, 349, 350, 362.
+	Party int
+	// LAN runs the scripts as LAN_KONG.EXE's client and server do
+	// (lanscript.go); Loans is then the settlement's per-player loan bits
+	// (LAN settlement +0x4C) and Slot the player's bit.
+	LAN   bool
+	Loans *uint16
+	Slot  int
 }
 
 // TalkEvents report what the scripts changed beyond the records, so the
@@ -65,6 +74,9 @@ type TalkEvents struct {
 	Greeting     int    // greeting sound to play on open, 0 = none
 	Trade        *Trade // script 275 opened the trade window (window 7)
 	Unported     []int
+	// Deferred are LAN script functions the port does not run yet (291
+	// hire: no hirelings in LAN parties yet).
+	Deferred []int
 }
 
 func (t *Talk) rand(n int) int {
@@ -312,6 +324,9 @@ const (
 // script is 0x0043259C(id): a condition's value or an action (the
 // return value is then ignored).
 func (t *Talk) script(id int) int {
+	if t.LAN {
+		return t.lanScript(id)
+	}
 	switch {
 	case id < scriptMapCleared:
 		return b2i(t.groupHurt(id + 1))

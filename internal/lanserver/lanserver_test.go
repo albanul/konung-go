@@ -26,6 +26,7 @@ func load(t testing.TB) *World {
 	for m := range f.Games {
 		f.Games[m] = read("GAME." + strconv.Itoa(m))
 	}
+	f.Quests = read("questr.RES")
 	w, err := Load(f)
 	if err != nil {
 		t.Fatal(err)

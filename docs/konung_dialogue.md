@@ -138,6 +138,8 @@ Q or HUD button 5 «Информация к размышлению (Q)» (hotspo
 | 365 | S becomes the hero's vassal: `+0x4B2 &= 0xEA`, `+0x10` = `+0x14` = 0 |
 | 366 | H's Хар `+0x58` > 60 |
 
+The LAN version runs these with its own table and a server; the port's rules are `Talk.LAN` ([LAN: dialogues and trade](konung_lan.md#dialogues-and-trade)); `Talk.Party` names the party's group (0 in single player).
+
 Unused by the data: 285, 292 (a jewel into the bag), 293, 295, 306, 323, 327, 351 (N's HP ≤ 800).
 
 **Settlement fields found here** (`gamestate.Settlement.Raw`): `+0` number of extra buildings; `+0x10` tribute pool, `+0x14` tribute counter; `+0x18 + 8k` building records (int8 type, state, …, int16 timer `+6`): 0 elder's house, 1 healer's hut, 2 shop, 3 smithy, 4 barracks, 5 bridge (the map-exit gate), 6 well, then the extra buildings and the fence pieces; `+0x3F8 + 4k` apprentice start times; `+0x412`/`+0x444`/`+0x484` shop stock; `+0x4B2` bit `0x20` loan. Posts: 1 healer (dialogue 101), 2 merchant (103), 3 smith (102), 4 voevoda (100).

@@ -6,6 +6,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
 )
 
@@ -197,6 +198,10 @@ func (s *startScene) talkTo(i int) {
 
 // chooseReply is a click on reply k (0x00423501 → 0x0041F18C).
 func (s *startScene) chooseReply(k int) {
+	if s.view != nil {
+		s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderReply, Index: k}) // the server runs it
+		return
+	}
 	d := s.talk.d
 	tk := s.newTalk()
 	tk.NPC = d.NPC

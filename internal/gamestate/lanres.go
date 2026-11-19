@@ -80,6 +80,7 @@ const (
 	lanSetSmith       = 0xBC8 // 16 × 0x2E smith stock (+0x484)
 	lanSetFlags       = 0xEA8 // byte (+0x4B2); the session reset sets 0x10
 	lanSetSmithJob    = 0xEA9 // 16 bytes, one per player (+0x4B4)
+	lanSetLoans       = 0x4C  // u16: player slots with a loan (282/284/333, 0x0044BD9A)
 	lanSetAggressors  = 0x4E  // u16: player slots that attacked the village (0x446AC1 clears it)
 	spSetBuildings    = 0x18
 	spSetBuildingsLen = 119 * 8

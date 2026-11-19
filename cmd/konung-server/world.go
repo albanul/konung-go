@@ -48,6 +48,17 @@ func loadWorld(dir string) (*serverWorld, error) {
 	for m := range f.Games {
 		f.Games[m] = data["GAME."+strconv.Itoa(m)]
 	}
+	// QUESTR.RES (the installed name is questr.RES): the dialogues and
+	// trade; without it nobody talks.
+	for _, name := range []string{"QUESTR.RES", "questr.RES"} {
+		if b, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
+			f.Quests = b
+			break
+		}
+	}
+	if f.Quests == nil {
+		log.Printf("QUESTR.RES not found in %s: no dialogues or trade in the world", dir)
+	}
 	w, err := lanserver.Load(f)
 	if err != nil {
 		return nil, err

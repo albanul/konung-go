@@ -143,7 +143,7 @@ func (t *Talk) attack() int {
 // that role: 1 healer (healing > 100), 2 merchant (trade > 30), 3 smith
 // (smithing > 4), 4 warrior (Сил > 10 and fencing > 10); 0 if none.
 func (t *Talk) partyRole(k int) int {
-	g0 := t.G.Groups[0]
+	g0 := t.G.Groups[t.Party]
 	for m := 1; m < g0.Count; m++ {
 		e := t.G.Entities[g0.First+m]
 		if e.Dead() {
@@ -272,7 +272,7 @@ func (t *Talk) healHero() int {
 
 // healParty is 335 (0x00434DA4): the same for every living party member.
 func (t *Talk) healParty() int {
-	n, g0 := t.npc(), t.G.Groups[0]
+	n, g0 := t.npc(), t.G.Groups[t.Party]
 	for k := range g0.Count {
 		e := &t.G.Entities[t.Hero+k]
 		if e.Dead() || e.Type == 3 || e.Type == 9 {

@@ -23,7 +23,8 @@
 #                             default: "port" in the settings file, else 7777
 #   KONUNG_ASSETS=assets/Konung   folder with GAME.RES (required), SERVER (optional),
 #                             konung.exe + GAME.0–GAME.2 (fights between players) and
-#                             MAPS.RES, GRAPH.RES, OBJECTS.RES (the world on the server)
+#                             MAPS.RES, GRAPH.RES, OBJECTS.RES (the world on the server),
+#                             questr.RES (dialogues and trade)
 #   KONUNG_NETWORK=           set to "host" to use the host's network directly; LAN
 #                             discovery (UDP broadcast) may not pass a port mapping
 #   KONUNG_SERVER_ARGS=       extra server flags, e.g. '-minutes 60 -max 8 -speed 1 -team-damage=false'
@@ -91,6 +92,14 @@ copy_data() {
 			say "Note: $assets/$f not found: fights between players or the server's world are off."
 		fi
 	done
+	# The dialogues and trade (installed as questr.RES).
+	if [[ -f $assets/questr.RES ]]; then
+		"$engine" cp "$assets/questr.RES" "$container:/data/QUESTR.RES"
+	elif [[ -f $assets/QUESTR.RES ]]; then
+		"$engine" cp "$assets/QUESTR.RES" "$container:/data/QUESTR.RES"
+	else
+		say "Note: $assets/questr.RES not found: no dialogues or trade in the world."
+	fi
 }
 
 create() {

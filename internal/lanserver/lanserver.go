@@ -32,6 +32,7 @@ type Files struct {
 	Objects []byte                 // OBJECTS.RES: animated models, for frame counts
 	Exe     []byte                 // konung.exe: the rule tables
 	Games   [netplay.Models][]byte // GAME.0–GAME.2: the hero types' gear
+	Quests  []byte                 // QUESTR.RES: dialogues (nil: nobody talks)
 }
 
 // Maps is the number of LAN maps.
@@ -52,6 +53,12 @@ type World struct {
 	moving  []move      // heroes that took an exit this tick
 	events  []Event
 	items   map[int]*itemState // by slot: the hand, the pile window (items.go)
+
+	// Quests is QUESTR.RES (nil: no dialogues); shops and loans are the
+	// LAN settlements' per-slot stocks and loan bits (talk.go).
+	Quests *resfmt.Quests
+	shops  [gamestate.LANSettlements][world.LANPlayers]gamestate.LANShop
+	loans  [gamestate.LANSettlements]uint16
 
 	// TeamSafe: heroes of one type (the same model) cannot hurt each other
 	// (the server's team-damage option).
@@ -85,6 +92,17 @@ func Load(f Files) (*World, error) {
 	}
 	w := &World{Game: lw.Game, Tables: tables, exits: lw.Game.Exits, players: map[int]int{},
 		frames: &frameCache{graph: f.Graph, objects: f.Objects, n: map[frameKey]int{}}}
+	if f.Quests != nil {
+		if w.Quests, err = resfmt.ParseQuests(f.Quests); err != nil {
+			return nil, err
+		}
+	}
+	for si := range gamestate.LANSettlements {
+		for k := range world.LANPlayers {
+			w.shops[si][k] = lw.Shop(si, k)
+		}
+		w.loans[si] = lw.Loans(si)
+	}
 	for m, data := range f.Games {
 		if w.tmpl[m], err = gamestate.Parse(data); err != nil {
 			return nil, fmt.Errorf("GAME.%d: %w", m, err)
@@ -236,6 +254,9 @@ func (w *World) Step() {
 	for n := 1; n <= Maps; n++ {
 		w.Maps[n].Step()
 	}
+	if (w.Tick+gamestate.SettlementTickOffset)%gamestate.UpkeepTicks == 0 {
+		w.shopPass()
+	}
 	moving := w.moving
 	w.moving = nil
 	for _, mv := range moving {
@@ -304,6 +325,7 @@ func (w *World) AddPlayer(slot, model int, hero *netplay.Hero) (int, mapdata.Cel
 	g := &w.Game.Groups[slot]
 	g.First, g.Count = slot, 1
 	m := w.place(slot, start.To, mapdata.Cell{Row: start.Row, Col: start.Col}, start.Facing)
+	w.startTalk(slot)
 	return start.To, m.Cell, nil
 }
 

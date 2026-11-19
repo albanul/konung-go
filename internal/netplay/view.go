@@ -37,6 +37,8 @@ const (
 	OrderWeapon = "weapon" // 1/2/3, the HUD button: Mode (gamestate.Weapon*, −1 the next)
 	OrderAttack = "attack" // A: the stance and the nearest enemy
 	OrderItem   = "item"   // an item click (Item: ItemBag…), applied on the server (items.go)
+	OrderTalk   = "talk"   // right click on a character with a dialogue out of the stance: Target (the original's 0x43)
+	OrderReply  = "reply"  // a click on reply Index of the open dialogue (talk.go)
 )
 
 // OrderPayload is an order for the own hero.

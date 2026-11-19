@@ -416,11 +416,15 @@ func (s *startScene) viewOrder(o netplay.OrderPayload) {
 }
 
 // viewClick is a click on the map in a viewer scene: right on a character
+// with a dialogue out of the stance talks to it, right on a character
 // (not the own hero) attacks it in the stance (the server decides), right
 // elsewhere walks there with a pick-up, left walks.
 func (s *startScene) viewClick(mx, my int, right bool) {
 	c := mapdata.CellAt(mx+s.camX, my+s.camY)
 	switch {
+	case right && s.lanCanTalk():
+		// The original's 0x43: the server opens the dialogue (talk.go).
+		s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderTalk, Target: s.hovered})
 	case right && s.hovered >= 0 && s.hovered != s.view.slot:
 		s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderRight, Target: s.hovered, Row: c.Row, Col: c.Col})
 	case right:
