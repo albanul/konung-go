@@ -109,7 +109,24 @@ const (
 	EventSound  = "sound"  // Sound at (Row, Col)
 	EventAction = "action" // Entity started action Act (its sound is the client's)
 	EventMsg    = "msg"    // a status-line message for the own hero (Text, CP866)
+	EventArrow  = "arrow"  // an arrow released at Tick (Arrow): the client flies it (the original's 0x12)
 )
+
+// Arrow is an arrow as it leaves the bow (gamestate.Arrow's flight
+// values): position, per-sub-step velocity, shooter, image facing, ticks
+// left and the special (0 incendiary: it glows). The client flies it with
+// the single-player flight from the tick after Tick; the server alone
+// decides what it hits.
+type Arrow struct {
+	X       float64 `json:"x"`
+	Y       float64 `json:"y"`
+	VX      float64 `json:"vx"`
+	VY      float64 `json:"vy"`
+	Shooter int     `json:"sh"`
+	Facing  int     `json:"f,omitempty"`
+	Life    int     `json:"l"`
+	Special int     `json:"sp"`
+}
 
 // Event is something on the own hero's map.
 type Event struct {
@@ -120,6 +137,8 @@ type Event struct {
 	Row    int    `json:"r,omitempty"`
 	Col    int    `json:"c,omitempty"`
 	Text   []byte `json:"x,omitempty"`
+	Tick   int    `json:"t,omitempty"`
+	Arrow  *Arrow `json:"ar,omitempty"`
 }
 
 // EventsPayload is a tick's events.

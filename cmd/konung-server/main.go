@@ -205,9 +205,12 @@ func run(dataDir string, st settings) error {
 		case <-sessions.C:
 			srv.SetSessionEnd(time.Now().Add(length))
 			if sw != nil {
-				// Every hero back at its start, alive and healed, then
-				// saved (0x00448BB8).
-				sw.host.EndSession()
+				// The world anew from GAME.RES, every hero back at its
+				// start, alive and healed, then saved (0x0044687C,
+				// 0x00448BB8).
+				if err := sw.host.EndSession(); err != nil {
+					log.Printf("session end: the world: %v", err)
+				}
 			}
 			if err := store.EndSession(); err != nil {
 				log.Printf("session end: %v", err)

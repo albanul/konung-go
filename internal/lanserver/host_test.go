@@ -74,6 +74,8 @@ type viewer struct {
 	msgs     [][]byte
 	dlg      netplay.DialoguePayload
 	pty      netplay.PartyPayload
+	changes  []netplay.EnterPayload // map changes (MsgMapChange)
+	arrows   []netplay.Event        // EventArrow (arrows_test.go)
 }
 
 func enter(t *testing.T, ss *session, name string, model int) *viewer {
@@ -155,6 +157,13 @@ func (v *viewer) read() {
 				v.pileWin = p
 				v.mu.Unlock()
 			}
+		case netplay.MsgMapChange:
+			var p netplay.EnterPayload
+			if m.Decode(&p) == nil {
+				v.mu.Lock()
+				v.changes = append(v.changes, p)
+				v.mu.Unlock()
+			}
 		case netplay.MsgParty:
 			var p netplay.PartyPayload
 			if m.Decode(&p) == nil {
@@ -176,6 +185,9 @@ func (v *viewer) read() {
 				for _, e := range p.Events {
 					if e.Kind == netplay.EventMsg {
 						v.msgs = append(v.msgs, e.Text)
+					}
+					if e.Kind == netplay.EventArrow {
+						v.arrows = append(v.arrows, e)
 					}
 				}
 				v.mu.Unlock()

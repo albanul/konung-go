@@ -47,6 +47,11 @@ type lanView struct {
 	// leaves a party).
 	party []int
 	home  map[int]int
+	// arrows are the arrows the server released that have not flown yet;
+	// arrowTick the server tick the scene's arrows have flown to
+	// (lanarrows.go).
+	arrows    []viewArrow
+	arrowTick int
 }
 
 // viewPlayer is a player's hero as the server described it.
@@ -230,7 +235,8 @@ func (s *startScene) applyView(v netplay.ViewPayload) {
 	if v.Map != s.MapNumber {
 		return // the map change (MsgMapChange) comes first
 	}
-	s.Tick = v.Tick // the server's clock: time of day
+	s.Tick = v.Tick         // the server's clock: time of day
+	s.flyViewArrows(v.Tick) // on the cells of the last view, as the server's flight
 	if v.Full {
 		keep := map[int]bool{}
 		for _, c := range v.Chars {
@@ -358,6 +364,8 @@ func (s *startScene) applyEvents(ev []netplay.Event) {
 			}
 		case netplay.EventMsg:
 			s.showMessage(e.Text) // a pick-up's or an item click's message
+		case netplay.EventArrow:
+			s.addViewArrow(e)
 		}
 	}
 }
@@ -388,6 +396,7 @@ func (s *startScene) viewChangeMap(at netplay.EnterPayload) {
 		log.Printf("LAN map %d: %v", at.Map, err)
 		return
 	}
+	s.view.arrows, s.view.arrowTick = nil, 0 // the arrows stay on the map left
 	hideHelp := s.hideHelp
 	*s = *ns
 	s.hideHelp = hideHelp // F1 stays as the player left it

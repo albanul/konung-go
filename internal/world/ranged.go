@@ -166,6 +166,9 @@ func (s *World) ShotTick(w *Walker, e *gamestate.Entity, to mapdata.Cell) bool {
 	if w.ActStep == w.ActSteps()-gamestate.ShotStep {
 		if a, ok := s.Game.Shoot(e, w.Cell, int(w.Dir), to, s.Tables, len(s.Arrows)); ok {
 			s.Arrows = append(s.Arrows, a)
+			if s.Hooks.Shot != nil {
+				s.Hooks.Shot(a)
+			}
 		}
 	}
 	return !w.AdvanceAct()
@@ -211,6 +214,36 @@ func (s *World) FlyArrows() {
 		}
 	}
 	s.Arrows = kept
+}
+
+// FlyShown flies arrows one tick like FlyArrows but without its effects
+// (no provoking, no hits, no burning): they stop where FlyArrows' would on
+// the same characters. A LAN viewer flies the server's arrows with it.
+func (s *World) FlyShown(arrows []gamestate.Arrow) []gamestate.Arrow {
+	if len(arrows) == 0 {
+		return arrows
+	}
+	occupied := s.Occupants()
+	kept := arrows[:0]
+	for i := range arrows {
+		a := &arrows[i]
+		_, gone := a.Fly(
+			func(c mapdata.Cell) bool { return s.Walk.ArrowBlocked(c.Row, c.Col) },
+			func(c mapdata.Cell) int {
+				v, ok := occupied[c]
+				if !ok || v == a.Shooter {
+					return -1
+				}
+				if vw, ve := s.Combatant(v); !Alive(vw, ve) {
+					return -1
+				}
+				return v
+			})
+		if !gone {
+			kept = append(kept, *a)
+		}
+	}
+	return kept
 }
 
 // arrowOnBuilding is the blocked-cell branch of the flight (0x0042135D):

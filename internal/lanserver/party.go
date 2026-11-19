@@ -20,12 +20,13 @@ import (
 //
 // The original wipes the hero's group, hirelings included, when the hero
 // leaves the world (0x00443C1C), and its session-end reset re-reads
-// GAME.RES (0x00446900), which brings the villagers back. The port has no
-// world reset yet: a leaving hero's living hirelings go back to their
-// village at once, and at the session's end too (sendHome); a dead
-// hireling stays with the party until the hero leaves the map, then it is
-// gone (dropHireling), as the single-player leave cleanup removes the
-// party's dead.
+// GAME.RES (0x0044687C), which brings the villagers back. The port's
+// session end does the same (World.Reset); a leaving hero's living
+// hirelings go back to their village at once (sendHome, a port rule: the
+// original's wiped records stay empty until the reset); a dead hireling
+// stays with the party until the hero leaves the map, then it is gone
+// (dropHireling), as the single-player leave cleanup removes the party's
+// dead.
 
 // hireling is a hired villager and where it came from.
 type hireling struct {

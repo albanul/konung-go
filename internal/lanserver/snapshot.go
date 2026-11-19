@@ -106,6 +106,7 @@ const (
 	EventAction                         // a character started an action (Act; its sound is the client's choice)
 	EventMapChange                      // a player's hero (Entity = slot) took an exit from map From to Map
 	EventKill                           // a player's hero (Entity = slot) killed Victim (VictimPlayer: another player's hero)
+	EventArrow                          // an arrow was released on Map at Tick (Arrow; the original's 0x12)
 )
 
 // Event is something that happened in a tick, for the clients on Map.
@@ -123,4 +124,7 @@ type Event struct {
 	Victim         int
 	VictimPlayer   bool
 	VictimHireling bool // a player's hireling
+
+	Tick  int             // EventArrow: the tick it was released
+	Arrow gamestate.Arrow // EventArrow
 }

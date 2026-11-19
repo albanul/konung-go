@@ -221,26 +221,29 @@ func (h *Host) Lingering(name string) bool {
 	return h.lingering[name] != nil
 }
 
-// EndSession is the session's end for the heroes in the world (0x00448BB8):
-// every hero goes back to its type's start alive, with full HP, out of the
-// stance (a dead one revived, wearing what it wore; its bag lay where it
-// fell), then all are saved (SaveAll's rule). Lingering heroes go.
-func (h *Host) EndSession() {
+// EndSession is the session's end (0x00434438, then 0x0044687C and the
+// next session's start 0x00448BB8): the heroes left behind by their
+// players go (saved, as 0x00443C1C), the world is built anew from GAME.RES
+// with every hero in the world on its start, alive, healed, with its items
+// (World.Reset), and those heroes are saved. Each player then gets its map
+// whole again: a map change when its hero was elsewhere, every character,
+// the piles, its items and party.
+func (h *Host) EndSession() error {
 	h.mu.Lock()
 	var saves []save
 	for _, hp := range h.lingering {
-		hp.dead = false // back alive at the session's end: saved as such
-		h.W.ToStart(hp.slot, hp.info.Model)
 		saves = h.remove(hp, saves)
 	}
+	err := h.W.Reset()
 	for _, hp := range h.players {
-		h.W.ToStart(hp.slot, hp.info.Model)
 		hp.dead = false
+		hp.view, hp.looks = Viewer{}, map[int]netplay.Look{}
+		hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party = nil, nil, nil, nil, nil
 		saves = append(saves, h.saveOf(hp))
 	}
-	h.W.ResetShops()
 	h.mu.Unlock()
 	h.save(saves)
+	return err
 }
 
 // SaveAll keeps every player's hero and items (the session's end,
@@ -399,6 +402,10 @@ func (h *Host) report() ([]Kill, []save) {
 			byMap[ev.Map] = append(byMap[ev.Map], netplay.Event{Kind: netplay.EventSound, Sound: ev.Sound, Row: ev.Row, Col: ev.Col})
 		case EventAction:
 			byMap[ev.Map] = append(byMap[ev.Map], netplay.Event{Kind: netplay.EventAction, Entity: ev.Entity, Act: ev.Act, Row: ev.Row, Col: ev.Col})
+		case EventArrow:
+			a := ev.Arrow
+			byMap[ev.Map] = append(byMap[ev.Map], netplay.Event{Kind: netplay.EventArrow, Entity: ev.Entity, Tick: ev.Tick,
+				Arrow: &netplay.Arrow{X: a.X, Y: a.Y, VX: a.VX, VY: a.VY, Shooter: a.Shooter, Facing: a.Facing, Life: a.Life, Special: a.Special}})
 		case EventMapChange:
 			if hp := h.bySlot[ev.Entity]; hp != nil {
 				st := h.W.state(hp.slot)

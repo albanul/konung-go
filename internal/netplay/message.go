@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 9
+const ProtocolVersion = 10
 
 // MsgType identifies a message.
 type MsgType int

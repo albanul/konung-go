@@ -41,6 +41,9 @@ type Hooks struct {
 	// Protected reports a target attacker may not hurt (the LAN server's
 	// team-damage option): its blows stop and its arrows do no harm.
 	Protected func(attacker, target *gamestate.Entity) bool
+	// Shot: an arrow was released (the shot step of action 4); the LAN
+	// server reports it so the clients fly it (the original's 0x12).
+	Shot func(a gamestate.Arrow)
 }
 
 func (s *World) playAt(id int, c mapdata.Cell) {

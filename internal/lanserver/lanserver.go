@@ -65,6 +65,12 @@ type World struct {
 	TeamSafe bool
 
 	hired map[int][]hireling // by slot: its hirelings (party.go)
+
+	// gameRes and mapData are the files the session's end builds the
+	// world from again (Reset).
+	gameRes  []byte
+	mapData  [Maps + 1][]byte
+	sessions int // session ends so far (Reset)
 }
 
 type move struct {
@@ -110,27 +116,40 @@ func Load(f Files) (*World, error) {
 			return nil, fmt.Errorf("GAME.%d: %w", m, err)
 		}
 	}
+	w.gameRes = f.GameRes
 	for n := 1; n <= Maps; n++ {
-		mp, err := mapdata.Parse(maps[n-1].Map)
-		if err != nil {
-			return nil, fmt.Errorf("MAPS.RES map %d: %w", n, err)
+		w.mapData[n] = maps[n-1].Map
+		if err := w.buildMap(n, 1); err != nil {
+			return nil, err
 		}
-		walk, err := mapdata.ParseWalkGrid(maps[n-1].Map)
-		if err != nil {
-			return nil, fmt.Errorf("MAPS.RES map %d: %w", n, err)
-		}
-		s := &world.World{
-			Game: w.Game, Tables: tables, MapNumber: n, Walk: walk, LAN: true,
-			ByEntity: map[int]*world.NPC{}, Occ: map[mapdata.Cell]bool{}, PileAt: map[mapdata.Cell]int{},
-			Rng: rand.New(rand.NewPCG(1, uint64(n))),
-		}
-		s.WorldW, s.WorldH = mp.WorldSize()
-		s.Hooks = w.hooks(n)
-		s.Populate(false, w.attach)
-		villageBounds(s)
-		w.Maps[n] = s
 	}
 	return w, nil
+}
+
+// buildMap makes map n's world over w.Game: its walk grid and size from
+// MAPS.RES and the map entry (creatures placed in their territory and
+// respawned, villagers on their cells), with the random numbers seeded by
+// seed.
+func (w *World) buildMap(n int, seed uint64) error {
+	mp, err := mapdata.Parse(w.mapData[n])
+	if err != nil {
+		return fmt.Errorf("MAPS.RES map %d: %w", n, err)
+	}
+	walk, err := mapdata.ParseWalkGrid(w.mapData[n])
+	if err != nil {
+		return fmt.Errorf("MAPS.RES map %d: %w", n, err)
+	}
+	s := &world.World{
+		Game: w.Game, Tables: w.Tables, MapNumber: n, Walk: walk, LAN: true,
+		ByEntity: map[int]*world.NPC{}, Occ: map[mapdata.Cell]bool{}, PileAt: map[mapdata.Cell]int{},
+		Rng: rand.New(rand.NewPCG(seed, uint64(n))),
+	}
+	s.WorldW, s.WorldH = mp.WorldSize()
+	s.Hooks = w.hooks(n)
+	s.Populate(false, w.attach)
+	villageBounds(s)
+	w.Maps[n] = s
+	return nil
 }
 
 // LAN village AI (0x00437E28, the single-player 0x00413A84 with fixed
@@ -233,6 +252,9 @@ func (w *World) hooks(n int) world.Hooks {
 			}
 		},
 		Protected: w.protected,
+		Shot: func(a gamestate.Arrow) {
+			w.events = append(w.events, Event{Kind: EventArrow, Map: n, Entity: a.Shooter, Tick: w.Tick, Arrow: a})
+		},
 		// A pick-up's message and pile window go to the hero picking up.
 		Message: func(text []byte) {
 			if a := w.Maps[n].Arriving; a != nil {
@@ -510,35 +532,4 @@ func (w *World) reviveHeroes(m int) []int {
 		}
 	}
 	return out
-}
-
-// ToStart puts slot's hero back at its type's start (the session's end,
-// 0x00448BB8): alive (a dead hero revived, wearing what it wore), full HP,
-// no poison, out of the stance, idle; a map change is reported
-// (EventMapChange) when it was elsewhere.
-func (w *World) ToStart(slot, model int) bool {
-	from, ok := w.players[slot]
-	if !ok {
-		return false
-	}
-	start, err := w.Start(model)
-	if err != nil {
-		return false
-	}
-	w.closeItems(slot)
-	w.sendHome(slot) // the session's end: the hirelings go back to their villages
-	e, ok := w.Maps[from].RemoveMember(slot)
-	if !ok {
-		return false
-	}
-	e.Flags4 &^= 0x80
-	e.HP, e.Poison = gamestate.HPFull, 0
-	gamestate.LeaveStance(&e)
-	w.Game.Entities[slot] = e
-	mem := w.place(slot, start.To, mapdata.Cell{Row: start.Row, Col: start.Col}, start.Facing)
-	if start.To != from {
-		w.events = append(w.events, Event{Kind: EventMapChange, Map: start.To, From: from, Entity: slot,
-			Row: mem.Cell.Row, Col: mem.Cell.Col, Facing: start.Facing})
-	}
-	return true
 }

@@ -78,19 +78,6 @@ func (w *World) shopPass() {
 	}
 }
 
-// ResetShops is the session's end (0x00446AD1): every stock is emptied, and
-// the merchants of the slots in the world restock (0x00446B45).
-func (w *World) ResetShops() {
-	for si := range w.shops {
-		for k := range w.shops[si] {
-			w.Game.ClearShop(&w.shops[si][k])
-		}
-		for slot := range w.players {
-			w.restock(si, slot)
-		}
-	}
-}
-
 // Talk is a right click on character npc out of the stance (the
 // original's 0x43): its dialogue opens when it is a character of the
 // world (not a player's hero) on the hero's map, alive, with a dialogue

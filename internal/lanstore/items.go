@@ -3,6 +3,8 @@ package lanstore
 import (
 	"database/sql"
 	"fmt"
+
+	"konung1.5/internal/gamestate"
 )
 
 // Item slots of a SAVITEMS.DAT record (0x200 bytes per account; written by
@@ -34,21 +36,9 @@ type Item struct {
 	Count        int
 }
 
-// keepOnLoad is the load filter of 0x0044444C: bag items of these kinds do
-// not come back into a new session (amulet parts — category 11, type ≥ 10 —
-// start every session anew).
+// keepOnLoad is the load filter of 0x0044444C (gamestate.LANKeepsOnLoad).
 func keepOnLoad(it Item) bool {
-	if it.Slot != SlotBag {
-		return true
-	}
-	switch {
-	case it.Category > 12,
-		it.Category <= 5 && it.Type >= 70,
-		it.Category == 9 && it.Type >= 14,
-		it.Category == 11 && it.Type >= 10:
-		return false
-	}
-	return true
+	return gamestate.LANKeepsOnLoad(it.Slot == SlotBag, it.Category, it.Type)
 }
 
 func validSlot(it Item) error {

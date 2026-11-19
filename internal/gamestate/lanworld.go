@@ -59,3 +59,21 @@ func (g *Game) EnterLANWorld(m, row, col, facing int, exits []MapExit) {
 	}
 	g.Settlements, g.Piles, g.Exits = nil, nil, exits
 }
+
+// LANKeepsOnLoad is the item filter of the LAN server's SAVITEMS.DAT read
+// (0x0044444C, at «Ok» and at a new session): bag items of these kinds do
+// not come back (amulet parts, category 11 type ≥ 10, start every session
+// anew); equipment, jewellery and arrows always do.
+func LANKeepsOnLoad(bag bool, category, typ int) bool {
+	if !bag {
+		return true
+	}
+	switch {
+	case category > 12,
+		category <= 5 && typ >= 70,
+		category == 9 && typ >= 14,
+		category == 11 && typ >= 10:
+		return false
+	}
+	return true
+}

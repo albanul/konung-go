@@ -204,7 +204,7 @@ func TestPartyTravelsAndGoesHome(t *testing.T) {
 }
 
 // A dead hireling is dropped when the hero leaves the map; the session's
-// end sends the living home.
+// end (GAME.RES again) has both back in their village.
 func TestDeadHirelingAndSessionEnd(t *testing.T) {
 	w := load(t)
 	const slot = 0
@@ -228,11 +228,14 @@ func TestDeadHirelingAndSessionEnd(t *testing.T) {
 	if w.hirelingMap(alive) != 8 {
 		t.Fatal("the living hireling did not come along")
 	}
-	if !w.ToStart(slot, 2) {
-		t.Fatal("ToStart")
+	if err := w.Reset(); err != nil {
+		t.Fatal(err)
 	}
-	if len(w.Party(slot)) != 0 || w.Maps[7].ByEntity[alive] == nil {
-		t.Fatal("the session's end did not send the hireling home")
+	// The session's end reads GAME.RES again: both are villagers at home
+	// again, the dead one alive.
+	if len(w.Party(slot)) != 0 || w.Maps[7].ByEntity[alive] == nil || w.Maps[7].ByEntity[dead] == nil ||
+		w.Game.Entities[dead].Dead() || w.Game.Entities[alive].Group != w.Game.Entities[vs[2]].Group {
+		t.Fatal("the session's end did not bring the hirelings back to their village")
 	}
 }
 
