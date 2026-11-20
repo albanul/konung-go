@@ -1209,6 +1209,11 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 			s.hovered, s.hoveredBuilding = -1, 0 // the window covers the world
 		}
 	}
+	if s.lan && s.Hero != nil {
+		// Over the world, under the windows: the map, character, dialogue
+		// and trade windows cover it like the original's.
+		s.drawLANStatus(screen)
+	}
 	if s.Hero != nil {
 		s.drawHelp(screen)
 	}
@@ -1236,9 +1241,6 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 		s.wmap.hoverNames = s.lanMapPlayers(s.wmap.lanRegionAt(mx, my))
 	}
 	s.wmap.draw(screen, s.hud, s.Game, s.MapNumber, s.tiling, s.font, s.talk.hi)
-	if s.lan && s.Hero != nil {
-		s.drawLANStatus(screen)
-	}
 	if text := s.statusText(); text != nil {
 		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.
 		s.font.drawWrapped(screen, text, viewLeft+10, viewBottom+5, viewRight-viewLeft-15)

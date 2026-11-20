@@ -123,7 +123,7 @@ func (w *worldMapWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, mapN
 	view := dst.SubImage(image.Rect(viewLeft, viewTop, viewRight+1, viewBottom+1)).(*ebiten.Image)
 	h.draw(view, resfmt.WorldMapSlot, viewLeft, viewTop)
 	if w.lan != nil {
-		w.drawLAN(view, mapNumber, font) // the status line: drawLANStatus
+		w.drawLAN(view, mapNumber, font)
 		w.drawHoverNames(dst, h, hi, font)
 		return
 	}
