@@ -63,7 +63,7 @@ The slot under the mouse (hit test `0x004398C4` on the same table) is selected. 
 
 ## Port notes
 
-* Saving first writes the scene back into the game, as a map change does (`startScene.storeWorld`), plus the hero's live cell and facing.
+* Saving first writes the scene back into the game, as a map change does (`World.StoreWorld`), plus the hero's live cell and facing.
 * The port's runtime piles on maps other than the current one (it keeps them across map changes; the game does not) are not in the active list, so a save drops them.
 * NPC runtime state that the port keeps outside the entity records is rebuilt from the records on load: walk paths, combat targets and intents.
 * `Game.Quests` is read and written by the [dialogues](konung_dialogue.md) and listed by the quest log. `Game.KnownMaps` is set on every map load and drawn by the [map window](konung_world_map.md).

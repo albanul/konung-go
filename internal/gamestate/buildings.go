@@ -165,7 +165,7 @@ func (g *Game) voevodaPass(s *Settlement, t *resfmt.ExeTables) {
 	for k := 0; k < gr.Count; k++ {
 		id := gr.First + k
 		m := g.Entities[id]
-		if !m.canAct() || id == v || m.Model >= 3 {
+		if !m.canAct() || id == v || m.Model >= 3 || m.Group != s.Group { // a LAN hireling left the village
 			continue
 		}
 		if g.RaiseCost(m, t, 0) != 0 {

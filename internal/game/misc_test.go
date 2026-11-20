@@ -1,6 +1,7 @@
 package game
 
 import (
+	"konung1.5/internal/world"
 	"os"
 	"testing"
 
@@ -17,7 +18,7 @@ func giveMisc(t *testing.T, s *startScene, typ int) int {
 		t.Fatalf("script %d failed", 166+typ)
 	}
 	s.afterTalk(tk, nil)
-	return s.party[0].Bag[0]
+	return s.Party[0].Bag[0]
 }
 
 // TestMagicOrbJumps: «Магический шар волхва Родников» (misc 18, 0x00415383)
@@ -28,15 +29,15 @@ func TestMagicOrbJumps(t *testing.T) {
 	}
 	s := newVolkScene(t)
 	orb := giveMisc(t, s, 18)
-	s.game.World = sceneWorld{s}
-	s.game.UseBagItem(&s.hand, &s.party[0], s.tables, 0)
+	s.Game.World = s.Access()
+	s.Game.UseBagItem(&s.hand, &s.Party[0], s.Tables, 0)
 	if !s.miscRequests() {
 		t.Fatal("the orb asked for no map change")
 	}
-	if s.mapNumber != 3 || s.game.Groups[0].Row != 141 || s.game.Groups[0].Col != 54 {
-		t.Fatalf("map %d, party at (%d,%d)", s.mapNumber, s.game.Groups[0].Row, s.game.Groups[0].Col)
+	if s.MapNumber != 3 || s.Game.Groups[0].Row != 141 || s.Game.Groups[0].Col != 54 {
+		t.Fatalf("map %d, party at (%d,%d)", s.MapNumber, s.Game.Groups[0].Row, s.Game.Groups[0].Col)
 	}
-	if s.party[0].Bag[0] != orb {
+	if s.Party[0].Bag[0] != orb {
 		t.Error("the orb was used up")
 	}
 }
@@ -46,9 +47,9 @@ func TestMagicOrbJumps(t *testing.T) {
 func TestShovelClosesWindow(t *testing.T) {
 	s := newVolkScene(t)
 	giveMisc(t, s, gamestate.MiscShovel)
-	s.game.World = sceneWorld{s}
+	s.Game.World = s.Access()
 	s.inv.open = true
-	s.game.UseBagItem(&s.hand, &s.party[0], s.tables, 0)
+	s.Game.UseBagItem(&s.hand, &s.Party[0], s.Tables, 0)
 	s.miscRequests()
 	if s.inv.open || !s.inv.quick || !s.hand.Digging() {
 		t.Errorf("window %v, strip %v, digging %v", s.inv.open, s.inv.quick, s.hand.Digging())
@@ -61,8 +62,8 @@ func TestShovelClosesWindow(t *testing.T) {
 func TestKind49Retreat(t *testing.T) {
 	s := newVolkScene(t)
 	var n *npc
-	for _, c := range s.npcs {
-		if c.mode == npcCreature {
+	for _, c := range s.NPCs {
+		if c.Mode == npcCreature {
 			n = c
 			break
 		}
@@ -70,21 +71,21 @@ func TestKind49Retreat(t *testing.T) {
 	if n == nil {
 		t.Skip("no creature on the start map")
 	}
-	e := &s.game.Entities[n.entity]
+	e := &s.Game.Entities[n.Entity]
 	e.Flags4 = 0x41
-	if s.retreat(e) {
+	if s.Retreat(e) {
 		t.Fatal("kind 0x41 retreated")
 	}
-	e.Flags4 = kindRetreat
-	from := n.cell
-	if !s.retreat(e) {
+	e.Flags4 = world.KindRetreat
+	from := n.Cell
+	if !s.Retreat(e) {
 		t.Fatal("kind 0x49 did not retreat")
 	}
-	goal := n.path[len(n.path)-1]
+	goal := n.Path[len(n.Path)-1]
 	dr, dc := goal.Row-from.Row, goal.Col-from.Col
 	far := max(dr, -dr) >= gamestate.VillageRowRange || max(dc, -dc) >= gamestate.VillageColRange
-	if n.intent != intentWalk || !far {
-		t.Errorf("intent %#x, walk from %v to %v", n.intent, from, goal)
+	if n.Intent != world.IntentWalk || !far {
+		t.Errorf("intent %#x, walk from %v to %v", n.Intent, from, goal)
 	}
 }
 
@@ -93,16 +94,16 @@ func TestKind49Retreat(t *testing.T) {
 // post's facing (0x00416A94).
 func TestApprenticeWalksToPost(t *testing.T) {
 	s := newVolkScene(t)
-	n := s.byEntity[359]
-	if n == nil || n.mode != npcVillager {
+	n := s.ByEntity[359]
+	if n == nil || n.Mode != npcVillager {
 		t.Skip("villager 359 is not on the start map")
 	}
-	s.game.Entities[359].Flags4 |= 1 << 3
-	p, ok := s.game.ApprenticePost(359)
+	s.Game.Entities[359].Flags4 |= 1 << 3
+	p, ok := s.Game.ApprenticePost(359)
 	if !ok {
 		t.Fatal("no apprentice post")
 	}
-	apprentice := func() (gamestate.Post, bool) { return s.game.ApprenticePost(359) }
+	apprentice := func() (gamestate.Post, bool) { return s.Game.ApprenticePost(359) }
 	next := func(c mapdata.Cell) bool {
 		for _, nb := range mapdata.Neighbors(mapdata.Cell{Row: p.Row, Col: p.Col}) {
 			if nb.Cell == c {
@@ -111,15 +112,15 @@ func TestApprenticeWalksToPost(t *testing.T) {
 		}
 		return false
 	}
-	if n.villageTick(1, apprentice) != 1 || len(n.path) == 0 || !next(n.path[len(n.path)-1]) {
-		t.Fatalf("no walk next to the post (%d,%d): path %v", p.Row, p.Col, n.path)
+	if n.VillageTick(1, apprentice) != 1 || len(n.Path) == 0 || !next(n.Path[len(n.Path)-1]) {
+		t.Fatalf("no walk next to the post (%d,%d): path %v", p.Row, p.Col, n.Path)
 	}
-	goal := n.path[len(n.path)-1]
-	n.halt()
-	n.cell, n.path = goal, nil
-	n.dir = mapdata.Direction(p.Facing+1) & 7
-	if n.villageTick(1, apprentice) != 0 || n.dir != mapdata.Direction(p.Facing&7) {
-		t.Errorf("next to the post: facing %d, want %d", n.dir, p.Facing&7)
+	goal := n.Path[len(n.Path)-1]
+	n.Halt()
+	n.Cell, n.Path = goal, nil
+	n.Dir = mapdata.Direction(p.Facing+1) & 7
+	if n.VillageTick(1, apprentice) != 0 || n.Dir != mapdata.Direction(p.Facing&7) {
+		t.Errorf("next to the Post: facing %d, want %d", n.Dir, p.Facing&7)
 	}
 }
 
@@ -127,25 +128,25 @@ func TestApprenticeWalksToPost(t *testing.T) {
 // after which the game goes on (0x0041D777).
 func TestSurrenderFilm(t *testing.T) {
 	s := newVolkScene(t)
-	st := s.game.SettlementOnMap(s.mapNumber)
+	st := s.Game.SettlementOnMap(s.MapNumber)
 	if st == nil {
 		t.Skip("no settlement on the start map")
 	}
-	s.game.Groups[st.Group].Alarm = gamestate.AlarmAttack
+	s.Game.Groups[st.Group].Alarm = gamestate.AlarmAttack
 	// One man left alive and a strong hero: more than twice his strength.
-	s.party[0].BaseStats = [4]int{250, 250, 250, 250}
-	s.party[0].Stats = s.party[0].BaseStats
-	gr, men := s.game.Groups[st.Group], 0
+	s.Party[0].BaseStats = [4]int{250, 250, 250, 250}
+	s.Party[0].Stats = s.Party[0].BaseStats
+	gr, men := s.Game.Groups[st.Group], 0
 	for k := range gr.Count {
-		if e := &s.game.Entities[gr.First+k]; e.Model < 3 && !e.Dead() {
+		if e := &s.Game.Entities[gr.First+k]; e.Model < 3 && !e.Dead() {
 			if men++; men > 1 {
 				e.Flags4 |= 0x80
 			}
 		}
 	}
-	s.settlementTick()
-	if s.film != "defeat1" || s.filmToMenu {
-		t.Fatalf("film %q, to menu %v", s.film, s.filmToMenu)
+	s.SettlementTick()
+	if s.Film != "defeat1" || s.FilmToMenu {
+		t.Fatalf("film %q, to menu %v", s.Film, s.FilmToMenu)
 	}
 }
 
@@ -153,18 +154,18 @@ func TestSurrenderFilm(t *testing.T) {
 // menu, and takes nothing (0x00411154).
 func TestWinPile(t *testing.T) {
 	s := newVolkScene(t)
-	p := s.game.Piles[0]
+	p := s.Game.Piles[0]
 	if p.Index != 0 || p.Map != 46 {
 		t.Skip("pile 0 is not the map-46 pile")
 	}
-	m := s.lead()
-	s.pileAt[m.cell] = 0 // as if the hero stood on it
-	bag := s.party[0].Bag
-	s.arrive(m)
-	if s.film != "win" || !s.filmToMenu {
-		t.Fatalf("film %q, to menu %v", s.film, s.filmToMenu)
+	m := s.Lead()
+	s.PileAt[m.Cell] = 0 // as if the hero stood on it
+	bag := s.Party[0].Bag
+	s.Arrive(m)
+	if s.Film != "win" || !s.FilmToMenu {
+		t.Fatalf("film %q, to menu %v", s.Film, s.FilmToMenu)
 	}
-	if s.party[0].Bag != bag || s.game.Piles[0].Items != p.Items {
+	if s.Party[0].Bag != bag || s.Game.Piles[0].Items != p.Items {
 		t.Error("the win pile was picked up")
 	}
 }
@@ -173,11 +174,11 @@ func TestWinPile(t *testing.T) {
 // dead bit is set (0x004376A3), with no delay.
 func TestGameOverAtOnce(t *testing.T) {
 	s := newVolkScene(t)
-	if s.gameOver() {
+	if s.GameOver() {
 		t.Fatal("game over with a living hero")
 	}
-	s.party[0].Flags4 |= 0x80
-	if !s.gameOver() {
+	s.Party[0].Flags4 |= 0x80
+	if !s.GameOver() {
 		t.Fatal("no game over on the frame the hero died")
 	}
 }

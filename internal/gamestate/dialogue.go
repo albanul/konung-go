@@ -55,6 +55,18 @@ type Talk struct {
 	Drop func(item int)
 	// lastGreeting is 0x00A3E7C0, the last greeting sound (no repeat).
 	lastGreeting *int
+	// Party is the hero's group (single player: group 0, the party; a
+	// LAN hero: its slot's group): 278–281, 335, 349, 350, 362.
+	Party int
+	// LAN runs the scripts as LAN_KONG.EXE's client and server do
+	// (lanscript.go); Loans is then the settlement's per-player loan bits
+	// (LAN settlement +0x4C) and Slot the player's bit.
+	LAN   bool
+	Loans *uint16
+	Slot  int
+	// PartySize is the LAN hero's party: the hero and its hirelings (the
+	// player group's member count +0x1C, 349).
+	PartySize int
 }
 
 // TalkEvents report what the scripts changed beyond the records, so the
@@ -65,6 +77,12 @@ type TalkEvents struct {
 	Greeting     int    // greeting sound to play on open, 0 = none
 	Trade        *Trade // script 275 opened the trade window (window 7)
 	Unported     []int
+	// Hired are the characters a LAN hero hired (291): the server makes
+	// them its hirelings (lanserver) after the dialogue step.
+	Hired []int
+	// Dismissed are the LAN hero's hirelings it let go (332): the server
+	// sends them home after the dialogue step.
+	Dismissed []int
 }
 
 func (t *Talk) rand(n int) int {
@@ -104,11 +122,15 @@ func (g *Game) SetQuestFlag(i int, on bool) {
 
 // QuestLog is what the quest log (window 2, 0x0042DEDB) lists: the text of
 // every set flag that has one, in flag order.
-func (g *Game) QuestLog() []uint32 {
+func (g *Game) QuestLog() []uint32 { return QuestLogOf(g.Quests[:]) }
+
+// QuestLogOf is QuestLog of the quest flags q (the 0x00625068 layout): a
+// LAN player's flags, kept by the server per player.
+func QuestLogOf(q []byte) []uint32 {
 	var out []uint32
 	for i := range QuestFlagCount {
-		if g.QuestFlag(i) {
-			if id := int(g.Quests[4*i+2]) | int(g.Quests[4*i+3])<<8; id != resfmt.QuestNone {
+		if 4*i+3 < len(q) && q[4*i]&questFlagBit != 0 {
+			if id := int(q[4*i+2]) | int(q[4*i+3])<<8; id != resfmt.QuestNone {
 				out = append(out, uint32(id))
 			}
 		}
@@ -130,11 +152,18 @@ const (
 func (t *Talk) OpenDialogue(npc int, lastGreeting *int) *Dialogue {
 	t.lastGreeting = lastGreeting
 	e := t.G.Entities[npc]
-	if e.Dialogue == NoDialogue || e.Dialogue >= resfmt.QuestDialogues {
+	dl := e.Dialogue
+	if t.LAN {
+		dl = LANDialogue(dl)
+		if npc >= LANPlayerSlots && e.Group == t.Party {
+			dl = LANMemberDialogue // an own hireling
+		}
+	}
+	if dl == NoDialogue || dl >= resfmt.QuestDialogues {
 		return nil
 	}
 	t.NPC = npc
-	start := t.Q.Starts[e.Dialogue]
+	start := t.Q.Starts[dl]
 	d := &Dialogue{NPC: npc, Node: start, Prev: start}
 	sound := 0
 	if e.Flags4&0x40 != 0 {
@@ -312,6 +341,9 @@ const (
 // script is 0x0043259C(id): a condition's value or an action (the
 // return value is then ignored).
 func (t *Talk) script(id int) int {
+	if t.LAN {
+		return t.lanScript(id)
+	}
 	switch {
 	case id < scriptMapCleared:
 		return b2i(t.groupHurt(id + 1))

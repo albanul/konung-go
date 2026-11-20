@@ -1,6 +1,6 @@
 # Party play
 
-Group 0 is the party; its first entity is the hero (`0x00A3E694`). Every member runs the same party AI, the party branch of the dispatcher `0x00421DA4` (action switch `0x00422654`). The hero differs in only two ways: it never follows, and its death ends the game. The player gives orders to the **selection list**. Status: traced against `konung.exe` and ported. Code: `gamestate/party.go`, `game/party.go`.
+Group 0 is the party; its first entity is the hero (`0x00A3E694`). Every member runs the same party AI, the party branch of the dispatcher `0x00421DA4` (action switch `0x00422654`). The hero differs in only two ways: it never follows, and its death ends the game. The player gives orders to the **selection list**. Status: traced against `konung.exe` and ported. Code: `gamestate/party.go`, `world/party.go`.
 
 ## Intent bits (entity `+2`, verified)
 
@@ -74,13 +74,13 @@ The routine is called after an exit or a jump.
 
 `gamestate.Game.PlaceParty` (returns the members placed).
 
-**Same map** (an in-map teleport, or an orb or key to the current map; main loop `0x004377A6`): no leave cleanup and no load, so creatures, piles and objects stay as they are. `0x004118DC` first clears the occupant bits of the members that can act (alive, type not 3/9; `0x00411906`), then places as above. A placed member gets the arrival facing, `+0x08`/`+0x0A` and `+0x0C`/`+0x0E` = its cell, `+2 &= 0xF0`, `+0x13` = `0xFF`, and starts its idle action (`0x004143DC`, 0 in the stance, else 6; `0x00411A1D`–`0x00411AE8`). Port: `startScene.placeAgain`; it also stops a member left unplaced (no free formation cell), whose walk the original lets run. Test: `game.TestJumpToSameMap`.
+**Same map** (an in-map teleport, or an orb or key to the current map; main loop `0x004377A6`): no leave cleanup and no load, so creatures, piles and objects stay as they are. `0x004118DC` first clears the occupant bits of the members that can act (alive, type not 3/9; `0x00411906`), then places as above. A placed member gets the arrival facing, `+0x08`/`+0x0A` and `+0x0C`/`+0x0E` = its cell, `+2 &= 0xF0`, `+0x13` = `0xFF`, and starts its idle action (`0x004143DC`, 0 in the stance, else 6; `0x00411A1D`–`0x00411AE8`). Port: `World.PlaceAgain`; it also stops a member left unplaced (no free formation cell), whose walk the original lets run. Test: `game.TestJumpToSameMap`.
 
 **Dead members stay behind.** The leave cleanup `0x00436AD0(map)` loops over all 200 groups from group 0 and runs while group 0 is still on the map it leaves: the exit (`0x00421CCD`) sets only the arrival cell and facing, and `0x004118DC` writes the new map to `+0x1B` after the load (`0x00411999`). So a dead party member is removed like any other dead character: its items are freed, the later members move down one slot and the count drops. Its body stays on the old map until the cleanup; it is not on the new one, and it can no longer be revived. Port: `Game.LeaveMap` (from group 0), called by `startScene.changeMap` before `TakeExit`; the selection and the window's character are renumbered.
 
 ## Revival (`0x00414B3C`, verified)
 
-The routine runs from «Живая Вода» (herb 13, f ≥ 10) on a dead character (`0x0041E101`). **«Слова Воскрешения»** (misc item type 6, case `0x00414FFB`, verified) runs it for every dead character of every group on the current map: the loop goes over all 200 groups whose map `+0x1B` is the current one (`0x00A3E7FC`), and over their members with `+4` bit `0x80`. Villagers and creatures come back too. Then item `+0` = `0xFF` (used up), and the common tail `0x00415BD3` removes it from the bag and plays sound 10. Nothing checks that anyone was dead, so a use with no dead still consumes it. Port: `UseMisc` sets `Game.ReviveAll`; `startScene.reviveAll` revives the party, then the others in group order; a revived NPC returns to its AI (`npc.liveMode`).
+The routine runs from «Живая Вода» (herb 13, f ≥ 10) on a dead character (`0x0041E101`). **«Слова Воскрешения»** (misc item type 6, case `0x00414FFB`, verified) runs it for every dead character of every group on the current map: the loop goes over all 200 groups whose map `+0x1B` is the current one (`0x00A3E7FC`), and over their members with `+4` bit `0x80`. Villagers and creatures come back too. Then item `+0` = `0xFF` (used up), and the common tail `0x00415BD3` removes it from the bag and plays sound 10. Nothing checks that anyone was dead, so a use with no dead still consumes it. Port: `UseMisc` sets `Game.ReviveAll`; `World.ReviveAll` revives the party, then the others in group order; a revived NPC returns to its AI (`world.NPC.LiveMode`).
 
 Kind `0x4C`'s `+0x12` reset compares the byte `+4` before the dead bit is cleared, so it never applies to a dead character; the port keeps that order.
 
@@ -93,7 +93,7 @@ Kind `0x4C`'s `+0x12` reset compares the byte `+4` before the dead bit is cleare
    With no free cell found, the revival fails.
 2. **State.** Revival is only possible on the map where the member died; leaving the map removes it (above). HP 1600, poison 0. Kind `0x4C` gets `+0x12` = rand()%5 + 1. The dead bit clears, the character goes idle (`0x00414AB4`) and its portrait is redrawn.
 
-Port: `gamestate.Game.Revive`, wired through `Game.Reviver` to `startScene.revive`.
+Port: `gamestate.Game.Revive`, wired through `Game.Reviver` to `World.Revive`.
 
 ## Hit reaction and the portrait (verified)
 
@@ -104,8 +104,8 @@ Port: `gamestate.Game.Revive`, wired through `Game.Reviver` to `startScene.reviv
 
 The creature and village AIs target the whole party:
 
-* the alarm checks see every living member (`startScene.partyPositions`, `partyOnCells`);
-* the selectors pick the nearest member (`0x004202A8`), a group-mate's target (`0x00420178`) or the nearest unattacked member (`0x004203A0`) (`startScene.creatureTarget`, `nearestMember`);
+* the alarm checks see every living member (`World.PartyPositions`, `World.PartyOnCells`);
+* the selectors pick the nearest member (`0x004202A8`), a group-mate's target (`0x00420178`) or the nearest unattacked member (`0x004203A0`) (`World.CreatureTarget`, `World.NearestMember`);
 * stationary creatures swing at any adjacent member;
 * shooters take the first member with a clear line.
 
@@ -114,10 +114,10 @@ The creature and village AIs target the whole party:
 * **`gamestate`:** `Select`, `Deselect`, `Selected`, `FormationDir`, `FollowTarget`, `Game.PlaceParty`, `Game.Revive`, the `Intent*` bits; `resfmt.ExeTables.FormationOffset`.
 * **`internal/game` (`party.go`):**
   * `member` has the walker, the `+2` bits (`intent`), `+6` (`target`), the building target and the pick-up flag;
-  * `startScene.members` holds one member per party entry, `sel` is the selection and `cur` the character window's character;
-  * `memberTick` and `idleTick` run the AI, `followLeader` the following, `rightOrder` / `walkOrder` / `attackOrder` / `gatherOrder` the orders;
+  * `World.Members` holds one member per party entry, `sel` is the selection and `cur` the character window's character;
+  * `World.MemberTick` and `World.IdleTick` run the AI, `World.FollowLeader` the following, `World.RightOrder` / `World.WalkOrder` / `World.AttackOrder` / `World.GatherOrder` the orders;
   * `portraitClick`, `portraitRightClick` and `selectInWorld` change the selection.
-* **Saving.** `storeWorld` writes each member's cell, facing and `+2` back; on rebuild, the strike, follow and idle bits survive.
+* **Saving.** `World.StoreWorld` writes each member's cell, facing and `+2` back; on rebuild, the strike, follow and idle bits survive.
 
 Port choices and approximations:
 

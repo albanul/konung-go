@@ -40,3 +40,19 @@ func TestExeTextAndFonts(t *testing.T) {
 		}
 	}
 }
+
+func TestRuneToCP866RoundTrip(t *testing.T) {
+	for c := 0x20; c < 0x100; c++ {
+		if c >= 0x7F && c < 0x80 || c >= 0xB0 && c < 0xE0 || c > 0xF1 {
+			continue // no letter there
+		}
+		s := CP866ToUTF8([]byte{byte(c)})
+		r := []rune(s)[0]
+		if got, ok := RuneToCP866(r); !ok || got != byte(c) {
+			t.Errorf("%#x -> %q -> %#x, %v", c, s, got, ok)
+		}
+	}
+	if _, ok := RuneToCP866('€'); ok {
+		t.Error("accepted €")
+	}
+}

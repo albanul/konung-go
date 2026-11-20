@@ -10,13 +10,15 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
 )
 
 const (
 	ScreenWidth            = 800
 	ScreenHeight           = 600
-	menuItems              = 6
+	menuItems              = 7 // the six MENU800R.RES buttons + «Сетевая игра»
+	paintedItems           = 6 // items with button frames in MENU800R.RES
 	swordCursorSpriteIndex = 4
 	cursorSprites          = 11
 )
@@ -52,6 +54,13 @@ type Menu struct {
 	film      *filmPlayer
 	afterFilm func()
 	gameDir   string
+	// lan runs the LAN version's screens behind «Сетевая игра» (nil when
+	// the LAN files are missing from the game folder; the item is hidden then).
+	lan   *lanUI
+	inLAN bool
+	// lanWorld: the running game is a LAN world (no saving; leaving it for
+	// a single-player game drops the connection).
+	lanWorld bool
 }
 
 // Main-menu items in the order of the exe layout table (0x0045B314) and the
@@ -63,7 +72,12 @@ const (
 	itemNewGame  = 3 // 0x00437B91
 	itemSettings = 4 // 0x00437DDD, opens the settings screen
 	itemExit     = 5 // 0x00437E3D
+	itemNetwork  = 6 // port addition: «Сетевая игра», the LAN login screen
 )
+
+// menuOrder is the on-screen order of the items, top to bottom, for the
+// arrow keys; «Сетевая игра» sits where «Сохранить игру» appears in a game.
+var menuOrder = [menuItems]int{itemReturn, itemSave, itemNetwork, itemLoad, itemNewGame, itemSettings, itemExit}
 
 // firstItem is the first visible menu item: the draw routine 0x0042F8D8
 // starts at 0 while a game is running and at 2 otherwise, and the menu loops
@@ -75,13 +89,34 @@ func (m *Menu) firstItem() int {
 	return itemLoad
 }
 
+// visible reports whether item i is shown: «Вернуться в игру» and
+// «Сохранить игру» only in a game, «Сетевая игра» only without one.
+func (m *Menu) visible(i int) bool {
+	if i == itemNetwork {
+		return !m.running && m.lan != nil
+	}
+	if i == itemSave && m.lanWorld {
+		return false // a LAN world is not saved as a single-player game
+	}
+	return i >= m.firstItem()
+}
+
+// checkMenuFrames checks that a MENU*R.RES file has the two screens, the
+// marker and a normal/selected pair for each painted button (frames 3..14).
+func checkMenuFrames(path string, n int) error {
+	if need := 3 + paintedItems*2; n < need {
+		return fmt.Errorf("%s has %d frames; need at least %d", path, n, need)
+	}
+	return nil
+}
+
 type rect struct{ x, y, w, h int }
 
 // menuButtons800 is the 800x600 half of the main-menu layout table in
 // konung.exe (DGROUP VA 0x0045B314, 32 bytes per button: 640x480 x1,y1,x2,y2
 // then 800x600 x1,y1,x2,y2). The draw routine at VA 0x0042F8D8 blits each
 // button frame with its top-left at (x1, y1).
-var menuButtons800 = [menuItems][4]int{
+var menuButtons800 = [paintedItems][4]int{
 	{290, 161, 590, 210}, // Вернуться в игру
 	{288, 205, 504, 250}, // Сохранить игру
 	{265, 250, 488, 303}, // Загрузить игру
@@ -96,8 +131,8 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load menu resource %q: %w", resourcePath, err)
 	}
-	if len(frames) < 3+menuItems*2 {
-		return nil, fmt.Errorf("%s has %d frames; need at least %d", resourcePath, len(frames), 3+menuItems*2)
+	if err := checkMenuFrames(resourcePath, len(frames)); err != nil {
+		return nil, err
 	}
 	objectsPath, err := FindGameResource("assets/Konung/OBJECTS.RES")
 	if err != nil {
@@ -177,11 +212,37 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		}
 		m.cursors[i] = ebiten.NewImageFromImage(img)
 	}
-	for i := range menuItems {
+	for i := range paintedItems {
 		m.buttons[i][0] = ebiten.NewImageFromImage(frames[3+i*2])
 		m.buttons[i][1] = ebiten.NewImageFromImage(frames[4+i*2])
 		b := menuButtons800[i]
 		m.buttonRects[i] = rect{x: b[0], y: b[1], w: b[2] - b[0], h: b[3] - b[1]}
+	}
+	// «Сетевая игра» only when the LAN version's files are installed (in the
+	// game folder): LAN_KONG.EXE (layout, texts), ME800R.RES, PLAY800R.RES
+	// (and NEW800R.RES for «Новый герой»).
+	mePath, err1 := FindGameResource("assets/Konung/ME800R.RES")
+	playPath, err2 := FindGameResource("assets/Konung/PLAY800R.RES")
+	if err1 == nil && err2 == nil {
+		newPath, _ := FindGameResource("assets/Konung/NEW800R.RES") // «Новый герой»; optional
+		lan, err := newLANUI(gameDir, assets, mePath, playPath, newPath)
+		if err != nil {
+			log.Printf("LAN screens unavailable: %v", err)
+		} else {
+			labels, err := networkButton(assets.tables)
+			if err != nil {
+				return nil, err
+			}
+			m.lan = lan
+			lan.config = &m.config
+			lan.writeSettings = func(video int32) {
+				m.settings.video = video // one video mode for both screens
+				m.writeConfig()
+			}
+			m.buttons[itemNetwork] = [2]*ebiten.Image{toEbiten(labels[0]), toEbiten(labels[1])}
+			b := labels[0].Bounds()
+			m.buttonRects[itemNetwork] = rect{x: networkLabelX, y: networkLabelY, w: b.Dx(), h: b.Dy()}
+		}
 	}
 	// State 9 (0x0043914B), after loading: POSTER.FLM, then the menu
 	// (state 7) with no game running.
@@ -235,10 +296,15 @@ func (m *Menu) Update() error {
 	}
 	// Escape is switched on the screen state 0x00A3E6D8 (0x00437430, jump
 	// table 0x0043756C).
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !(m.inWorld && m.world.chatTyping()) {
 		if m.inWorld {
 			if m.world.escape() {
 				m.inWorld = false
+				if m.lanWorld {
+					// A network game has the LAN menu, not the main menu.
+					m.lan.openInGame()
+					m.inLAN = true
+				}
 			}
 			return nil
 		}
@@ -254,6 +320,13 @@ func (m *Menu) Update() error {
 			m.running = false
 			return nil
 		}
+		// LAN screens (port addition): their own Escape (0x0042D90D).
+		if m.inLAN {
+			if m.lan.escape() {
+				m.inLAN = false
+			}
+			return nil
+		}
 		// Settings (0x00437517): restore the values and go back.
 		if m.inSettings {
 			m.settings.restore(&m.config)
@@ -266,17 +339,33 @@ func (m *Menu) Update() error {
 		}
 		return nil
 	}
+	if m.lanWorld {
+		// Keep reading the session in the world (the other heroes, a lost
+		// connection); unread messages would stall the connection.
+		m.lan.readSession()
+		m.applyLAN()
+		m.world.clock = m.lan.clock
+		if m.lan.client == nil {
+			// The connection is gone: the game is over; the LAN login
+			// shows «Сервер не доступен».
+			m.endLANGame()
+			m.lan.enterLogin()
+			m.lan.msg = gamestate.MsgUnavailable
+			m.inWorld, m.inLAN = false, true
+			return nil
+		}
+	}
 	if m.inWorld {
 		// T (VK 0x54, 0x00436F58) toggles background tiling and writes
 		// KONUNG.CFG at once.
-		if inpututil.IsKeyJustPressed(ebiten.KeyT) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyT) && !m.world.chatTyping() {
 			m.config.Tiling = 1 - min(m.config.Tiling, 1)
 			m.writeConfig()
 		}
 		m.world.Update()
-		if f := m.world.film; f != "" {
-			toMenu := m.world.filmToMenu
-			m.world.film = ""
+		if f := m.world.Film; f != "" {
+			toMenu := m.world.FilmToMenu
+			m.world.Film = ""
 			m.playFilm(f, false, func() {
 				if toMenu {
 					m.inWorld = false // state 7; m.running stays set
@@ -284,16 +373,27 @@ func (m *Menu) Update() error {
 			})
 			return nil
 		}
-		if m.world.gameOver() {
+		if m.world.GameOver() && !m.lanWorld {
 			// 0x004376A8: the hero died; no game is running any more
+			// (in a LAN world the dead hero lies in the world and its
+			// player watches: a living player's «Слова Воскрешения» or the
+			// session's end bring it back; «Закончить игру» leaves).
 			// ([0x00A3E728] = 0), GAMEOVER.FLM plays, then the menu (state 7).
 			m.running = false
+			lan := m.lanWorld
 			m.playFilm(resfmt.FilmGameOver, false, func() {
 				m.inWorld = false
+				if lan { // a network game goes back to the LAN menu
+					m.endLANGame()
+					m.lan.open()
+					m.inLAN = true
+					return
+				}
 				if m.selected < m.firstItem() {
 					m.selected = itemNewGame
 				}
 				m.world = nil
+				m.leaveLANWorld()
 			})
 		}
 		return nil
@@ -308,23 +408,85 @@ func (m *Menu) Update() error {
 		m.updateSettings()
 		return nil
 	}
-	first := m.firstItem()
-	if m.selected < first {
-		m.selected = first
+	if m.inLAN {
+		left := m.lan.update()
+		if m.lan.endGame {
+			m.endLANGame()
+		}
+		if left {
+			m.inLAN = false
+		}
+		if m.lan.Resume {
+			m.lan.Resume = false
+			if m.lanWorld && m.lan.client != nil {
+				m.inLAN, m.inWorld = false, true
+			} else {
+				m.endLANGame()
+			}
+			return nil
+		}
+		// The server answered «Ok»: enter the LAN world (state 10 → 1).
+		if at, hero, name := m.lan.takeStart(); at != nil {
+			w, err := m.assets.lanView(m.gameDir, m.lan.exe, *at, hero, m.lan.model, name)
+			if err != nil {
+				log.Printf("LAN world: %v", err)
+				m.lan.disconnect()
+				m.lan.state, m.lan.msg = lanLogin, gamestate.MsgUnavailable
+				return nil
+			}
+			m.world, m.running, m.inWorld, m.inLAN, m.lanWorld = w, true, true, false, true
+			lan := m.lan
+			w.view.order = func(o netplay.OrderPayload) {
+				if lan.client != nil {
+					lan.client.Order(o)
+				}
+			}
+			w.view.chat = func(text string, team bool) {
+				if lan.client == nil {
+					return
+				}
+				if team {
+					lan.client.ChatTeam(text)
+				} else {
+					lan.client.Chat(text)
+				}
+			}
+			m.applyLAN()
+		}
+		return nil
 	}
-	n := menuItems - first
+	var order []int
+	for _, i := range menuOrder {
+		if m.visible(i) {
+			order = append(order, i)
+		}
+	}
+	pos := -1
+	for k, i := range order {
+		if i == m.selected {
+			pos = k
+		}
+	}
+	if pos < 0 {
+		pos = 0
+		for order[pos] != itemNewGame && order[pos] != itemReturn && pos < len(order)-1 {
+			pos++
+		}
+		m.selected = order[pos]
+	}
+	n := len(order)
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-		m.selected = first + (m.selected-first+n-1)%n
+		m.selected = order[(pos+n-1)%n]
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-		m.selected = first + (m.selected-first+1)%n
+		m.selected = order[(pos+1)%n]
 	}
 	activate := -1
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		activate = m.selected
 	}
 	mx, my := ebiten.CursorPosition()
-	for i := first; i < menuItems; i++ {
+	for _, i := range order {
 		r := m.buttonRects[i]
 		if mx >= r.x && mx < r.x+r.w && my >= r.y && my < r.y+r.h {
 			m.selected = i
@@ -358,6 +520,9 @@ func (m *Menu) activate(item int) error {
 		m.inSettings = true
 	case itemExit:
 		return ebiten.Termination
+	case itemNetwork:
+		m.lan.open()
+		m.inLAN = true
 	}
 	return nil
 }
@@ -377,24 +542,25 @@ func (m *Menu) updateSaves() error {
 	if s.selected < 0 {
 		return nil
 	}
-	switch s.mode {
+	switch s.Mode {
 	case screenSave:
 		// A save stores the settings 0x00A3E71C and 0x00A3E734.
-		m.world.game.Options = [2]int32{m.config.DayNight, m.config.Lighting}
+		m.world.Game.Options = [2]int32{m.config.DayNight, m.config.Lighting}
 		if err := s.save(s.selected, m.world); err != nil {
 			log.Printf("save slot %d: %v", s.selected, err)
 			return nil
 		}
 		m.inWorld = true
 	case screenLoad:
-		w, err := m.assets.loadSaved(s.dir, s.selected)
+		w, err := m.assets.loadSaved(s.Dir, s.selected)
 		if err != nil {
 			log.Printf("load slot %d: %v", s.selected, err)
 			return nil
 		}
+		m.leaveLANWorld()
 		m.world, m.running, m.inWorld = w, true, true
 		// Loading restores them (0x004249AC); KONUNG.CFG is not rewritten.
-		m.config.DayNight, m.config.Lighting = w.game.Options[0], w.game.Options[1]
+		m.config.DayNight, m.config.Lighting = w.Game.Options[0], w.Game.Options[1]
 	}
 	return nil
 }
@@ -414,6 +580,7 @@ func (m *Menu) updateNewHero() error {
 			m.inNewHero, m.running = false, false
 			return nil
 		}
+		m.leaveLANWorld()
 		m.world, m.inNewHero, m.running, m.inWorld = w, false, true, true
 		return nil
 	}
@@ -514,8 +681,16 @@ func (m *Menu) drawScreen(screen *ebiten.Image) {
 		drawAt(screen, m.sword, mx-1, my-1)
 		return
 	}
+	if m.inLAN {
+		m.lan.draw(screen)
+		drawAt(screen, m.sword, mx-1, my-1)
+		return
+	}
 	screen.DrawImage(m.background, nil)
-	for i := m.firstItem(); i < menuItems; i++ {
+	for _, i := range menuOrder {
+		if !m.visible(i) {
+			continue
+		}
 		r := m.buttonRects[i]
 		button := m.buttons[i][0]
 		if i == m.selected {
@@ -535,3 +710,109 @@ func drawAt(dst, src *ebiten.Image, x, y int) {
 }
 
 func (m *Menu) Layout(_, _ int) (int, int) { return ScreenWidth, ScreenHeight }
+
+// endLANGame is «Закончить игру» (or a lost connection): the LAN world
+// is dropped and the client logged out; the LAN menu stays.
+func (m *Menu) endLANGame() {
+	m.lan.endGame, m.lan.inGame = false, false
+	if m.lanWorld {
+		m.world, m.running, m.inWorld, m.lanWorld = nil, false, false, false
+	}
+	m.lan.disconnect()
+}
+
+// leaveLANWorld ends a LAN game when a single-player game replaces it: the
+// connection (and a session hosted from this game) closes.
+func (m *Menu) leaveLANWorld() {
+	if m.lanWorld {
+		m.lanWorld = false
+		m.lan.disconnect()
+		m.lan.state = lanMenu
+	}
+}
+
+// applyLAN hands the queued server messages to the LAN viewer
+// (lanview.go): views, players' heroes, sounds, the own map change and the
+// own hero's values.
+func (m *Menu) applyLAN() {
+	msgs := m.lan.worldMsgs
+	m.lan.worldMsgs = nil
+	if m.world == nil || m.world.view == nil {
+		return
+	}
+	w := m.world
+	for _, msg := range msgs {
+		switch msg.Type {
+		case netplay.MsgPlayer:
+			var p netplay.PlayerPayload
+			if msg.Decode(&p) == nil {
+				w.applyPlayer(p)
+			}
+		case netplay.MsgView:
+			var v netplay.ViewPayload
+			if msg.Decode(&v) == nil {
+				w.applyView(v)
+			}
+		case netplay.MsgEvents:
+			var e netplay.EventsPayload
+			if msg.Decode(&e) == nil {
+				w.applyEvents(e.Events)
+			}
+		case netplay.MsgMapChange:
+			var at netplay.EnterPayload
+			if msg.Decode(&at) == nil {
+				w.viewChangeMap(at)
+			}
+		case netplay.MsgHero:
+			var h netplay.Hero
+			if msg.Decode(&h) == nil {
+				w.ownHero(h)
+			}
+		case netplay.MsgInventory:
+			var inv netplay.InventoryPayload
+			if msg.Decode(&inv) == nil {
+				w.applyInventory(inv)
+			}
+		case netplay.MsgPiles:
+			var p netplay.PilesPayload
+			if msg.Decode(&p) == nil {
+				w.applyPiles(p)
+			}
+		case netplay.MsgPileWindow:
+			var pw netplay.PileWindowPayload
+			if msg.Decode(&pw) == nil {
+				w.applyPileWindow(pw)
+			}
+		case netplay.MsgDialogue:
+			var d netplay.DialoguePayload
+			if msg.Decode(&d) == nil {
+				w.applyDialogue(d)
+			}
+		case netplay.MsgParty:
+			var p netplay.PartyPayload
+			if msg.Decode(&p) == nil {
+				w.applyParty(p)
+			}
+		case netplay.MsgAmulets:
+			var p netplay.AmuletsPayload
+			if msg.Decode(&p) == nil {
+				w.applyAmulets(p)
+			}
+		case netplay.MsgPlayers:
+			var p netplay.PlayersPayload
+			if msg.Decode(&p) == nil {
+				w.applyPlayers(p)
+			}
+		case netplay.MsgLooks:
+			var p netplay.LooksPayload
+			if msg.Decode(&p) == nil {
+				w.applyLooks(p)
+			}
+		case netplay.MsgChat:
+			var p netplay.ChatPayload
+			if msg.Decode(&p) == nil {
+				w.applyChat(p)
+			}
+		}
+	}
+}

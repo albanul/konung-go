@@ -46,7 +46,7 @@ Entity fields: skills `+0x48` healing, `+0x4C` smithing, `+0x42` trade, `+0x46` 
 | 28 | Берестяная грамота | `0x0041556E` | quest flag 0 set (`0x00625068` bit `0x80`); `0x0045D17C` «Ты прочитал Берестяную Грамоту» | yes |
 | 30 | Медная лампа с именем Короля скелетов | `0x0041558E` | every living character (not dead, action not 3/9) of the other groups on the map that are neither villages (`+0x1E` bit `0x80`) nor kind `0x53` dies: `+0x12` = 0, `+2` = 0, HP = 0, death action (3 in the stance, else 9), loot `0x00418510(m, 0, hero's level +0x33)`. No experience | yes |
 | 31 | Факел | `0x004156E6` | the [loot highlight](konung_potions.md#loot-highlight-0x00a3e758) | no |
-| 33 | Кукла | `0x004156F5` | every living character of the other groups on the map (villages included) gets enchantment 19 at `+0xD2` (stat 5 −5) | yes |
+| 33 | Кукла | `0x004156F5` | every living character of the other groups on the map (villages included) gets enchantment 19 at `+0xD2` (stat 5 −5); the network game's doll spares carriers of «Заячий хвост» ([LAN version: items](konung_lan.md#items)) | yes |
 | 35, 37 | Свисток, Дудочка | `0x004157D2` | the party's enemy group `0x0041FD74` (below); unless it is a village, its living members with `+4` bit `0x40` (animals) and `+4` ∉ {`0x44`, `0x53`, `0x54`, `0x57`} run: `0x004101E4` (below), then a walk there with `+2` = 8 (`0x004142D4`) | no |
 | 36 | Чаша воеводы | `0x00415914` | base Хар +10 | yes |
 | 38 | Святые мощи | `0x00415927` | enchantment 70 at `+0xD3` (as dialogue script 276) | yes |
@@ -89,19 +89,19 @@ The target must be category 11. Two parts, in either order, turn the **target** 
 
 ### Enemy group (`0x0041FD74`) and flight (`0x004101E4`)
 
-**`0x0041FD74(group)`** for the party (`+0x1E` bit `0x20`): the box is the leader's (`word[group+0]`) cell ± (W + W/2) rows and ± (C + C/2) columns, with W = `0x00A3E818` = 20 and C = `0x00A3E7DC` = 9 at 800×600. Among the groups on the map other than the party that are not villages (unless `+0x1D` = 1, alarmed) and not kind `0x53`, it picks the group whose living member inside the box is nearest to the leader (`0x00439944`). It returns 0 when there is none. Creature groups (bit `0x40`) take another branch: they return the party if a living party member is inside their leash. Port: `startScene.nearestEnemy` on the leader's cell → `sceneWorld.EnemyGroup`.
+**`0x0041FD74(group)`** for the party (`+0x1E` bit `0x20`): the box is the leader's (`word[group+0]`) cell ± (W + W/2) rows and ± (C + C/2) columns, with W = `0x00A3E818` = 20 and C = `0x00A3E7DC` = 9 at 800×600. Among the groups on the map other than the party that are not villages (unless `+0x1D` = 1, alarmed) and not kind `0x53`, it picks the group whose living member inside the box is nearest to the leader (`0x00439944`). It returns 0 when there is none. Creature groups (bit `0x40`) take another branch: they return the party if a living party member is inside their leash. Port: `World.NearestEnemy` on the leader's cell → `sceneWorld.EnemyGroup`.
 
 **`0x004101E4(e, &dr, &dc)`** picks `rand() % 4` (jump table `0x004103F4`):
 * 0 / 1: dr = −2W / +2W. dc scans from −C up to C − 1 and stops at the first cell (row + dr, col + dc) whose fine-grid word `0x00505C70[row·0x140 + col·2] & 0xFFF` is 0.
 * 2 / 3: dc = −2C / +2C. dr scans from −W up to W − 1 in the same way.
 
-A negative row or column counts as blocked (the bounds helper `0x00447CAA` skips the test). The return value is 1 unless the scan ran out (dr = W or dc = C). Port: `gamestate.FleeOffset`. The same routine is the kind-`0x49` retreat after a creature's swing that did not kill (`0x004126BD`, [combat](konung_combat.md#creature-ai-verified)), ported as `startScene.retreat`.
+A negative row or column counts as blocked (the bounds helper `0x00447CAA` skips the test). The return value is 1 unless the scan ran out (dr = W or dc = C). Port: `gamestate.FleeOffset`. The same routine is the kind-`0x49` retreat after a creature's swing that did not kill (`0x004126BD`, [combat](konung_combat.md#creature-ai-verified)), ported as `World.Retreat`.
 
 ## Port notes
 
-* `gamestate.World` (`Game.World`, set by the scene every frame to `sceneWorld`) gives the map-wide cases the hero's live record, the party copies, live cells, the death and loot (`Kill`), walk orders (`Walk`), cell tests, the enemy group and the map change (`Jump`). With no world (tests without one), cases 9, 13, 14–19, 21, 30, 33, 35, 37, 44, 52 and 53 refuse.
+* `gamestate.World` (`Game.World`, set by the scene every frame to `World.Access`) gives the map-wide cases the hero's live record, the party copies, live cells, the death and loot (`Kill`), walk orders (`Walk`), cell tests, the enemy group and the map change (`Jump`). With no world (tests without one), cases 9, 13, 14–19, 21, 30, 33, 35, 37, 44, 52 and 53 refuse.
 * The shovel asks the scene to close the window (`Game.CloseWindow`; the bag strip stays). The jump orb and the words keep their request fields `OpenMap` and `ReviveAll`.
-* An orb or key to the map the party is on only places the party again, like the original (`startScene.placeAgain`, [party](konung_party.md#placement-after-a-map-change-0x004118dc-verified)).
+* An orb or key to the map the party is on only places the party again, like the original (`World.PlaceAgain`, [party](konung_party.md#placement-after-a-map-change-0x004118dc-verified)).
 
 Validation: `gamestate.TestMiscTablesMatchExe` reads the jump table, the types without a use and the bound, the orbs' and keys' `push` arguments and compares, and the amulet compares from `konung.exe`. `TestUseMiscBooks`, `TestUseMiscCombine`, `TestUseMiscSelf`, `TestUseMiscMapWide` (magnet, doll, lamp, keys, orb, mirror), `TestUseMiscWhistle`, `TestUseMiscNoUse` and `TestFleeOffset` cover the behaviour through a fake `World`. In the scene, `game.TestMagicOrbJumps` (orb 18 → `KONUNG.3` at (141, 54), orb kept) and `TestShovelClosesWindow` run the real thing.
 

@@ -290,3 +290,81 @@ func (g *Game) GainExperience(e *Entity, t *resfmt.ExeTables, xp int) {
 		}
 	}
 }
+
+// CopyItemFrom copies item i of src into the first free record of g
+// (newItem's rule) and returns its index, 0 when i is empty or g is full.
+// The LAN server builds each hero's fighting entity in one shared Game from
+// the hero type's GAME.N template (lanfight).
+func (g *Game) CopyItemFrom(src *Game, i int) int {
+	if i <= 0 || (i+1)*itemStride > len(src.items) || int8(src.items[i*itemStride]) < 0 {
+		return 0
+	}
+	j := g.newItem()
+	if j != 0 {
+		copy(g.items[j*itemStride:][:itemStride], src.items[i*itemStride:][:itemStride])
+	}
+	return j
+}
+
+// ItemKind is item i's category and type (category < 0 when free).
+func (g *Game) ItemKind(i int) (category, typ int) {
+	if i <= 0 || (i+1)*itemStride > len(g.items) {
+		return -1, 0
+	}
+	r := g.items[i*itemStride:]
+	return int(int8(r[0])), int(r[3])
+}
+
+// SetItemKind makes item i (allocated when i is 0; 0 if none is free) an
+// item of category and type, for drawing another player's equipment.
+func (g *Game) SetItemKind(i, category, typ int) int {
+	if i == 0 {
+		if i = g.newItem(); i == 0 {
+			return 0
+		}
+	}
+	g.setItem(i, category, typ)
+	return i
+}
+
+// ItemRecord is item i's 16-byte record (zero when i is out of range).
+// The LAN server sends its players' item records with it.
+func (g *Game) ItemRecord(i int) (r [itemStride]byte) {
+	if i > 0 && (i+1)*itemStride <= len(g.items) {
+		copy(r[:], g.items[i*itemStride:])
+	}
+	return r
+}
+
+// SetItemRecord puts record r at item i (a LAN client mirroring the
+// server's items).
+func (g *Game) SetItemRecord(i int, r [itemStride]byte) {
+	if i > 0 && (i+1)*itemStride <= len(g.items) {
+		copy(g.items[i*itemStride:], r[:])
+	}
+}
+
+// SetItemKindTop is SetItemKind allocating from the top of the table down
+// (i == 0), so a LAN client's drawing-only records stay clear of the
+// server's item indices, which it mirrors (SetItemRecord).
+func (g *Game) SetItemKindTop(i, category, typ int) int {
+	if i == 0 {
+		for j := len(g.items)/itemStride - 1; j >= 1; j-- {
+			if int8(g.items[j*itemStride]) < 0 {
+				i = j
+				break
+			}
+		}
+		if i == 0 {
+			return 0
+		}
+		r := g.items[i*itemStride:]
+		r[0xE], r[1], r[2] = 0, 0xFF, 0xFF
+		binary.LittleEndian.PutUint16(r[0xC:], 0)
+	}
+	g.setItem(i, category, typ)
+	return i
+}
+
+// ItemStride is an item record's size.
+const ItemStride = itemStride

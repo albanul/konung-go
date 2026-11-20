@@ -59,13 +59,22 @@ func (t *ExeTables) WorldMap(mode int) WorldMap {
 	a := t.at(worldMapAreaVA + 8*mode)
 	i16 := func(k int) int { return int(int16(binary.LittleEndian.Uint16(a[2*k:]))) }
 	x, y, w, h := i16(0), i16(1), i16(2), i16(3)
-	m := WorldMap{Area: image.Rect(x, y, x+w, y+h), Rows: make([][]WorldMapRun, h)}
+	return ReadWorldMap(t.at, image.Rect(x, y, x+w, y+h), worldMapRowsVA, worldMapRunsVA)
+}
+
+// ReadWorldMap reads a map window's row runs for area: rowsVA holds an
+// int32 byte offset per area row into the run data at runsVA (−1 = no row).
+// at returns an executable's bytes from a VA; the LAN version keeps the
+// same structure in its own tables (gamestate.ParseLANExe).
+func ReadWorldMap(at func(va int) []byte, area image.Rectangle, rowsVA, runsVA int) WorldMap {
+	w, h := area.Dx(), area.Dy()
+	m := WorldMap{Area: area, Rows: make([][]WorldMapRun, h)}
 	for r := range h {
-		off := t.i32(worldMapRowsVA + 4*r)
+		off := int(int32(binary.LittleEndian.Uint32(at(rowsVA + 4*r))))
 		if off < 0 {
 			continue
 		}
-		p := t.at(worldMapRunsVA + off)
+		p := at(runsVA + off)
 		run := []WorldMapRun{}
 		for x := 0; ; p = p[2:] {
 			region, n := int(p[0]), int(p[1])

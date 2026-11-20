@@ -39,10 +39,10 @@ type saveScreen struct {
 	bg       [2]*ebiten.Image
 	selFont  *gameFont // 0x00592CFC
 	font     *gameFont // 0x00593040
-	dir      string
+	Dir      string
 	names    [gamestate.SaveSlots][]byte // 0x00674640
 	empty    []byte                      // «Пустая строка»
-	mode     int
+	Mode     int
 	selected int
 	name     []byte // 0x0083DF5C, the new save's name
 }
@@ -61,7 +61,7 @@ func newSaveScreen(resPath, dir string, t *resfmt.ExeTables, large *gameFont) (*
 	}
 	s := &saveScreen{
 		bg:      [2]*ebiten.Image{ebiten.NewImageFromImage(frames[0]), ebiten.NewImageFromImage(frames[1])},
-		selFont: large, font: newGameFont(f), dir: dir, empty: t.CString(gamestate.EmptySlotVA),
+		selFont: large, font: newGameFont(f), Dir: dir, empty: t.CString(gamestate.EmptySlotVA),
 		selected: -1,
 	}
 	// 0x0043A969: read the names at startup; without the file every slot is empty.
@@ -72,7 +72,7 @@ func newSaveScreen(resPath, dir string, t *resfmt.ExeTables, large *gameFont) (*
 
 // open shows the screen; name is the new save's name (save mode only).
 func (s *saveScreen) open(mode int, name []byte) {
-	s.mode, s.name, s.selected = mode, name, -1
+	s.Mode, s.name, s.selected = mode, name, -1
 }
 
 // hit returns the slot under (x, y), or -1 (0x004398C4 on 0x0046203C).
@@ -86,12 +86,12 @@ func (s *saveScreen) hit(x, y int) int {
 }
 
 func (s *saveScreen) draw(dst *ebiten.Image) {
-	dst.DrawImage(s.bg[s.mode], nil)
+	dst.DrawImage(s.bg[s.Mode], nil)
 	for i, r := range saveSlots800 {
 		font, name := s.font, s.names[i]
 		if i == s.selected {
 			font = s.selFont
-			if s.mode == screenSave {
+			if s.Mode == screenSave {
 				name = s.name
 			}
 		}
@@ -102,34 +102,34 @@ func (s *saveScreen) draw(dst *ebiten.Image) {
 // save writes slot i (0x00438A2F): the slot takes the new name, then
 // KONUNG.SAV and KONUNG.SA<i> are written (0x00424E34).
 func (s *saveScreen) save(i int, w *startScene) error {
-	data, err := w.game.MarshalSave(w.saveState())
+	data, err := w.Game.MarshalSave(w.saveState())
 	if err != nil {
 		return err
 	}
 	s.names[i] = append([]byte(nil), s.name...)
-	if err := gamefs.WriteFile(filepath.Join(s.dir, gamestate.SlotNamesFile), gamestate.MarshalSlotNames(s.names)); err != nil {
+	if err := gamefs.WriteFile(filepath.Join(s.Dir, gamestate.SlotNamesFile), gamestate.MarshalSlotNames(s.names)); err != nil {
 		return err
 	}
-	return gamefs.WriteFile(filepath.Join(s.dir, gamestate.SlotFile(i)), data)
+	return gamefs.WriteFile(filepath.Join(s.Dir, gamestate.SlotFile(i)), data)
 }
 
 // saveName is the new save's name for the current map (0x00437A25).
 func (w *startScene) saveName(now time.Time) []byte {
-	return gamestate.SaveName(w.tables.CString(gamestate.LocationName(w.mapNumber)), now)
+	return gamestate.SaveName(w.Tables.CString(gamestate.LocationName(w.MapNumber)), now)
 }
 
 // saveState writes the scene back into the game (as for a map change) and
 // returns what the slot holds besides it: the clock, the arrows in flight
 // and the map's active piles with their image positions.
 func (w *startScene) saveState() gamestate.SaveState {
-	w.storeWorld()
-	st := gamestate.SaveState{Time: w.gameTime(), Arrows: w.arrows}
+	w.StoreWorld()
+	st := gamestate.SaveState{Time: w.GameTime(), Arrows: w.Arrows}
 	if len(st.Arrows) > 100 {
 		st.Arrows = st.Arrows[:100]
 	}
-	for c, i := range w.pileAt {
-		p := w.game.Piles[i]
-		ap := gamestate.ActivePile{Pile: p, Image: w.game.PileImage(w.tables, p)}
+	for c, i := range w.PileAt {
+		p := w.Game.Piles[i]
+		ap := gamestate.ActivePile{Pile: p, Image: w.Game.PileImage(w.Tables, p)}
 		ap.X, ap.Y = mapdata.CellCenter(c)
 		if img := w.hud.slot(ap.Image); img != nil {
 			ap.X -= img.Bounds().Dx() / 2
@@ -173,19 +173,19 @@ func (a *sceneAssets) loadSaved(dir string, i int) (*startScene, error) {
 // built scene. Record piles take the active copy's contents; runtime piles
 // are added to the game.
 func (w *startScene) restoreSaved(st gamestate.SaveState) {
-	w.tick = st.Time
-	w.arrows = append([]gamestate.Arrow(nil), st.Arrows...)
+	w.Tick = st.Time
+	w.Arrows = append([]gamestate.Arrow(nil), st.Arrows...)
 	for _, ap := range st.Active {
 		p := ap.Pile
-		p.Map = w.mapNumber
+		p.Map = w.MapNumber
 		idx := p.Index
-		if idx >= 0 && idx < len(w.game.Piles) && w.game.Piles[idx].Index == idx {
-			w.game.Piles[idx] = p
+		if idx >= 0 && idx < len(w.Game.Piles) && w.Game.Piles[idx].Index == idx {
+			w.Game.Piles[idx] = p
 		} else {
 			p.Index = -1
-			w.game.Piles = append(w.game.Piles, p)
-			idx = len(w.game.Piles) - 1
+			w.Game.Piles = append(w.Game.Piles, p)
+			idx = len(w.Game.Piles) - 1
 		}
-		w.pileAt[mapdata.Cell{Row: p.Row, Col: p.Col}] = idx
+		w.PileAt[mapdata.Cell{Row: p.Row, Col: p.Col}] = idx
 	}
 }

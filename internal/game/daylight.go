@@ -3,10 +3,8 @@ package game
 import (
 	"fmt"
 	"image"
-	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/resfmt"
@@ -114,13 +112,9 @@ func loadLitShader() (*ebiten.Shader, error) {
 	return sh, nil
 }
 
-// loadLights reads LIGHTS.<map> next to KONUNG.<map>; the loader zero-fills
-// both parts when the file is missing (0x0043C23C).
-func loadLights(dir string, mapNumber int) (*mapdata.LitCells, *mapdata.TerrainLights, error) {
-	data, err := gamefs.ReadFile(filepath.Join(dir, fmt.Sprintf("LIGHTS.%d", mapNumber)))
-	if err != nil {
-		data = nil
-	}
+// parseLights reads a map's LIGHTS.N bytes; nil (no file) zero-fills both
+// parts, as the loader does (0x0043C23C).
+func parseLights(data []byte) (*mapdata.LitCells, *mapdata.TerrainLights, error) {
 	lit, err := mapdata.ParseLitCells(data)
 	if err != nil {
 		return nil, nil, err
@@ -133,15 +127,17 @@ func loadLights(dir string, mapNumber int) (*mapdata.LitCells, *mapdata.TerrainL
 // whenever the time of day is exactly 0; maps with a fixed light (caves)
 // ignore the time; with day/night off the world is untinted.
 func (s *startScene) updateLight() {
-	now := s.gameTime()
-	if now%gamestate.DayLength == 0 {
-		s.moon = s.rng.IntN(100) < gamestate.MoonChance
+	now := s.GameTime()
+	if s.lan {
+		s.moon = lanMoon(now / gamestate.DayLength) // the same for every player
+	} else if now%gamestate.DayLength == 0 {
+		s.moon = s.Rng.IntN(100) < gamestate.MoonChance
 	}
 	t, night := resfmt.Tint{}, false
-	if fixed, ok := s.tables.MapLight(s.mapNumber); ok {
+	if fixed, ok := s.mapLight(); ok {
 		t = fixed
 	} else if s.dayNight {
-		t, night = gamestate.DayTint(now, s.tables.DayThresholds(), s.moon)
+		t, night = gamestate.DayTint(now, s.Tables.DayThresholds(), s.moon)
 	}
 	if t != s.tint || s.tintU == nil {
 		s.tint, s.tintU = t, tintUniforms(t)
@@ -155,9 +151,9 @@ func (s *startScene) updateLight() {
 	r, g := s.flicker.FlickR, s.flicker.FlickG
 	if gameFrame := s.frame * 5 / 18; !s.lightRolled || gameFrame != s.lightFrame {
 		s.lightFrame, s.lightRolled = gameFrame, true
-		g = s.rng.IntN(4) + 8
-		r = s.rng.IntN(8) + 16
-		if st := s.game.SettlementOnMap(s.mapNumber); st == nil || s.game.Groups[st.Group].Alarm != gamestate.AlarmAttack {
+		g = s.Rng.IntN(4) + 8
+		r = s.Rng.IntN(8) + 16
+		if st := s.Game.SettlementOnMap(s.MapNumber); st == nil || s.Game.Groups[st.Group].Alarm != gamestate.AlarmAttack {
 			r, g = r/2, g/2
 		}
 	}
@@ -271,4 +267,17 @@ func (s *startScene) drawTinted(dst, img *ebiten.Image, x, y int, raw bool) {
 	op.Images[0] = img
 	op.GeoM.Translate(float64(x), float64(y))
 	dst.DrawRectShader(b.Dx(), b.Dy(), s.tintSh, op)
+}
+
+// mapLight is the map's fixed light: single player's table (the caves), in
+// a LAN world LAN_KONG.EXE's own (gamestate.LANExe.MapLight; single
+// player's flags would be read with the LAN map numbers).
+func (s *startScene) mapLight() (resfmt.Tint, bool) {
+	if s.lan {
+		if s.assets == nil || s.assets.lanExe == nil {
+			return resfmt.Tint{}, false
+		}
+		return s.assets.lanExe.MapLight(s.MapNumber)
+	}
+	return s.Tables.MapLight(s.MapNumber)
 }

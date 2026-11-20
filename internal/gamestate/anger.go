@@ -102,7 +102,7 @@ func (g *Game) Surrenders(s *Settlement, party []Entity, t *resfmt.ExeTables) bo
 	gr := &g.Groups[s.Group]
 	men, v := 0, 0.0
 	for k := 0; k < gr.Count; k++ {
-		if e := g.Entities[gr.First+k]; !e.Dead() && e.Model < 3 {
+		if e := g.Entities[gr.First+k]; !e.Dead() && e.Model < 3 && e.Group == s.Group { // a LAN hireling left the village
 			men++
 			v += float64(g.KillExperience(e, t))
 		}

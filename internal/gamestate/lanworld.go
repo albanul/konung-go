@@ -1,0 +1,83 @@
+package gamestate
+
+import "fmt"
+
+// The LAN version's world file GAME.RES (client loader 0x0041DC84, server
+// 0x00449451): GAME.N's six blocks in the same order, smaller; decoded by
+// ParseLANWorld (lanres.go, docs/konung_lan.md#world-gameres). LANExits
+// reads only the map exits.
+const (
+	LANWorldSize  = 365509
+	lanExitOffset = 0x41700
+)
+
+// LANExits reads GAME.RES's map exits.
+func LANExits(gameRes []byte) ([]MapExit, error) {
+	if len(gameRes) != LANWorldSize {
+		return nil, fmt.Errorf("GAME.RES has %d bytes, want %d", len(gameRes), LANWorldSize)
+	}
+	return parseExitsAt(gameRes, lanExitOffset), nil
+}
+
+// LANStartMap is a LAN hero's start map: its model's village, model·3 + 1
+// (0x0044401C). The hero model is also the team.
+func LANStartMap(model int) int { return model*3 + 1 }
+
+// LANStart is where the server puts an entering hero (0x0044ADB4): the start
+// map, on the arrival cell and facing of the first map exit that leads
+// there. The shipped GAME.RES gives model 0 → map 1 (110, 32), 1 → map 4
+// (66, 57), 2 → map 7 (65, 8).
+func LANStart(exits []MapExit, model int) (MapExit, error) {
+	m := LANStartMap(model)
+	for _, x := range exits {
+		if x.To == m {
+			return x, nil
+		}
+	}
+	return MapExit{}, fmt.Errorf("GAME.RES: no map exit leads to start map %d", m)
+}
+
+// EnterLANWorld turns g, a single-player GAME.N used as the hero's template,
+// into a LAN world holding only the hero: group 0 with its first entity on
+// map m at (row, col) facing facing. Every other group, settlement and pile
+// is removed (the LAN world's own characters come from GAME.RES, whose
+// entity layout is not ported yet); the map exits become exits, GAME.RES's
+// (LANExits: 8 teleports on every map, 40 on map 12).
+func (g *Game) EnterLANWorld(m, row, col, facing int, exits []MapExit) {
+	if len(g.Groups) == 0 {
+		return
+	}
+	for i := range g.Groups[1:] {
+		gr := &g.Groups[i+1]
+		gr.Count, gr.Map, gr.Kind = 0, 0, 0
+	}
+	g0 := &g.Groups[0]
+	g0.Count, g0.Map, g0.Row, g0.Col = 1, m, row, col
+	if h := g0.First; h >= 0 && h < len(g.Entities) {
+		e := &g.Entities[h]
+		e.Row, e.Col, e.Variant = row, col, facing&7
+	}
+	g.Settlements, g.Piles, g.Exits = nil, nil, exits
+}
+
+// LANKeepsOnLoad is the item filter of the LAN server's SAVITEMS.DAT read
+// (0x0044444C, at «Ok» and at a new session): bag items of these kinds do
+// not come back (amulet parts and the amulet: LAN_KONG.EXE's category 11
+// type ≥ 10, which are the port's AmuletKind items, lanamulet.go; they start
+// every session anew); equipment, jewellery and arrows always do.
+// The gear (≥ 70) and herb (≥ 14) limits need no mapping: both exes have
+// the same 70 gear and 14 herb types in the same order (LAN herb records
+// are 64 bytes, single player's 128), so they only catch invalid types.
+func LANKeepsOnLoad(bag bool, category, typ int) bool {
+	if !bag {
+		return true
+	}
+	switch {
+	case category > 12,
+		category <= 5 && typ >= 70,
+		category == 9 && typ >= 14,
+		category == CatQuest && AmuletKind(typ) != 0:
+		return false
+	}
+	return true
+}

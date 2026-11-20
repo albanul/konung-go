@@ -1,3 +1,6 @@
+// Command konung is the game.
+//
+//	konung [MENU800R.RES]
 package main
 
 import (

@@ -6,7 +6,7 @@ How characters walk in `konung.exe`: the game tick, the path search, a walk step
 
 * The game draws a frame every 60 ms (`0x00A3E6F4`, [menu](konung_menu.md)) and runs 1 + speed game ticks per frame, so a tick is 60 ms at normal speed (16.7 per second).
 * Every walking character runs its walk case once per tick (party `0x0042218D`, creatures `0x00412717`, village AI the same type through `0x00416058`).
-* **Idle.** The idle case (party `0x004223AD`, creatures `0x0041291C`) advances the idle action one frame per tick and restarts it (`0x004143DC`, which rolls the idle sound) after its last frame; a character that becomes idle starts at frame 0. Port: `startScene.idleLoop`, test `game.TestIdleLoop`.
+* **Idle.** The idle case (party `0x004223AD`, creatures `0x0041291C`) advances the idle action one frame per tick and restarts it (`0x004143DC`, which rolls the idle sound) after its last frame; a character that becomes idle starts at frame 0. Port: `World.IdleLoop`, test `game.TestIdleLoop`.
 * **One walk frame per tick.** `0x00413DE4` advances `+0x10`; a step into the next cell lasts the walk animation's frame count `+0xD7` (12 for the bodies), so 12 ticks = 0.72 s per cell, whatever the direction.
 * **Turning.** At the start of each step, a character that does not face the step's direction turns one octant (`0x004391BC`, the shorter way) and does nothing else that tick. A path that bends by k octants costs k extra ticks.
 
@@ -57,11 +57,11 @@ Walk case, once per tick (party `0x0042218D`; creatures `0x00412717`):
 
 ## Port
 
-* **Tick:** `startScene.Update` runs 1 + speed game ticks (`startScene.step`) whenever a 60 ms game frame has passed (updates · 5/18 at 60 Hz); the game time `0x00A3E770` is the tick count (`gameTime`).
+* **Tick:** `startScene.Update` runs 1 + speed game ticks (`World.Step`) whenever a 60 ms game frame has passed (updates · 5/18 at 60 Hz); the game time `0x00A3E770` is the tick count (`World.GameTime`).
 * **Search:** `mapdata.FindPath` is `0x0043EDB7` (order, costs, goal rules, 4096-entry ring, at most `mapdata.PathSteps` = 31 cells). Tests: `mapdata.TestFindPathRules`, `TestFindPathKonung1` (a long walk in 31-step segments).
-* **Walk step:** `walker.update`, once per tick: turn one octant toward the next cell, else the next walk frame; after the last frame the next step. `walker.startStep` enters the next cell at the step's start: `cell` becomes it and the cell left (`from`) is freed at once; a taken next cell stops the walk. The body and the selection ellipse are drawn from `from` while walking (`walker.anchor`); a hit reaction mid-step (`walker.halt`) leaves the walker in the cell it entered. Tests: `game.TestHeroWalksToGoal` (ticks = frames per cell + octants turned), `game.TestStepHoldsNewCell`.
-* **Party:** a member whose walk stops short of its goal with the walk bit searches again (`startScene.step`, the planner's search); the pick-up and map exits happen only at the goal.
-* **Creatures:** the throttle `+0x11` (`startScene.updateNPCs`) and the `0x4D`/`0x4F` pauses (`npc.pauseHold` as `walker.hold`). The pause counter `+0x12` is kept on the scene's `npc`, not in the entity, so a save does not keep it.
+* **Walk step:** `world.Walker.Update`, once per tick: turn one octant toward the next cell, else the next walk frame; after the last frame the next step. `world.Walker.startStep` enters the next cell at the step's start: `cell` becomes it and the cell left (`from`) is freed at once; a taken next cell stops the walk. The body and the selection ellipse are drawn from `from` while walking (`world.Walker.Anchor`); a hit reaction mid-step (`world.Walker.Halt`) leaves the walker in the cell it entered. Frame counts come through `world.Walker.Frames` (`world.FrameCounter`; the game counts its loaded sprites). Tests: `game.TestHeroWalksToGoal` (ticks = frames per cell + octants turned), `game.TestStepHoldsNewCell`, and `game.TestGoldenSimulation` (a scripted game hashed at checkpoints).
+* **Party:** a member whose walk stops short of its goal with the walk bit searches again (`World.Step`, the planner's search); the pick-up and map exits happen only at the goal.
+* **Creatures:** the throttle `+0x11` (`World.UpdateNPCs`) and the `0x4D`/`0x4F` pauses (`world.NPC.PauseHold` as `world.Walker.Hold`). The pause counter `+0x12` is kept on the `world.NPC`, not in the entity, so a save does not keep it.
 
 ## Port choices
 

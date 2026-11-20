@@ -34,11 +34,14 @@ var newHeroClasses = [4]byte{gamestate.ClassMerchant, gamestate.ClassHunter, gam
 
 // Preview placement (0x004303B2–0x00430553): the body is drawn with its
 // image top-left at (60, 20) in a 160×320 buffer, the buffer is blitted at
-// hotspot 22 and clipped to 160×160.
+// hotspot 22 and clipped to 160×160. The LAN screen draws it at (15, 20)
+// in its buffer (LAN_KONG.EXE 0x004286CA → 0x0044EE76, which places the
+// image's top-left without an anchor).
 const (
-	previewBodyX = 60
-	previewBodyY = 20
-	previewSize  = 160
+	previewBodyX    = 60
+	lanPreviewBodyX = 15
+	previewBodyY    = 20
+	previewSize     = 160
 )
 
 type newHeroScreen struct {
@@ -52,10 +55,17 @@ type newHeroScreen struct {
 	text int              // description shown (0x00462F3C + text·512), −1 = none
 	ok   bool             // «Ok» pressed: drawn pressed for one frame, then the game starts
 
-	preview    *ebiten.Image
-	previewDX  int // preview image offset from the body's image top-left
-	previewDY  int
-	previewKey previewKey // what the preview was built from
+	preview heroPreview
+}
+
+// heroPreview is a creation screen's hero picture (single-player
+// hotspot 22, LAN hotspot 22): the body with its equipment overlays,
+// rebuilt when what it shows changes.
+type heroPreview struct {
+	img    *ebiten.Image
+	dx, dy int        // image offset from the body's image top-left
+	key    previewKey // what the image was built from
+	built  bool
 }
 
 type previewKey struct {
@@ -86,7 +96,7 @@ func (s *newHeroScreen) open() {
 	s.hero = gamestate.NewHeroTemplate()
 	s.text = -1
 	s.ok = false
-	s.idle()
+	s.startIdle()
 }
 
 // idle is 0x004143DC(hero, 0), the screen's only sound: the template
@@ -94,11 +104,11 @@ func (s *newHeroScreen) open() {
 // 0x23) on rand() % 100 > 95. The hero is its own listener, so the voice
 // plays at full volume, centred (0x00439F4C, 0x00439EEC). It is called
 // when the screen opens and on every hero portrait click.
-func (s *newHeroScreen) idle() {
+func (s *newHeroScreen) startIdle() {
 	if sfx == nil {
 		return
 	}
-	if id := idleVoice(s.hero, sfx.rng.IntN); id != 0 {
+	if id := idleVoice(s.hero, sfx.Rng.IntN); id != 0 {
 		sfx.play(id, 0, 0)
 	}
 }
@@ -128,7 +138,7 @@ func (s *newHeroScreen) click(hit int) (ok, cancel bool) {
 	case hit >= gamestate.NewHeroPortrait && hit < gamestate.NewHeroClass:
 		gamestate.SelectHero(e, newHeroModels[hit])
 		s.text = hit
-		s.idle() // 0x00437F62, 0x0043801C, 0x004380E1
+		s.startIdle() // 0x00437F62, 0x0043801C, 0x004380E1
 	case hit >= gamestate.NewHeroClass && hit < gamestate.NewHeroStat:
 		gamestate.SelectClass(e, newHeroClasses[hit-gamestate.NewHeroClass])
 		s.text = hit
@@ -231,27 +241,33 @@ func (s *newHeroScreen) drawMarker(dst *ebiten.Image, i int) {
 // drawPreview draws the hero in the stance with the preview gear, its body
 // image top-left at hotspot 22 + (60, 20), clipped to 160×160.
 func (s *newHeroScreen) drawPreview(dst *ebiten.Image) {
-	e := s.hero
+	r := rect800(gamestate.NewHeroPreview)
+	s.preview.draw(dst, s.hero, s.graph, s.items, s.tables, r[0], r[1], previewBodyX)
+}
+
+// draw draws e with its body image top-left at (x + bodyX, y + 20),
+// clipped to the 160×160 square at (x, y) (0x004303B2–0x00430553; the LAN
+// screen 0x00427D14 the same way with its own bodyX). items holds e's
+// equipment items.
+func (p *heroPreview) draw(dst *ebiten.Image, e gamestate.Entity, graph []byte, items *gamestate.Game, t *resfmt.ExeTables, x, y, bodyX int) {
 	key := previewKey{e.Model, e.PaletteOffset, e.WeaponMode, e.Type, e.Variant, e.Equipment}
-	if s.preview == nil || key != s.previewKey {
-		s.previewKey = key
-		s.preview = nil
+	if !p.built || key != p.key {
+		p.key, p.built, p.img = key, true, nil
 		spec := e.ModelSpec()
-		body, err := resfmt.LoadEntitySprite(nil, s.graph, spec)
+		body, err := resfmt.LoadEntitySprite(nil, graph, spec)
 		if err != nil {
 			return
 		}
-		img, err := resfmt.ComposeEquipment(s.graph, body, spec, s.items.Overlays(e, s.tables), s.tables)
+		img, err := resfmt.ComposeEquipment(graph, body, spec, items.Overlays(e, t), t)
 		if err != nil {
 			return
 		}
-		s.preview = toEbiten(img.Image)
-		s.previewDX, s.previewDY = img.ImageDX-body.ImageDX, img.ImageDY-body.ImageDY
+		p.img = toEbiten(img.Image)
+		p.dx, p.dy = img.ImageDX-body.ImageDX, img.ImageDY-body.ImageDY
 	}
-	if s.preview == nil {
+	if p.img == nil {
 		return
 	}
-	r := rect800(gamestate.NewHeroPreview)
-	clip := dst.SubImage(image.Rect(r[0], r[1], r[0]+previewSize, r[1]+previewSize)).(*ebiten.Image)
-	drawAt(clip, s.preview, r[0]+previewBodyX+s.previewDX, r[1]+previewBodyY+s.previewDY)
+	clip := dst.SubImage(image.Rect(x, y, x+previewSize, y+previewSize)).(*ebiten.Image)
+	drawAt(clip, p.img, x+bodyX+p.dx, y+previewBodyY+p.dy)
 }

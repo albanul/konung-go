@@ -155,7 +155,10 @@ func (g *Game) UseMisc(e *Entity, t *resfmt.ExeTables, target, item int) (bool, 
 	}
 	w := g.World
 	curMap := g.Groups[0].Map // 0x00A3E7FC
-	used := false             // item +0 = 0xFF
+	if g.LAN && e.Group >= 0 && e.Group < len(g.Groups) {
+		curMap = g.Groups[e.Group].Map // the user's player's map (0x00E24400)
+	}
+	used := false // item +0 = 0xFF
 	msg := 0
 	// skill adds to a skill word, capped when limit > 0 (unsigned compare).
 	skill := func(k, add, limit int) {
@@ -270,9 +273,13 @@ func (g *Game) UseMisc(e *Entity, t *resfmt.ExeTables, target, item int) (bool, 
 			return false, 0
 		}
 		g.othersOnMap(w, e, curMap, func(i int, m *Entity) {
-			if w.Alive(i) {
-				m.Enchants[0] = enchantDoll
+			if !w.Alive(i) || m.Group == e.Group {
+				return // the dead; in a LAN world the user's hirelings, kept in their village's range
 			}
+			if g.LAN && g.hasMisc(m, questHareTail) {
+				return // LAN_KONG.EXE's doll is the curse 0x004379D4: «Заячий хвост» in the bag protects
+			}
+			m.Enchants[0] = enchantDoll
 		})
 		used = true
 	case MiscWhistle, MiscPipe:
@@ -346,7 +353,9 @@ func (g *Game) wine(e *Entity) {
 }
 
 // joinAmulet is 0x00410010(e, target, item): two parts of the dragon's
-// amulet (target a misc item) join in the target; e gains 100 experience.
+// amulet (target a misc item) join in the target; e gains 100 experience
+// (not in a LAN world: LAN_KONG.EXE's 0x0044DB54, client 0x00413462 and
+// server 0x00439039, only joins them).
 func (g *Game) joinAmulet(e *Entity, t *resfmt.ExeTables, typ, target int, tgt Item) bool {
 	if tgt.Category != CatQuest {
 		return false
@@ -361,13 +370,28 @@ func (g *Game) joinAmulet(e *Entity, t *resfmt.ExeTables, typ, target int, tgt I
 		return false
 	}
 	g.items[target*itemStride+3] = byte(to)
-	g.GainExperience(e, t, 100)
+	if !g.LAN {
+		g.GainExperience(e, t, 100)
+	}
 	return true
 }
 
 // othersOnMap calls f for every member of every group on map m other than
 // e's (group order, then member order), as the map-wide cases loop.
 func (g *Game) othersOnMap(w World, e *Entity, m int, f func(i int, member *Entity)) {
+	if g.LAN {
+		// LAN_KONG.EXE's groups are member lists (a hireling is in its
+		// player's group); the port keeps a hireling in its village's
+		// range with its group byte changed, so go by each character's
+		// own group.
+		for i := range g.Entities {
+			gi := g.Entities[i].Group
+			if gi >= 0 && gi < len(g.Groups) && gi != e.Group && g.Groups[gi].Map == m {
+				f(i, w.Entity(i))
+			}
+		}
+		return
+	}
 	for gi, gr := range g.Groups {
 		if gi == e.Group || gr.Map != m {
 			continue
@@ -378,6 +402,16 @@ func (g *Game) othersOnMap(w World, e *Entity, m int, f func(i int, member *Enti
 			}
 		}
 	}
+}
+
+// hasMisc reports whether e's bag holds misc item typ.
+func (g *Game) hasMisc(e *Entity, typ int) bool {
+	for _, i := range e.Bag {
+		if c, t := g.ItemKind(i); i != 0 && c == CatQuest && t == typ {
+			return true
+		}
+	}
+	return false
 }
 
 // magnet is 0x0041521A: from every character of the other groups on the

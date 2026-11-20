@@ -22,10 +22,10 @@ func hireSmith(t *testing.T) (*startScene, *member) {
 		t.Fatal("hire failed")
 	}
 	s.afterTalk(tk, nil)
-	if len(s.party) != 2 {
-		t.Fatalf("party %d after the hire", len(s.party))
+	if len(s.Party) != 2 {
+		t.Fatalf("party %d after the hire", len(s.Party))
 	}
-	m, _ := s.partyMember(s.party[1].Index) // the hire copies him into group 0's next slot
+	m, _ := s.PartyMember(s.Party[1].Index) // the hire copies him into group 0's next slot
 	if m == nil {
 		t.Fatal("the smith has no member walker")
 	}
@@ -35,7 +35,7 @@ func hireSmith(t *testing.T) (*startScene, *member) {
 // run advances the scene by n game ticks.
 func run(s *startScene, n int) {
 	for range n {
-		s.step()
+		s.Step()
 	}
 }
 
@@ -43,8 +43,8 @@ func run(s *startScene, n int) {
 func freeCellAway(s *startScene, c mapdata.Cell, dr int) mapdata.Cell {
 	for d := 0; d < 40; d++ {
 		for _, r := range []int{c.Row + dr + d, c.Row - dr - d} {
-			if x := (mapdata.Cell{Row: r, Col: c.Col}); !s.blocked(x) {
-				if p := mapdata.FindPath(c, x, s.blocked); len(p) > 0 {
+			if x := (mapdata.Cell{Row: r, Col: c.Col}); !s.Blocked(x) {
+				if p := mapdata.FindPath(c, x, s.Blocked); len(p) > 0 {
 					return x
 				}
 			}
@@ -58,38 +58,38 @@ func freeCellAway(s *startScene, c mapdata.Cell, dr int) mapdata.Cell {
 // makes him follow again.
 func TestHiredMemberFollows(t *testing.T) {
 	s, smith := hireSmith(t)
-	hero := s.lead()
-	goal := freeCellAway(s, hero.cell, 30)
-	s.walkOrder(hero, goal, false)
+	hero := s.Lead()
+	goal := freeCellAway(s, hero.Cell, 30)
+	s.WalkOrder(hero, goal, false)
 	run(s, 600)
-	if hero.cell == goal && gamestate.Dist(hero.cell.Row, hero.cell.Col, smith.cell.Row, smith.cell.Col) >= gamestate.FollowDistance+4 {
-		t.Fatalf("the smith stayed behind: hero %v, smith %v", hero.cell, smith.cell)
+	if hero.Cell == goal && gamestate.Dist(hero.Cell.Row, hero.Cell.Col, smith.Cell.Row, smith.Cell.Col) >= gamestate.FollowDistance+4 {
+		t.Fatalf("the smith stayed behind: hero %v, smith %v", hero.Cell, smith.Cell)
 	}
-	if hero.cell != goal {
-		t.Skipf("the hero did not reach %v (at %v)", goal, hero.cell)
+	if hero.Cell != goal {
+		t.Skipf("the hero did not reach %v (at %v)", goal, hero.Cell)
 	}
 
 	// The smith alone is ordered somewhere: he stays there afterwards.
-	s.sel = []int{s.party[1].Index}
-	stay := freeCellAway(s, smith.cell, 6)
-	for _, m := range s.selected() {
-		s.walkOrder(m, stay, false)
+	s.Sel = []int{s.Party[1].Index}
+	stay := freeCellAway(s, smith.Cell, 6)
+	for _, m := range s.Selected() {
+		s.WalkOrder(m, stay, false)
 	}
 	run(s, 200)
-	if smith.intent&gamestate.IntentFollow != 0 {
-		t.Fatalf("after a walk order the smith follows (+2 %#x)", smith.intent)
+	if smith.Intent&gamestate.IntentFollow != 0 {
+		t.Fatalf("after a walk order the smith follows (+2 %#x)", smith.Intent)
 	}
-	away := freeCellAway(s, hero.cell, 30)
-	s.walkOrder(hero, away, false)
+	away := freeCellAway(s, hero.Cell, 30)
+	s.WalkOrder(hero, away, false)
 	run(s, 600)
-	if d := gamestate.Dist(away.Row, away.Col, smith.cell.Row, smith.cell.Col); d < gamestate.FollowDistance {
+	if d := gamestate.Dist(away.Row, away.Col, smith.Cell.Row, smith.Cell.Col); d < gamestate.FollowDistance {
 		t.Fatalf("the smith followed after a walk order (%d cells from the hero)", d)
 	}
-	s.gatherOrder()
+	s.GatherOrder()
 	run(s, 600)
-	if smith.intent&gamestate.IntentFollow == 0 ||
-		gamestate.Dist(hero.cell.Row, hero.cell.Col, smith.cell.Row, smith.cell.Col) >= gamestate.FollowDistance+4 {
-		t.Fatalf("after «Все ко мне»: smith %v (+2 %#x), hero %v", smith.cell, smith.intent, hero.cell)
+	if smith.Intent&gamestate.IntentFollow == 0 ||
+		gamestate.Dist(hero.Cell.Row, hero.Cell.Col, smith.Cell.Row, smith.Cell.Col) >= gamestate.FollowDistance+4 {
+		t.Fatalf("after «Все ко мне»: smith %v (+2 %#x), hero %v", smith.Cell, smith.Intent, hero.Cell)
 	}
 }
 
@@ -97,28 +97,28 @@ func TestHiredMemberFollows(t *testing.T) {
 // the stance toggle works on the selection.
 func TestSelectionOrders(t *testing.T) {
 	s, smith := hireSmith(t)
-	if len(s.sel) != 1 || s.sel[0] != s.party[0].Index {
-		t.Fatalf("selection after the hire %v", s.sel)
+	if len(s.Sel) != 1 || s.Sel[0] != s.Party[0].Index {
+		t.Fatalf("selection after the hire %v", s.Sel)
 	}
 	s.portraitClick(1)
-	if len(s.sel) != 1 || s.sel[0] != s.party[1].Index {
-		t.Fatalf("selection after the portrait click %v", s.sel)
+	if len(s.Sel) != 1 || s.Sel[0] != s.Party[1].Index {
+		t.Fatalf("selection after the portrait click %v", s.Sel)
 	}
-	s.toggleSelectionStance()
-	if !s.party[1].InStance() || s.party[0].InStance() {
-		t.Fatalf("stance: smith %v, hero %v", s.party[1].InStance(), s.party[0].InStance())
+	s.ToggleSelectionStance()
+	if !s.Party[1].InStance() || s.Party[0].InStance() {
+		t.Fatalf("stance: smith %v, hero %v", s.Party[1].InStance(), s.Party[0].InStance())
 	}
 	s.portraitRightClick(1)
-	if len(s.sel) != 0 {
-		t.Fatalf("selection after the right click %v", s.sel)
+	if len(s.Sel) != 0 {
+		t.Fatalf("selection after the right click %v", s.Sel)
 	}
 	// Dead: revived by «Живая Вода» through Game.Reviver.
-	e := &s.party[1]
+	e := &s.Party[1]
 	e.Flags4 |= 0x80
-	delete(s.occ, smith.cell)
-	smith.act = gamestate.ActDeath
-	if !s.game.Reviver(e) || e.Dead() || smith.act != 0 || !s.occ[smith.cell] || e.HP != gamestate.HPFull {
-		t.Fatalf("revival: dead %v, act %d, cell held %v, HP %d", e.Dead(), smith.act, s.occ[smith.cell], e.HP)
+	delete(s.Occ, smith.Cell)
+	smith.Act = gamestate.ActDeath
+	if !s.Game.Reviver(e) || e.Dead() || smith.Act != 0 || !s.Occ[smith.Cell] || e.HP != gamestate.HPFull {
+		t.Fatalf("revival: dead %v, act %d, cell held %v, HP %d", e.Dead(), smith.Act, s.Occ[smith.Cell], e.HP)
 	}
 }
 
@@ -126,27 +126,27 @@ func TestSelectionOrders(t *testing.T) {
 // (0x00422131 has no walking check); the walk order goes on afterwards.
 func TestFlinchWhileWalking(t *testing.T) {
 	s := newVolkScene(t)
-	hero := s.lead()
-	goal := freeCellAway(s, hero.cell, 20)
-	s.walkOrder(hero, goal, false)
+	hero := s.Lead()
+	goal := freeCellAway(s, hero.Cell, 20)
+	s.WalkOrder(hero, goal, false)
 	run(s, 3)
-	if !hero.walking {
+	if !hero.Walking {
 		t.Skip("the hero does not walk")
 	}
-	s.flinch(&hero.walker)
-	if hero.act != gamestate.ActFlinch || hero.walking || len(hero.path) > 0 {
-		t.Fatalf("after the hit: act %d, walking %v", hero.act, hero.walking)
+	s.Flinch(&hero.Walker)
+	if hero.Act != gamestate.ActFlinch || hero.Walking || len(hero.Path) > 0 {
+		t.Fatalf("after the hit: act %d, walking %v", hero.Act, hero.Walking)
 	}
 	flash := false
-	for i := 0; i < 40 && hero.act == gamestate.ActFlinch; i++ {
-		flash = flash || s.members[0].act == gamestate.ActFlinch
-		s.combatTick()
+	for i := 0; i < 40 && hero.Act == gamestate.ActFlinch; i++ {
+		flash = flash || s.Members[0].Act == gamestate.ActFlinch
+		s.CombatTick()
 	}
-	if hero.act != 0 || !flash {
-		t.Fatalf("hit reaction did not end: act %d", hero.act)
+	if hero.Act != 0 || !flash {
+		t.Fatalf("hit reaction did not end: act %d", hero.Act)
 	}
-	s.combatTick()
-	if !hero.walking && len(hero.path) == 0 {
+	s.CombatTick()
+	if !hero.Walking && len(hero.Path) == 0 {
 		t.Fatal("the walk did not go on after the hit reaction")
 	}
 }
@@ -162,7 +162,7 @@ func TestPortraitStatus(t *testing.T) {
 	if !strings.Contains(resfmt.CP866ToUTF8(s.portraitStatus(1)), "воин дружины") {
 		t.Fatalf("smith portrait status %q", resfmt.CP866ToUTF8(s.portraitStatus(1)))
 	}
-	s.party[1].Flags4 |= 0x80
+	s.Party[1].Flags4 |= 0x80
 	if s.portraitStatus(1) != nil {
 		t.Error("a dead member's portrait shows a status line")
 	}
@@ -173,23 +173,23 @@ func TestPortraitStatus(t *testing.T) {
 func TestDeadMemberLeftBehind(t *testing.T) {
 	s, smith := hireSmith(t)
 	var exit *gamestate.MapExit
-	for i := range s.game.Exits {
-		if x := s.game.Exits[i]; x.From == s.mapNumber && s.game.ExitOpen(x) {
-			exit = &s.game.Exits[i]
+	for i := range s.Game.Exits {
+		if x := s.Game.Exits[i]; x.From == s.MapNumber && s.Game.ExitOpen(x) {
+			exit = &s.Game.Exits[i]
 			break
 		}
 	}
 	if exit == nil {
 		t.Skip("no exit from the start map")
 	}
-	s.party[1].Flags4 |= 0x80
-	smith.act = gamestate.ActDeath
+	s.Party[1].Flags4 |= 0x80
+	smith.Act = gamestate.ActDeath
 	s.changeMap(*exit)
-	if s.mapNumber != exit.To {
-		t.Fatalf("still on map %d", s.mapNumber)
+	if s.MapNumber != exit.To {
+		t.Fatalf("still on map %d", s.MapNumber)
 	}
-	if len(s.party) != 1 || s.game.Groups[0].Count != 1 || len(s.sel) != 1 || s.sel[0] != s.party[0].Index {
-		t.Fatalf("party %d, group count %d, selection %v", len(s.party), s.game.Groups[0].Count, s.sel)
+	if len(s.Party) != 1 || s.Game.Groups[0].Count != 1 || len(s.Sel) != 1 || s.Sel[0] != s.Party[0].Index {
+		t.Fatalf("party %d, group count %d, selection %v", len(s.Party), s.Game.Groups[0].Count, s.Sel)
 	}
 }
 
@@ -199,7 +199,7 @@ func TestWordsOfResurrection(t *testing.T) {
 	s, smith := hireSmith(t)
 	words := 0
 	for i := 1; i < 8192 && words == 0; i++ {
-		if it, ok := s.game.Item(i); ok && it.Category == 11 && it.Type == 6 {
+		if it, ok := s.Game.Item(i); ok && it.Category == 11 && it.Type == 6 {
 			words = i
 		}
 	}
@@ -207,8 +207,8 @@ func TestWordsOfResurrection(t *testing.T) {
 		t.Skip("no «Слова Воскрешения» in GAME.0")
 	}
 	var victim *npc
-	for _, n := range s.npcs {
-		if n.mode == npcVillager {
+	for _, n := range s.NPCs {
+		if n.Mode == npcVillager {
 			victim = n
 			break
 		}
@@ -219,25 +219,25 @@ func TestWordsOfResurrection(t *testing.T) {
 	kill := func(w *walker, e *gamestate.Entity) {
 		e.Flags4 |= 0x80
 		e.HP = 0
-		w.act = gamestate.ActDeath
-		delete(s.occ, w.cell)
+		w.Act = gamestate.ActDeath
+		delete(s.Occ, w.Cell)
 	}
-	kill(&smith.walker, &s.party[1])
-	kill(&victim.walker, &s.game.Entities[victim.entity])
-	victim.mode = npcStill
-	hero := &s.party[0]
+	kill(&smith.Walker, &s.Party[1])
+	kill(&victim.Walker, &s.Game.Entities[victim.Entity])
+	victim.Mode = npcStill
+	hero := &s.Party[0]
 	hero.Bag[0] = words
-	s.game.UseBagItem(&s.hand, hero, s.tables, 0)
-	if !s.game.ReviveAll {
+	s.Game.UseBagItem(&s.hand, hero, s.Tables, 0)
+	if !s.Game.ReviveAll {
 		t.Fatal("using the words asked for nothing")
 	}
-	s.game.ReviveAll = false
-	s.reviveAll()
-	if s.party[1].Dead() || smith.act != 0 || s.party[1].HP != gamestate.HPFull {
-		t.Errorf("smith: dead %v, act %d, HP %d", s.party[1].Dead(), smith.act, s.party[1].HP)
+	s.Game.ReviveAll = false
+	s.ReviveAll()
+	if s.Party[1].Dead() || smith.Act != 0 || s.Party[1].HP != gamestate.HPFull {
+		t.Errorf("smith: dead %v, act %d, HP %d", s.Party[1].Dead(), smith.Act, s.Party[1].HP)
 	}
-	if e := s.game.Entities[victim.entity]; e.Dead() || victim.mode != npcVillager || !s.occ[victim.cell] {
-		t.Errorf("villager: dead %v, mode %d, cell held %v", e.Dead(), victim.mode, s.occ[victim.cell])
+	if e := s.Game.Entities[victim.Entity]; e.Dead() || victim.Mode != npcVillager || !s.Occ[victim.Cell] {
+		t.Errorf("villager: dead %v, mode %d, cell held %v", e.Dead(), victim.Mode, s.Occ[victim.Cell])
 	}
 	if hero.Bag[0] == words {
 		t.Error("the words stay in the bag")
@@ -250,28 +250,28 @@ func TestWordsOfResurrection(t *testing.T) {
 // smith next to it; the old cells are free.
 func TestJumpToSameMap(t *testing.T) {
 	s, smith := hireSmith(t)
-	hero := s.lead()
-	objects, npcs := &s.objects[0], s.npcs[0]
-	oldHero, oldSmith := hero.cell, smith.cell
-	to := freeCellAway(s, hero.cell, 30)
-	if to == hero.cell {
+	hero := s.Lead()
+	objects, npcs := &s.objects[0], s.NPCs[0]
+	oldHero, oldSmith := hero.Cell, smith.Cell
+	to := freeCellAway(s, hero.Cell, 30)
+	if to == hero.Cell {
 		t.Skip("no free cell")
 	}
-	hero.walkTo(freeCellAway(s, hero.cell, -20)) // a walk in progress is dropped
-	s.changeMap(gamestate.MapExit{To: s.mapNumber, Row: to.Row, Col: to.Col, Facing: 5})
-	if &s.objects[0] != objects || s.npcs[0] != npcs {
+	hero.WalkTo(freeCellAway(s, hero.Cell, -20)) // a walk in progress is dropped
+	s.changeMap(gamestate.MapExit{To: s.MapNumber, Row: to.Row, Col: to.Col, Facing: 5})
+	if &s.objects[0] != objects || s.NPCs[0] != npcs {
 		t.Fatal("the scene was rebuilt")
 	}
-	if hero.cell != to || hero.dir != 5 || hero.walking || len(hero.path) > 0 {
-		t.Fatalf("hero at %v dir %d walking %v", hero.cell, hero.dir, hero.walking)
+	if hero.Cell != to || hero.Dir != 5 || hero.Walking || len(hero.Path) > 0 {
+		t.Fatalf("hero at %v dir %d walking %v", hero.Cell, hero.Dir, hero.Walking)
 	}
-	if e := s.game.Entities[s.party[0].Index]; e.Row != to.Row || e.Col != to.Col || s.game.Groups[0].Map != s.mapNumber {
+	if e := s.Game.Entities[s.Party[0].Index]; e.Row != to.Row || e.Col != to.Col || s.Game.Groups[0].Map != s.MapNumber {
 		t.Errorf("game hero at %d,%d", e.Row, e.Col)
 	}
-	if smith.cell == oldSmith || smith.dir != 5 || max(absInt(smith.cell.Row-to.Row), absInt(smith.cell.Col-to.Col)) > 12 {
-		t.Errorf("smith at %v dir %d, hero at %v", smith.cell, smith.dir, to)
+	if smith.Cell == oldSmith || smith.Dir != 5 || max(absInt(smith.Cell.Row-to.Row), absInt(smith.Cell.Col-to.Col)) > 12 {
+		t.Errorf("smith at %v dir %d, hero at %v", smith.Cell, smith.Dir, to)
 	}
-	if s.occ[oldHero] || s.occ[oldSmith] || !s.occ[to] || !s.occ[smith.cell] {
+	if s.Occ[oldHero] || s.Occ[oldSmith] || !s.Occ[to] || !s.Occ[smith.Cell] {
 		t.Error("occupancy not moved")
 	}
 }
@@ -288,22 +288,22 @@ func absInt(x int) int {
 // it in the new cell.
 func TestStepHoldsNewCell(t *testing.T) {
 	s := newVolkScene(t)
-	hero := s.lead()
-	start := hero.cell
-	hero.walkTo(freeCellAway(s, start, 10))
+	hero := s.Lead()
+	start := hero.Cell
+	hero.WalkTo(freeCellAway(s, start, 10))
 	run(s, 1)
-	if !hero.walking || hero.from != start || hero.cell == start {
-		t.Fatalf("walking %v from %v into %v", hero.walking, hero.from, hero.cell)
+	if !hero.Walking || hero.From != start || hero.Cell == start {
+		t.Fatalf("walking %v from %v into %v", hero.Walking, hero.From, hero.Cell)
 	}
-	if s.occ[start] || !s.occ[hero.cell] {
-		t.Errorf("occupancy: left %v %v, entered %v %v", start, s.occ[start], hero.cell, s.occ[hero.cell])
+	if s.Occ[start] || !s.Occ[hero.Cell] {
+		t.Errorf("occupancy: left %v %v, entered %v %v", start, s.Occ[start], hero.Cell, s.Occ[hero.Cell])
 	}
-	entered := hero.cell
-	s.flinch(&hero.walker)
-	if hero.walking || hero.cell != entered || !s.occ[entered] {
-		t.Errorf("after the hit: walking %v at %v", hero.walking, hero.cell)
+	entered := hero.Cell
+	s.Flinch(&hero.Walker)
+	if hero.Walking || hero.Cell != entered || !s.Occ[entered] {
+		t.Errorf("after the hit: walking %v at %v", hero.Walking, hero.Cell)
 	}
-	if x, y := hero.position(); true {
+	if x, y := hero.Position(); true {
 		if cx, cy := mapdata.CellCenter(entered); x != float64(cx) || y != float64(cy) {
 			t.Errorf("drawn at %.0f,%.0f, want the entered cell %d,%d", x, y, cx, cy)
 		}

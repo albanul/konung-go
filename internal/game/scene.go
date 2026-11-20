@@ -14,7 +14,9 @@ import (
 	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
+	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
+	"konung1.5/internal/world"
 )
 
 const (
@@ -82,95 +84,78 @@ func (s *startScene) animateObjects() {
 }
 
 type startScene struct {
-	assets         *sceneAssets
-	m              *mapdata.Map
-	tiles          []*ebiten.Image
-	tileMarginX    int
-	tileMarginY    int
-	worldW, worldH int
-	decorations    []mapdata.Decoration
-	objects        []sceneObject       // objects and entities, in depth order
-	placements     []mapdata.Placement // KONUNG.N section 3, building objects updated
-	shadowLayer    *ebiten.Image
-	shadows        bool // setting 0x00A3E750: draw the shadow pass (0x004266C4)
-	dayNight       bool // setting 0x00A3E71C: tint the world by the time of day
-	moon           bool // 0x00A3E738: this night is moonlit
-	lit            *mapdata.LitCells
-	terrainLights  *mapdata.TerrainLights
-	lighting       bool // setting 0x00A3E734: the lit terrain path at night
-	litPath        bool // this frame draws lit terrain cells (0x0042565D)
-	flicker        resfmt.LitTerrainLight
-	litCells       map[[2]int]*litCell // composed lit terrain cells, relit when the light changes
-	litTables      *resfmt.LitTables
-	litGen         int  // bumped when the lit path's light (flicker, tint) changes
-	lightFrame     int  // game frame (60 ms) of the last flicker roll
-	lightRolled    bool // the flicker has been rolled at least once
-	litBuf         *image.RGBA
-	transparency   bool           // setting 0x00A3E700: flames are blended (0x0043D8EF)
-	flameFrame     int            // game frame (60 ms) of the last flame advance
-	tiling         bool           // setting 0x00A3E744 («T»): windows hide the world behind a tiled background
-	soundFrame     int            // game frame (60 ms) of the last soundTick
-	tint           resfmt.Tint    // 0x0051EC7C, this frame's light
-	tintU          map[string]any // shader tables for tint
-	tintSh         *ebiten.Shader // nil if the shader failed to compile
-	litSh          *ebiten.Shader // lit terrain shader; nil: the CPU path
-	litLUT         *ebiten.Image  // resfmt.LitTablesImage of the current light
-	litLUTGen      int            // litGen litLUT was written for
-	camX, camY     int
-	tick           int // game ticks (0x00A3E770, one per step, 60 ms each)
-	frame          int // drawn frames (Update calls)
-	speed          int // 0x00A3E764
+	assets        *sceneAssets
+	m             *mapdata.Map
+	tiles         []*ebiten.Image
+	tileMarginX   int
+	tileMarginY   int
+	decorations   []mapdata.Decoration
+	objects       []sceneObject       // objects and entities, in depth order
+	placements    []mapdata.Placement // KONUNG.N section 3, building objects updated
+	shadowLayer   *ebiten.Image
+	shadows       bool // setting 0x00A3E750: draw the shadow pass (0x004266C4)
+	dayNight      bool // setting 0x00A3E71C: tint the world by the time of day
+	moon          bool // 0x00A3E738: this night is moonlit
+	lit           *mapdata.LitCells
+	terrainLights *mapdata.TerrainLights
+	lighting      bool // setting 0x00A3E734: the lit terrain path at night
+	litPath       bool // this frame draws lit terrain cells (0x0042565D)
+	flicker       resfmt.LitTerrainLight
+	litCells      map[[2]int]*litCell // composed lit terrain cells, relit when the light changes
+	litTables     *resfmt.LitTables
+	litGen        int  // bumped when the lit path's light (flicker, tint) changes
+	lightFrame    int  // game frame (60 ms) of the last flicker roll
+	lightRolled   bool // the flicker has been rolled at least once
+	litBuf        *image.RGBA
+	transparency  bool           // setting 0x00A3E700: flames are blended (0x0043D8EF)
+	flameFrame    int            // game frame (60 ms) of the last flame advance
+	tiling        bool           // setting 0x00A3E744 («T»): windows hide the world behind a tiled background
+	soundFrame    int            // game frame (60 ms) of the last soundTick
+	tint          resfmt.Tint    // 0x0051EC7C, this frame's light
+	tintU         map[string]any // shader tables for tint
+	tintSh        *ebiten.Shader // nil if the shader failed to compile
+	litSh         *ebiten.Shader // lit terrain shader; nil: the CPU path
+	litLUT        *ebiten.Image  // resfmt.LitTablesImage of the current light
+	litLUTGen     int            // litGen litLUT was written for
+	camX, camY    int
+	frame         int // drawn frames (Update calls)
+	speed         int // 0x00A3E764
 
-	hero   *walker // the hero's walker (members[0]); nil when the party is not on this map
-	npcs   []*npc  // every character outside the party (see npcMode)
-	aiNext int     // round-robin start of the village AI's path budget
-	walk   *mapdata.WalkGrid
-	occ    map[mapdata.Cell]bool // cells held or being entered by a character
-	follow bool                  // camera follows the hero (0x00A3E68C; Ctrl+S, off at start)
+	// World is the simulation (internal/world): the party, the
+	// characters, the occupancy, piles, arrows and the clock.
+	*world.World
+	follow bool // camera follows the hero (0x00A3E68C; Ctrl+S, off at start)
 	// camW, camH are the camera's right and bottom limits
 	// (mapdata.Map.CameraLimits).
 	camW, camH int
-	rng        *rand.Rand
 
-	hud   *hud
-	party []gamestate.Entity // group 0's entities (copies; [0] = hero) shown in the portrait grid
-	// members are the party's walkers, one per party entry (party.go);
-	// sel is the selection list 0x0083B93C (entity indices, at most 10)
-	// and cur the character window's character 0x00A3E688 (party index).
-	members []*member
-	sel     []int
-	cur     int
+	hud *hud
 
-	game   *gamestate.Game
-	tables *resfmt.ExeTables
-	font   *gameFont // small status-line font (resfmt.FontSmallVA)
-	inv    *charWindow
-	talk   *talkWindow     // dialogue (window 1) and quest log (window 2), dialogue.go
-	trade  *tradeWindow    // trade and pile window (window 7), trade.go
-	wmap   *worldMapWindow // world map (window 5), worldmap.go
-	hand   gamestate.Hand  // item being moved in the character window
-	msg    []byte          // status-line message (0x0042F9B8) and when it ends
-	msgEnd int
+	font  *gameFont // small status-line font (resfmt.FontSmallVA)
+	inv   *charWindow
+	talk  *talkWindow     // dialogue (window 1) and quest log (window 2), dialogue.go
+	trade *tradeWindow    // trade and pile window (window 7), trade.go
+	wmap  *worldMapWindow // world map (window 5), worldmap.go
+	// amulets is a LAN world's amulet state from the server (lanamulets.go).
+	amulets *netplay.AmuletsPayload
+	hand    gamestate.Hand // item being moved in the character window
+	msg     []byte         // status-line message (0x0042F9B8) and when it ends
+	msgEnd  int
 
-	mapNumber int
-	pileAt    map[mapdata.Cell]int // active piles by cell (index into game.Piles)
-	hovered   int                  // entity under the cursor in the last frame, -1 = none
+	hovered int // entity under the cursor in the last frame, -1 = none
 
-	byEntity  map[int]*npc       // non-party characters on this map by entity index
-	jump      *gamestate.MapExit // a map change asked by a misc item (sceneWorld.Jump)
-	aiBudget  int                // combat AI path searches left this game tick
-	fightNext int                // round-robin start of the combat AI's path budget
-	// film is a film the scene asks the menu to play (0x0042B690): the
-	// village surrender's DEFEAT<map>.FLM, then back to the game, or
-	// WIN.FLM, then the menu (filmToMenu).
-	film       string
-	filmToMenu bool
 	// hoveredBuilding is placement + 1 of the front-most settlement
 	// building under the cursor (0x00A3E6A4, set by the object draw
 	// pass), 0 = none.
 	hoveredBuilding int
-	arrows          []gamestate.Arrow
 	hideHelp        bool // F1 hides the key help (help.go)
+	lan             bool // a LAN world (lanview.go)
+	// view is a LAN world's link to the server (lanview.go): the scene
+	// shows the server's world and simulates nothing.
+	view *lanView
+	// clock is the server's clock (lanclock.go), nil until it arrives;
+	// the menu sets it every frame.
+	clock *serverClock
 }
 
 // sceneAssets is what stays loaded across map changes: resource files, exe
@@ -191,6 +176,33 @@ type sceneAssets struct {
 	litMaskImgs    []*ebiten.Image // resfmt.LitMaskImage per light mask, made on first use
 	flames         *flameImages    // FLAMES.RES; nil if missing
 	quests         *resfmt.Quests  // QUESTR.RES dialogues; nil if missing (no one talks)
+	// lanMaps, when set, are the LAN version's maps (MAPS.RES; map n =
+	// entry n−1) used instead of KONUNG.N and LIGHTS.N.
+	lanMaps []mapdata.MapsResEntry
+	// view: scenes are LAN viewers (lanview.go); viewState is the link the
+	// first one starts with.
+	view      bool
+	viewState *lanView
+	lanMap    *lanWorldMap      // the LAN map window (M); nil in single player
+	lanExe    *gamestate.LANExe // LAN_KONG.EXE's tables (the maps' fixed light); nil in single player
+}
+
+// mapFile returns map n's KONUNG.N and LIGHTS.N bytes (nil lights when the
+// file is missing) and a name for messages.
+func (a *sceneAssets) mapFile(n int) (data, lights []byte, name string, err error) {
+	if a.lanMaps != nil {
+		if n < 1 || n > len(a.lanMaps) {
+			return nil, nil, "", fmt.Errorf("MAPS.RES has no map %d", n)
+		}
+		e := a.lanMaps[n-1]
+		return e.Map, e.Lights, fmt.Sprintf("MAPS.RES #%d", n), nil
+	}
+	name = filepath.Join(a.mapDir, fmt.Sprintf("KONUNG.%d", n))
+	if data, err = gamefs.ReadFile(name); err != nil {
+		return nil, nil, "", err
+	}
+	lights, _ = gamefs.ReadFile(filepath.Join(a.mapDir, fmt.Sprintf("LIGHTS.%d", n)))
+	return data, lights, name, nil
 }
 
 // loadSceneAssets loads the resources a game needs (they stay loaded across
@@ -285,80 +297,25 @@ func (a *sceneAssets) newGame(hero gamestate.Entity) (*startScene, error) {
 }
 
 // changeMap takes map exit x (0x00421CCD, then the main loop's map change at
-// 0x004377C6). An exit or jump to the map the party is on only places the
-// party again (placeAgain). Otherwise the scene's characters go back into the game (storeWorld),
-// the leave cleanup runs while the party is still on the map it leaves (so
-// dead party members are removed too), the party moves to the exit's target
-// and the scene is rebuilt for that map. If the target fails to load, the
-// groups, entities and settlements are restored (items freed by the cleanup
-// stay freed).
+// 0x004377C6; the world's ChangeMap hook). An exit or jump to the map the
+// party is on only places the party again (World.PlaceAgain). Otherwise
+// the world leaves the map (World.Leave) and the scene is rebuilt for the
+// target; if it fails to load, Leave's undo restores the records.
 func (s *startScene) changeMap(x gamestate.MapExit) {
-	if x.To == s.mapNumber {
-		s.placeAgain(x)
+	if x.To == s.MapNumber {
+		s.PlaceAgain(x)
+		s.centerHero() // 0x00437832 → 0x00428F90
 		return
 	}
-	s.storeWorld()
-	groups := append([]gamestate.Group(nil), s.game.Groups...)
-	entities := append([]gamestate.Entity(nil), s.game.Entities...)
-	settlements := append([]gamestate.Settlement(nil), s.game.Settlements...)
-	g0 := s.game.Groups[0]
-	curEntity := s.current().Index
-	var kept []int // the party's entities that survive the cleanup, in order
-	for k := 0; k < g0.Count; k++ {
-		if !s.game.Entities[g0.First+k].Dead() {
-			kept = append(kept, g0.First+k)
-		}
-	}
-	s.game.LeaveMap(s.mapNumber) // 0x00436AD0: the dead of the map left are removed
-	// The survivors moved down to fill the gaps: renumber the selection and
-	// the character window's character.
-	moved := map[int]int{}
-	for k, i := range kept {
-		moved[i] = g0.First + k
-	}
-	var sel []int
-	for _, i := range s.sel {
-		if j, ok := moved[i]; ok {
-			sel = append(sel, j)
-		}
-	}
-	s.sel, s.cur = sel, 0
-	if j, ok := moved[curEntity]; ok {
-		s.cur = j - g0.First
-	}
-	s.game.TakeExit(x)
-	ns, err := s.assets.buildScene(s.game, x.To, s, nil)
+	undo := s.Leave(x)
+	ns, err := s.assets.buildScene(s.Game, x.To, s, nil)
 	if err != nil {
 		log.Printf("map exit %d to KONUNG.%d: %v", x.Index, x.To, err)
-		s.game.Groups, s.game.Entities, s.game.Settlements = groups, entities, settlements
+		undo()
 		return
 	}
 	*s = *ns
-}
-
-// storeWorld writes the scene's runtime state back into s.game: the party
-// (cell, facing, +2 intents, stance, weapon, inventory) and every other
-// character's cell and facing.
-// The game keeps all characters in one global array (0x007AB378) and runs
-// the AI only for the current map, so a map looks as it was left on the
-// next visit; the map loader (0x0043C612) puts them back on their stored
-// cells, idle.
-func (s *startScene) storeWorld() {
-	for _, m := range s.members {
-		if m == nil {
-			continue
-		}
-		e := &s.party[m.k]
-		e.Row, e.Col, e.Variant = m.cell.Row, m.cell.Col, int(m.dir)
-		e.Flags2 = m.intent
-	}
-	for _, e := range s.party {
-		s.game.Entities[e.Index] = e
-	}
-	for _, n := range s.npcs {
-		e := &s.game.Entities[n.entity]
-		e.Row, e.Col, e.Variant = n.cell.Row, n.cell.Col, int(n.dir)
-	}
+	s.installHooks() // the hooks act on the live scene
 }
 
 // buildScene builds the scene for map mapNumber: terrain, decorations and
@@ -369,8 +326,7 @@ func (s *startScene) storeWorld() {
 // alarm, skips placement and respawn (EnterMap) and takes the active piles,
 // the clock and the arrows in flight from the save.
 func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *startScene, restore *gamestate.SaveState) (*startScene, error) {
-	mapPath := filepath.Join(a.mapDir, fmt.Sprintf("KONUNG.%d", mapNumber))
-	mapData, err := gamefs.ReadFile(mapPath)
+	mapData, lightsData, mapPath, err := a.mapFile(mapNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -395,24 +351,27 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	game.Lit = false        // 0x0043C11B: the map loader puts the torch out
 	game.KnowMap(mapNumber) // 0x0043C12A: the map window shows it from now on
 	s := &startScene{
+		World: &world.World{
+			Walk:      walk,
+			Game:      game,
+			Tables:    tables,
+			ByEntity:  map[int]*npc{},
+			Occ:       map[mapdata.Cell]bool{},
+			MapNumber: mapNumber,
+			PileAt:    map[mapdata.Cell]int{},
+			Rng:       rand.New(rand.NewPCG(1, uint64(mapNumber))),
+		},
 		assets:      a,
 		m:           m,
 		tiles:       a.tiles,
 		shadowLayer: ebiten.NewImage(ScreenWidth, ScreenHeight),
-		walk:        walk,
 		hud:         a.hud,
-		game:        game,
-		tables:      tables,
 		font:        a.font,
 		hovered:     -1,
-		byEntity:    map[int]*npc{},
-		occ:         map[mapdata.Cell]bool{},
 		hand:        gamestate.NewHand(),
-		mapNumber:   mapNumber,
-		pileAt:      map[mapdata.Cell]int{},
-		rng:         rand.New(rand.NewPCG(1, uint64(mapNumber))),
+		lan:         a.lanMaps != nil, // also after a map change
 	}
-	if s.lit, s.terrainLights, err = loadLights(a.mapDir, mapNumber); err != nil {
+	if s.lit, s.terrainLights, err = parseLights(lightsData); err != nil {
 		log.Printf("LIGHTS.%d: %v", mapNumber, err)
 	}
 	if s.tintSh, err = loadTintShader(); err != nil {
@@ -426,14 +385,18 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		s.transparency = prev.transparency
 		s.inv, s.hand, s.follow, s.speed = prev.inv, prev.hand, prev.follow, prev.speed
 		s.talk, s.trade, s.wmap = prev.talk, prev.trade, prev.wmap
-		s.tick, s.frame, s.msg, s.msgEnd = prev.tick, prev.frame, prev.msg, prev.msgEnd
+		s.Tick, s.frame, s.msg, s.msgEnd = prev.Tick, prev.frame, prev.msg, prev.msgEnd
 		s.shadowLayer = prev.shadowLayer
-		s.sel = prev.sel
+		s.Sel = prev.Sel
 	} else {
 		s.inv = newCharWindow(a.hud, tables, a.largeFont, a.font)
 		s.talk = newTalkWindow(tables, a.quests, a.font)
 		s.trade = newTradeWindow(tables, s.inv.strip, a.font, a.largeFont)
 		s.wmap = newWorldMapWindow(tables)
+		s.wmap.lan = a.lanMap
+		if a.lanMaps != nil && a.lanMap == nil {
+			s.wmap.lan = &lanWorldMap{} // a LAN world without the map data: the bare parchment
+		}
 	}
 	// Only upload tiles the map references; slot 304 is a large non-tile image.
 	useTile := func(slot int) {
@@ -462,7 +425,7 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 			s.decorations = append(s.decorations, d)
 		}
 	}
-	s.worldW, s.worldH = m.WorldSize()
+	s.WorldW, s.WorldH = m.WorldSize()
 	s.camW, s.camH = m.CameraLimits()
 
 	// Village buildings show their state (0x0043CB4A).
@@ -479,168 +442,48 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 	// Characters and creatures are walkers with lazily loaded idle/walk
 	// loops. The player (group 0's first entity) is controllable; villagers
 	// run the ported village AI, creatures stand still while calm (see npc).
-	camX, camY := s.worldW/2, s.worldH/2
+	camX, camY := s.WorldW/2, s.WorldH/2
 	uploadSprite := func(sp *resfmt.EntitySprite) (*ebiten.Image, *ebiten.Image) { return upload(sp.Image, sp.Shadow) }
 	logErr := func(err error) { log.Printf("%s: %v", gamePath, err) }
-	reserve := func(c mapdata.Cell) bool {
-		if s.occ[c] {
-			return false
-		}
-		s.occ[c] = true
-		return true
+	attach := func(w *walker, p gamestate.Placed, live func() gamestate.Entity) {
+		withSprites(w, entityLoader(game, p, live, objectsData, graphData, tables, uploadSprite, logErr))
 	}
-	release := func(c mapdata.Cell) { delete(s.occ, c) }
-	// Map entry (0x0043C612): creatures are placed at random in their
-	// territory and respawned; villagers and the party keep their cells.
-	taken := map[[2]int]bool{}
-	for _, gr := range game.Groups[1:] {
-		if gr.Map != mapNumber || gr.Kind == 0 || (gr.Kind&0x80 == 0 && int8(gr.Kind) < 0x51) {
-			continue
+	if a.view {
+		// A LAN viewer: only the own hero; the server reports the rest.
+		s.view = a.viewState
+		if prev != nil {
+			s.view = prev.view
 		}
-		for k := 0; k < gr.Count; k++ {
-			if e := game.Entities[gr.First+k]; !e.Dead() && (e.Row != 0 || e.Col != 0) {
-				taken[[2]int{e.Row, e.Col}] = true
-			}
-		}
+		s.view.attach = attach
+		s.placeOwn(attach)
+	} else {
+		s.Populate(restore != nil, attach)
 	}
-	if restore == nil {
-		freeCell := func(r, c int) bool { return !walk.Blocked(r, c) && !taken[[2]int{r, c}] }
-		game.EnterMap(mapNumber, tables, s.rng.IntN,
-			func(r, c int) bool { return !freeCell(r, c) },
-			func(r, c int) { taken[[2]int{r, c}] = true })
-		// 0x004118DC after a map exit or a jump (TakeExit cleared the
-		// party's cells): the hero on the group cell, the others around it.
-		if g0 := game.Groups[0]; g0.Map == mapNumber && g0.Count > 0 && tables != nil {
-			if h := game.Entities[g0.First]; h.Row == 0 && h.Col == 0 {
-				game.PlaceParty(tables, s.rng.IntN, freeCell, func(r, c int) { taken[[2]int{r, c}] = true })
-			}
-		}
-	}
-	if g0 := game.Groups[0]; g0.Map == mapNumber {
-		for k := 0; k < g0.Count; k++ {
-			s.party = append(s.party, game.Entities[g0.First+k])
-		}
-		s.members = make([]*member, len(s.party))
-	}
-	game.Reviver = s.revive
-	for _, p := range game.OnMap(mapNumber, walk.Blocked) {
-		if p.Group != 0 && p.Dead() {
-			continue // the leave cleanup (0x00436AD0) removes the dead
-		}
-		cell := mapdata.Cell{Row: p.Row, Col: p.Col}
-		if !p.Dead() {
-			s.occ[cell] = true
-		}
-		cur := liveEntity(game, p.Index) // type (stance), weapon and gear change in fights
-		k := -1
-		if p.Group == 0 {
-			k = s.partyIndex(p.Index)
-		}
-		if k >= 0 {
-			cur = func() gamestate.Entity { return s.party[k] } // stance and weapon change at runtime
-		}
-		w := walker{
-			entity: p.Index, cell: cell, dir: mapdata.Direction(p.Variant & 7), idle: -1,
-			look:    lookOf(p.Entity),
-			load:    entityLoader(game, p, cur, objectsData, graphData, tables, uploadSprite, logErr),
-			reserve: reserve, release: release,
-			sound: s.actionSound,
-		}
-		if k >= 0 {
-			w.blocked = s.blocked
-			m := &member{walker: w, k: k, target: -1}
-			// +2 survives a map change or a save; the fight orders don't.
-			m.intent = byte(p.Flags2) & (gamestate.IntentStrike | gamestate.IntentFollow | gamestate.IntentIdle)
-			if k == 0 {
-				m.intent &^= gamestate.IntentFollow
-			}
-			if p.Dead() {
-				m.act, m.actStep = gamestate.ActDeath, 1<<10 // a corpse: the last death step
-			}
-			s.members[k] = m
-			if k == 0 {
-				s.hero = &m.walker
-				camX, camY = gamestate.WorldPos(p.Row, p.Col)
-			}
-			continue
-		}
-		n := &npc{walker: w, rng: s.rng.IntN}
-		if k := p.Flags4; k == 0x4D || k == 0x4F {
-			n.hold = n.pauseHold
-		}
-		gr := game.Groups[p.Group]
-		area, hasArea := gr.WanderArea()
-		n.area = area
-		n.target = -1
-		switch {
-		case gr.CreatureGroup():
-			n.mode, n.group = npcCreature, p.Group
-			n.blocked = s.blocked
-			if restore == nil {
-				game.Groups[p.Group].Alarm = gamestate.AlarmCalm // 0x0043C66D
-			}
-			if p.Type%6 == gamestate.ActShoot {
-				n.act = gamestate.ActShoot // dormant (kinds 0x46, 0x4C, 0x55)
-			}
-			s.setStopAt(n)
-		case gr.VillageGroup() && hasArea:
-			n.group = p.Group
-			s.setStopAt(n)
-			n.mode = npcVillager
-			n.post, n.posted = game.PostOf(p.Entity)
-			n.moveAt = gamestate.VillageMoveThreshold(p.Entity)
-			n.blocked = s.blocked
-		default:
-			n.blocked = s.blocked
-		}
-		n.liveMode = n.mode
-		s.npcs = append(s.npcs, n)
-		s.byEntity[p.Index] = n
+	if s.Hero != nil {
+		camX, camY = gamestate.WorldPos(s.Hero.Cell.Row, s.Hero.Cell.Col)
 	}
 	sort.SliceStable(s.objects, func(i, j int) bool { return s.objects[i].depth < s.objects[j].depth })
-	s.initSelection(prev)
+	prevCur := -1
+	if prev != nil {
+		prevCur = prev.Cur
+	}
+	s.InitSelection(prevCur)
+	s.installHooks()
 	// 0x0043CB8B: the map's settlement restocks (healer jars, merchant);
 	// the loader does this on every load, a restored save included.
-	if prev == nil || prev.mapNumber != mapNumber {
-		game.Restock(mapNumber, game.Groups[0].First, tables, s.rng.IntN)
+	if (prev == nil || prev.MapNumber != mapNumber) && !a.view {
+		game.Restock(mapNumber, game.Groups[0].First, tables, s.Rng.IntN)
 	}
 	if restore != nil {
 		s.restoreSaved(*restore)
 	}
-	s.activatePiles()
+	s.ActivatePiles()
+	if prev != nil {
+		s.clock = prev.clock
+	}
 	s.centerOn(camX, camY)
 	s.centerHero()
 	return s, nil
-}
-
-// updateNPCs runs the village AI and advances every NPC's walk by one game
-// tick, like 0x00421DA4 in the game loop; at most VillagePathBudget
-// villagers may start a walk per tick, served round-robin (0x004116CC). A
-// creature with a walk throttle +0x11 = m walks only on ticks where
-// time & m == m (0x0041271A).
-func (s *startScene) updateNPCs() {
-	if len(s.npcs) > 0 {
-		budget := gamestate.VillagePathBudget
-		for i := range s.npcs {
-			k := (s.aiNext + i) % len(s.npcs)
-			if n := s.npcs[k]; n.mode == npcVillager && !s.fighting(n) {
-				apprentice := func() (gamestate.Post, bool) { return s.game.ApprenticePost(n.entity) }
-				if used := n.villageTick(budget, apprentice); used > 0 {
-					budget -= used
-					s.aiNext = k + 1
-				}
-			}
-		}
-	}
-	for _, n := range s.npcs {
-		if n.act != 0 {
-			continue
-		}
-		if m := s.game.Entities[n.entity].Throttle; n.mode == npcCreature && m != 0 && s.gameTime()&m != m {
-			continue
-		}
-		n.update()
-	}
 }
 
 // updateControls handles the player's keys and clicks. Orders go to the
@@ -671,10 +514,10 @@ func (s *startScene) updateNPCs() {
 // (0x00429194(1) at 0x004217BA, 0x00421948, 0x00424635); any click ends the
 // shovel's dig mode first.
 func (s *startScene) updateControls(mx, my int) {
-	if len(s.party) == 0 || s.lead() == nil || s.party[0].Dead() || s.hero.act == gamestate.ActDeath {
+	if len(s.Party) == 0 || s.Lead() == nil || s.Party[0].Dead() || s.Hero.Act == gamestate.ActDeath {
 		return
 	}
-	cur := s.current()
+	cur := s.Current()
 	left := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
 	right := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight)
 	if s.trade.open() {
@@ -697,57 +540,83 @@ func (s *startScene) updateControls(mx, my int) {
 	}
 	button, spot := -1, 0
 	if left || right {
-		spot = s.tables.HUDHotspot800(mx, my)
+		spot = s.Tables.HUDHotspot800(mx, my)
 	}
 	if left {
-		button = buttonAt(s.tables, mx, my)
+		button = buttonAt(s.Tables, mx, my)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
-		s.hand.Return(cur)
-		s.toggleSelectionStance()
-		s.hud.press(hudStanceButton, gamestate.HUDButtonSlots(*s.buttonEntity())[hudStanceButton])
+	if s.keyJust(ebiten.KeySpace) || button == hudStanceButton {
+		s.returnHand(cur)
+		if s.view != nil {
+			// The first selected decides, as ToggleSelectionStance.
+			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderStance, On: !s.ButtonEntity().InStance()})
+		} else {
+			s.ToggleSelectionStance()
+		}
+		s.hud.press(hudStanceButton, gamestate.HUDButtonSlots(*s.ButtonEntity())[hudStanceButton])
 	}
 	weapon := func(mode int) {
-		s.hand.Return(cur)
-		before := gamestate.HUDButtonSlots(*s.buttonEntity())[hudWeaponButton]
-		s.selectWeapon(mode)
+		s.returnHand(cur)
+		before := gamestate.HUDButtonSlots(*s.ButtonEntity())[hudWeaponButton]
+		if s.view != nil {
+			// The first selected member, the whole selection with Shift
+			// (SelectWeapon).
+			sel := append([]int(nil), s.Sel...)
+			if !shiftHeld() && len(sel) > 1 {
+				sel = sel[:1]
+			}
+			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderWeapon, Mode: mode, Sel: sel})
+		} else {
+			s.selectWeapon(mode)
+		}
 		s.hud.press(hudWeaponButton, before) // 0x00421B9D presses the image shown so far
 	}
 	for key, mode := range map[ebiten.Key]int{
 		ebiten.Key1: gamestate.WeaponBlade, ebiten.Key2: gamestate.WeaponAxe, ebiten.Key3: gamestate.WeaponBow,
 	} {
-		if inpututil.IsKeyJustPressed(key) {
+		if s.keyJust(key) {
 			weapon(mode)
 		}
 	}
 	if button == hudWeaponButton {
 		weapon(gamestate.WeaponCycle)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF) || button == hudGatherButton {
-		s.gatherOrder()
+	if s.keyJust(ebiten.KeyF) || button == hudGatherButton {
+		if s.view != nil {
+			s.returnHand(cur)
+			s.hud.press(hudGatherButton, hudGatherImage)
+			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderGather}) // the server's hirelings
+		} else {
+			s.gatherOrder()
+		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyA) || button == hudAttackButton {
-		s.attackOrder()
+	if s.keyJust(ebiten.KeyA) || button == hudAttackButton {
+		if s.view != nil {
+			s.hud.press(hudAttackButton, hudAttackImage)
+			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderAttack})
+		} else {
+			s.attackOrder()
+		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyM) || button == hudMapButton {
+	if s.keyJust(ebiten.KeyM) || button == hudMapButton {
 		s.toggleMap(cur) // 0x00436EB9, 0x00422C01
 	}
-	if (inpututil.IsKeyJustPressed(ebiten.KeyQ) || button == hudLogButton) && !s.inv.open && !s.wmap.open {
+	if (s.keyJust(ebiten.KeyQ) || button == hudLogButton) && !s.inv.open && !s.wmap.open {
 		s.talk.toggleLog() // 0x0042459C
 		s.hud.press(hudLogButton, hudLogImage)
 	}
-	if (inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton) && !s.talk.log && !s.wmap.open {
-		s.hand.Return(cur)
+	if (s.keyJust(ebiten.KeyI) || button == hudBagButton) && !s.talk.log && !s.wmap.open {
+		s.returnHand(cur)
 		s.inv.toggle()
 		if s.inv.open {
-			s.hand.Box = 0 // 0x004246D1
+			s.clearBox() // 0x004246D1
 		}
 		s.hud.press(hudBagButton, hudBagImage)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBackquote) && !s.inv.open && !s.talk.open() {
+	if s.keyJust(ebiten.KeyBackquote) && !s.inv.open && !s.talk.open() {
 		s.inv.toggleQuick()
 		if s.inv.quick {
-			s.hand.Box = 0 // 0x00437253: showing the strip empties the in-hand box
+			s.clearBox() // 0x00437253: showing the strip empties the in-hand box
 		}
 	}
 	switch {
@@ -760,19 +629,19 @@ func (s *startScene) updateControls(mx, my int) {
 		// Window 5: the map area's hotspots (0x0043946E); other clicks in
 		// the view are ignored (0x00422EDF), and a right click only
 		// returns a held item (0x0042393D needs window 0).
-		if _, inArea := s.wmap.regionAt(s.game, mx, my); left && inArea {
+		if _, inArea := s.wmap.regionAt(s.Game, mx, my); left && inArea {
 			s.mapClick(cur, mx, my)
 		} else if right {
-			s.hand.Return(cur)
+			s.returnHand(cur)
 		} else if left && !inView(mx, my) {
 			s.click(cur, mx, my, spot, false)
 		}
 	case left || right:
-		s.click(s.current(), mx, my, spot, right)
+		s.click(s.Current(), mx, my, spot, right)
 	}
-	for _, m := range s.members {
+	for _, m := range s.Members {
 		if m != nil {
-			m.look = lookOf(s.party[m.k])
+			m.Look = lookOf(s.Party[m.K])
 		}
 	}
 }
@@ -787,12 +656,18 @@ func (s *startScene) click(cur *gamestate.Entity, mx, my, spot int, right bool) 
 		}
 	}
 	if right && s.hand.Holding() {
-		s.hand.Return(cur) // 0x00423919
+		s.returnHand(cur) // 0x00423919
+		return
+	}
+	if s.view != nil {
+		// A LAN viewer: item clicks, map clicks and talking are orders
+		// (lanitems.go, lanview.go).
+		s.lanClick(cur, mx, my, spot, right)
 		return
 	}
 	msg := 0
 	portrait := -1
-	if k := spot - hotspotPortrait; k >= 0 && k < len(portraitCells) && k < len(s.party) {
+	if k := spot - hotspotPortrait; k >= 0 && k < len(portraitCells) && k < len(s.Party) {
 		portrait = k
 	}
 	switch {
@@ -801,9 +676,9 @@ func (s *startScene) click(cur *gamestate.Entity, mx, my, spot int, right bool) 
 	case portrait >= 0 && s.hand.Holding():
 		// 0x00422E21: a held item dropped on a portrait is used on (or given
 		// to) that member.
-		msg = s.game.ClickPortrait(&s.hand, cur, &s.party[portrait], s.tables)
-		if m, _ := s.partyMember(s.party[portrait].Index); m != nil {
-			m.look = lookOf(s.party[portrait])
+		msg = s.Game.ClickPortrait(&s.hand, cur, &s.Party[portrait], s.Tables)
+		if m, _ := s.PartyMember(s.Party[portrait].Index); m != nil {
+			m.Look = lookOf(s.Party[portrait])
 		}
 	case portrait >= 0:
 		s.portraitClick(portrait) // 0x00422EA8: select, the bag strip
@@ -820,9 +695,9 @@ func (s *startScene) click(cur *gamestate.Entity, mx, my, spot int, right bool) 
 	case s.inv.showStrip() && s.inv.strip.hit(mx, my):
 		i := (mx-s.inv.strip.x0)/s.inv.strip.cellW + s.inv.scroll
 		if right {
-			msg = s.game.UseBagItem(&s.hand, cur, s.tables, i)
+			msg = s.Game.UseBagItem(&s.hand, cur, s.Tables, i)
 		} else {
-			msg = s.game.ClickBag(&s.hand, cur, s.tables, i)
+			msg = s.Game.ClickBag(&s.hand, cur, s.Tables, i)
 		}
 	case s.inv.open:
 		if !right {
@@ -830,28 +705,28 @@ func (s *startScene) click(cur *gamestate.Entity, mx, my, spot int, right bool) 
 		}
 	case !right && s.hand.Holding():
 		s.dropHeld(cur)
-	case right && s.hovered >= 0 && s.entity(s.hovered).Group == 0:
+	case right && s.hovered >= 0 && s.Entity(s.hovered).Group == 0:
 		// 0x004239EE: a party member — its dialogue with Ctrl, else the
 		// selection.
-		if s.canTalk(s.party[0]) {
+		if s.canTalk(s.Party[0]) {
 			s.talkTo(s.hovered)
 		} else {
 			s.selectInWorld(s.hovered)
 		}
-	case right && s.canTalk(s.party[0]):
+	case right && s.canTalk(s.Party[0]):
 		s.talkTo(s.hovered) // 0x00423B6E: at once, wherever the hero stands
 	default:
 		c := mapdata.CellAt(mx+s.camX, my+s.camY)
-		for _, m := range s.selected() {
+		for _, m := range s.Selected() {
 			if right {
 				s.rightOrder(m, s.hovered, c)
 			} else {
-				s.walkOrder(m, c, false)
+				s.WalkOrder(m, c, false)
 			}
 		}
 	}
 	if msg != 0 {
-		s.showMessage(s.tables.CString(msg))
+		s.showMessage(s.Tables.CString(msg))
 	}
 }
 
@@ -862,18 +737,18 @@ func (s *startScene) dropHeld(e *gamestate.Entity) {
 	item := s.hand.Item
 	s.hand.Cursor = gamestate.CursorPointer
 	cell := mapdata.Cell{Row: e.Row, Col: e.Col}
-	if m, _ := s.partyMember(e.Index); m != nil {
-		cell = m.cell
+	if m, _ := s.PartyMember(e.Index); m != nil {
+		cell = m.Cell
 	}
-	at, on := s.pileAt[cell]
+	at, on := s.PileAt[cell]
 	if !on {
-		if len(s.pileAt) >= gamestate.MaxActivePiles {
+		if len(s.PileAt) >= gamestate.MaxActivePiles {
 			return
 		}
 		at = -1
 	}
-	if i, ok := s.game.DropItem(at, s.mapNumber, cell.Row, cell.Col, item); ok {
-		s.pileAt[cell] = i
+	if i, ok := s.Game.DropItem(at, s.MapNumber, cell.Row, cell.Col, item); ok {
+		s.PileAt[cell] = i
 	}
 }
 
@@ -882,18 +757,18 @@ func (s *startScene) dropHeld(e *gamestate.Entity) {
 // pass 0x00426C07 skips them), so a loot pouch lies on top of its body.
 func (s *startScene) drawCorpses(dst *ebiten.Image) {
 	draw := func(w *walker) {
-		if f, ok := w.frame(s.tick); ok && s.visible(f.x, f.y, f.img.Bounds().Dx(), f.img.Bounds().Dy()) {
-			s.drawTinted(dst, f.img, f.x-s.camX, f.y-s.camY, s.lit.Lit(w.cell.Row, w.cell.Col))
+		if f, ok := walkerFrame(w, s.Tick); ok && s.visible(f.x, f.y, f.img.Bounds().Dx(), f.img.Bounds().Dy()) {
+			s.drawTinted(dst, f.img, f.x-s.camX, f.y-s.camY, s.lit.Lit(w.Cell.Row, w.Cell.Col))
 		}
 	}
-	for _, m := range s.members {
-		if m != nil && s.party[m.k].Dead() {
-			draw(&m.walker)
+	for _, m := range s.Members {
+		if m != nil && s.Party[m.K].Dead() {
+			draw(&m.Walker)
 		}
 	}
-	for _, n := range s.npcs {
-		if s.game.Entities[n.entity].Dead() {
-			draw(&n.walker)
+	for _, n := range s.NPCs {
+		if s.Game.Entities[n.Entity].Dead() {
+			draw(&n.Walker)
 		}
 	}
 }
@@ -902,8 +777,8 @@ func (s *startScene) drawCorpses(dst *ebiten.Image) {
 // selected member on the map, before the ground items, flat, coloured by
 // HP and following the walk animation.
 func (s *startScene) drawSelection(dst *ebiten.Image) {
-	for _, i := range s.sel {
-		m, e := s.partyMember(i)
+	for _, i := range s.Sel {
+		m, e := s.PartyMember(i)
 		if m == nil || e.Dead() {
 			continue
 		}
@@ -911,9 +786,9 @@ func (s *startScene) drawSelection(dst *ebiten.Image) {
 		if img == nil {
 			continue
 		}
-		step := min(m.stepT, m.walkSteps()-1)
-		dx, dy := gamestate.SelectionOffset(int(m.dir), step, m.walking)
-		x, y := mapdata.CellCenter(m.anchor()) // +0xE8/+0xF0: the cell being left while walking
+		step := min(m.StepT, m.WalkSteps()-1)
+		dx, dy := gamestate.SelectionOffset(int(m.Dir), step, m.Walking)
+		x, y := mapdata.CellCenter(m.Anchor()) // +0xE8/+0xF0: the cell being left while walking
 		drawAt(dst, img, x+dx-s.camX, y+dy-s.camY)
 	}
 }
@@ -931,42 +806,51 @@ func (s *startScene) statusText() []byte {
 		// 0x004241A1: the item under the mouse in window 7.
 		mx, my := ebiten.CursorPosition()
 		if i := s.trade.itemAt(mx, my); i != 0 {
-			return s.game.ItemDescription(s.tables, i)
+			return s.Game.ItemDescription(s.Tables, i)
 		}
 		return nil
 	}
 	if s.talk.open() {
 		return nil // 0x00424054 shows the hover line only with no window open
 	}
+	if s.wmap.open && s.wmap.lan != nil {
+		mx, my := ebiten.CursorPosition()
+		if t, ok := s.lanMapStatus(mx, my); ok {
+			return t
+		}
+	}
 	if s.wmap.open {
 		// 0x004240D0: over a known location its name (0x0045B3F4); over
 		// the rest of the area nothing.
 		mx, my := ebiten.CursorPosition()
-		if m, inArea := s.wmap.regionAt(s.game, mx, my); m != 0 {
-			return s.tables.CString(gamestate.LocationName(m))
+		if m, inArea := s.wmap.regionAt(s.Game, mx, my); m != 0 {
+			return s.Tables.CString(gamestate.LocationName(m))
 		} else if inArea {
 			return nil
 		}
 	}
 	if !s.inv.open && !s.wmap.open {
 		if _, ok := s.pileUnderCursor(); ok {
-			return s.tables.CString(gamestate.MsgSomethingOnGround)
+			return s.Tables.CString(gamestate.MsgSomethingOnGround)
+		}
+		if t, ok := s.viewStatus(s.hovered); ok {
+			return t
 		}
 		if s.hovered >= 0 {
-			return s.game.StatusLine(s.entity(s.hovered), s.tables)
+			return s.Game.StatusLine(s.Entity(s.hovered), s.Tables)
 		}
 	}
-	if len(s.party) == 0 {
+	if len(s.Party) == 0 {
 		return nil
 	}
-	hero := *s.current()
+	hero := *s.Current()
 	mx, my := ebiten.CursorPosition()
 	item := 0
-	spot := s.tables.HUDHotspot800(mx, my)
+	spot := s.Tables.HUDHotspot800(mx, my)
 	switch k := spot - hotspotPortrait; {
 	case spot >= 1 && spot <= len(gamestate.ButtonTooltips):
-		return s.tables.CString(gamestate.ButtonTooltips[spot-1])
-	case k >= 0 && k < len(portraitCells) && k < len(s.party):
+		return s.Tables.CString(gamestate.ButtonTooltips[spot-1])
+	case k >= 0 && k < len(portraitCells) && k < len(s.Party):
 		return s.portraitStatus(k)
 	case s.inv.showStrip() && s.inv.strip.hit(mx, my):
 		item = hero.Bag[((mx-s.inv.strip.x0)/s.inv.strip.cellW+s.inv.scroll)&31]
@@ -981,18 +865,18 @@ func (s *startScene) statusText() []byte {
 	if item == 0 {
 		return nil
 	}
-	return s.game.ItemDescription(s.tables, item)
+	return s.Game.ItemDescription(s.Tables, item)
 }
 
 // portraitStatus is the hover over portrait k (hotspot 0x1E with the cell
 // in the high byte, 0x00424131): the member's status line (0x0043195C),
 // nothing while it is dead or dying.
 func (s *startScene) portraitStatus(k int) []byte {
-	e := s.party[k]
-	if m, _ := s.partyMember(e.Index); e.Dead() || (m != nil && m.act == gamestate.ActDeath) {
+	e := s.Party[k]
+	if m, _ := s.PartyMember(e.Index); e.Dead() || (m != nil && m.Act == gamestate.ActDeath) {
 		return nil
 	}
-	return s.game.StatusLine(e, s.tables)
+	return s.Game.StatusLine(e, s.Tables)
 }
 
 // hotspotPortrait is the first portrait cell's hotspot id (30–39 = cells 0–9).
@@ -1011,17 +895,17 @@ func (s *startScene) windowClick(hero *gamestate.Entity, spot int) int {
 		slot := [6]int{gamestate.EquipHelmet, -1, gamestate.EquipShield, gamestate.EquipArmour,
 			gamestate.WeaponBow, gamestate.EquipAmmo}[spot-8]
 		if slot < 0 {
-			slot = gamestate.HandSlot(&s.hand, *hero, s.game)
+			slot = gamestate.HandSlot(&s.hand, *hero, s.Game)
 		}
-		return s.game.ClickEquipment(&s.hand, hero, s.tables, slot)
+		return s.Game.ClickEquipment(&s.hand, hero, s.Tables, slot)
 	case spot >= 14 && spot <= 18:
-		return s.game.ClickJewellery(&s.hand, hero, s.tables, spot-14)
+		return s.Game.ClickJewellery(&s.hand, hero, s.Tables, spot-14)
 	case spot == hotspotInHand:
-		return s.game.ClickBox(&s.hand, hero, s.tables)
+		return s.Game.ClickBox(&s.hand, hero, s.Tables)
 	case spot >= gamestate.HotspotRaise && spot < gamestate.HotspotRaise+gamestate.RaiseRows:
-		s.game.Raise(hero, s.tables, spot-gamestate.HotspotRaise)
+		s.Game.Raise(hero, s.Tables, spot-gamestate.HotspotRaise)
 	case spot == gamestate.HotspotAutoLevel:
-		s.game.ToggleAutoLevel(hero, s.tables)
+		s.Game.ToggleAutoLevel(hero, s.Tables)
 	}
 	return 0
 }
@@ -1034,25 +918,31 @@ const messageFrames = 12
 func (s *startScene) showMessage(m []byte) { s.msg, s.msgEnd = m, s.gameFrame()+messageFrames }
 
 // cursorSprite is the GRAPH.RES Type 5 cursor to draw: the hand's sprite
-// (0x00A3E790, 0x00428AC0) over the HUD, the window and the bag strip, while
+// (0x00A3E790, 0x00428AC0) over the HUD, any open window (the map window
+// too: the world under it shows no cursor rules) and the bag strip, while
 // holding an item or digging; on the map the rules of 0x00428A50
 // (characterCursor, piles, occupied cells).
 func (s *startScene) cursorSprite() int {
 	mx, my := ebiten.CursorPosition()
-	if !inView(mx, my) || s.inv.open || s.talk.open() || s.trade.open() || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
+	return s.cursorSpriteAt(mx, my)
+}
+
+// cursorSpriteAt is cursorSprite with the pointer at (mx, my).
+func (s *startScene) cursorSpriteAt(mx, my int) int {
+	if !inView(mx, my) || s.inv.open || s.talk.open() || s.trade.open() || s.wmap.open || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
 		return s.hand.Cursor
 	}
 	if s.fireReady() && s.hoveredBuilding != 0 {
 		return gamestate.CursorFire // 0x00428AF3, before the character cursor
 	}
-	if s.hovered >= 0 && len(s.party) > 0 {
-		return s.characterCursor(s.entity(s.hovered))
+	if s.hovered >= 0 && len(s.Party) > 0 {
+		return s.characterCursor(s.Entity(s.hovered))
 	}
 	c, ok := s.pileUnderCursor()
 	switch {
-	case ok && !s.occ[c]:
+	case ok && !s.Occ[c]:
 		return gamestate.CursorTake // 0x00428D7F: visible pile on a free cell
-	case s.occ[mapdata.CellAt(mx+s.camX, my+s.camY)]:
+	case s.Occ[mapdata.CellAt(mx+s.camX, my+s.camY)]:
 		return gamestate.CursorBlocked // 0x00428DB7: someone stands there
 	}
 	return gamestate.CursorPointer
@@ -1062,13 +952,13 @@ func (s *startScene) cursorSprite() int {
 // keep the hand's cursor; anyone else shows the attack cursor while a living
 // selected member is in the stance, the
 // talk cursor when e has a dialogue, and the barred circle otherwise. The
-// selection is the port's list (s.sel). The port shows the corpse of a dead character like an occupied cell (the
+// selection is the port's list (s.Sel). The port shows the corpse of a dead character like an occupied cell (the
 // game's hit test for the dead is not traced). The flame cursor 6 over a
 // settlement building comes first (cursorSprite, fireReady).
 func (s *startScene) characterCursor(e gamestate.Entity) int {
 	stance := false
-	for _, m := range s.selected() {
-		stance = stance || s.party[m.k].InStance()
+	for _, m := range s.Selected() {
+		stance = stance || s.Party[m.K].InStance()
 	}
 	switch {
 	case e.Group == 0 && ebiten.IsKeyPressed(ebiten.KeyControl) && e.Dialogue != gamestate.NoDialogue:
@@ -1097,10 +987,10 @@ func (s *startScene) centerOn(x, y int) {
 // hero's sprite top-left (+0xE4/+0xEC) goes to the screen centre, then the
 // limits apply.
 func (s *startScene) centerHero() {
-	if s.hero == nil {
+	if s.Hero == nil {
 		return
 	}
-	if f, ok := s.hero.frame(s.tick); ok {
+	if f, ok := walkerFrame(s.Hero, s.Tick); ok {
 		s.camX, s.camY = f.x-ScreenWidth/2, f.y-ScreenHeight/2
 		s.clampCamera()
 	}
@@ -1131,7 +1021,7 @@ func (s *startScene) clampCamera() {
 // point followMarginX inside the view's left and right edges and
 // followMarginY inside its top and bottom, then the limits apply.
 func (s *startScene) followHero() {
-	x, y, ok := s.followPoint(s.hero)
+	x, y, ok := s.followPoint(s.Hero)
 	if !ok {
 		return
 	}
@@ -1159,17 +1049,17 @@ func (s *startScene) pushCamera(x, y int) {
 // east or west part (facing not N or S) x is the cell being left plus 5 px
 // per walk frame east/west or 2.5 px diagonally.
 func (s *startScene) followPoint(w *walker) (x, y int, ok bool) {
-	f, ok := w.frame(s.tick)
+	f, ok := walkerFrame(w, s.Tick)
 	if !ok || f.img == nil {
 		return 0, 0, false
 	}
 	even := func(v int) int { return (v + 1) / 2 * 2 }
 	b := f.img.Bounds()
 	x, y = even(f.x+b.Dx()/2), even(f.y+b.Dy()/2)
-	if w.walking && w.dir != 2 && w.dir != 6 {
-		ax, _ := mapdata.CellCenter(w.anchor())
-		step := w.stepT
-		switch w.dir {
+	if w.Walking && w.Dir != 2 && w.Dir != 6 {
+		ax, _ := mapdata.CellCenter(w.Anchor())
+		step := w.StepT
+		switch w.Dir {
 		case 0:
 			x = ax - 5*step
 		case 4:
@@ -1183,27 +1073,20 @@ func (s *startScene) followPoint(w *walker) (x, y int, ok bool) {
 	return x, y, true
 }
 
-// blocked reports cells a character cannot path through: walk-grid
-// obstacles, cells outside the map, and cells other characters hold.
-func (s *startScene) blocked(c mapdata.Cell) bool {
-	if s.walk.Blocked(c.Row, c.Col) || s.occ[c] {
-		return true
-	}
-	x, y := mapdata.CellCenter(c)
-	return x < 0 || y < 0 || x >= s.worldW || y >= s.worldH
-}
-
 // escape handles Escape in the game (0x00437447): return a held item
 // (0x00429194(1)), then close an open window (0x00A3E740 = 0, redraw
 // 0x004292E4). Only with no window open does it report true, and the caller
 // opens the main menu (state 7 → menu, 0x00A3E728 = 1). Escape is ignored
 // in window 1 (the dialogue) and closes the quest log (window 2).
 func (s *startScene) escape() bool {
-	if len(s.party) > 0 {
-		s.hand.Return(s.current())
+	if len(s.Party) > 0 {
+		s.returnHand(s.Current())
 	}
 	switch {
 	case s.trade.open():
+		if s.view != nil {
+			s.itemOrder(netplay.ItemClose, 0, false) // the server closes its window 7 too
+		}
 		s.trade.tr = nil // closes without applying: nothing changed yet
 		return false
 	case s.talk.d != nil:
@@ -1222,11 +1105,11 @@ func (s *startScene) escape() bool {
 }
 
 func (s *startScene) Update() {
-	s.game.World = sceneWorld{s}
-	if s.hero != nil && godModeKey() {
+	s.Game.World = s.Access()
+	if s.Hero != nil && !s.chatTyping() && godModeKey() {
 		godMode = !godMode
 	}
-	s.game.GodMode = godMode
+	s.Game.GodMode = godMode
 	s.frame++
 	if f := s.frame * 5 / 18; f != s.soundFrame { // one game frame per 60 ms
 		s.soundFrame = f
@@ -1234,51 +1117,65 @@ func (s *startScene) Update() {
 	}
 	s.hud.now = s.frame
 	mx, my := ebiten.CursorPosition()
-	if s.hero != nil {
-		if inpututil.IsKeyJustPressed(ebiten.KeyS) && ebiten.IsKeyPressed(ebiten.KeyControl) { // 0x00436F2B
+	if s.view != nil && s.Hero != nil {
+		s.updateChat()
+	}
+	if s.Hero != nil {
+		if s.keyJust(ebiten.KeyS) && ebiten.IsKeyPressed(ebiten.KeyControl) { // 0x00436F2B
 			s.follow = !s.follow
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
+		if s.keyJust(ebiten.KeyF1) {
 			s.hideHelp = !s.hideHelp
 		}
-		s.updateSpeed()
+		if s.clock == nil {
+			s.updateSpeed() // a LAN world has the server's speed
+		}
 		s.updateControls(mx, my)
 	}
 	if s.miscRequests() {
 		return
 	}
-	if s.game.ReviveAll {
-		s.game.ReviveAll = false
-		s.reviveAll()
+	if s.Game.ReviveAll {
+		s.Game.ReviveAll = false
+		s.ReviveAll()
 	}
-	if s.game.OpenMap {
+	if s.Game.OpenMap {
 		// 0x004153B0: the jump orb hides the bag strip (0x00A3E730 = 0)
 		// and opens window 5 in place of any other.
-		s.game.OpenMap = false
+		s.Game.OpenMap = false
 		s.inv.open, s.inv.quick = false, false
 		s.wmap.open = true
 	}
 	// The game draws a frame every 60 ms (0x00A3E6F4), one per 3.6 updates
 	// at 60 Hz, and each frame runs 1 + speed game ticks
 	// (0x00437849–0x004378CC); the extra ticks stop when the hero is dead.
-	if s.frame*5/18 != (s.frame-1)*5/18 {
+	if s.view != nil {
+		// A LAN viewer: the server runs the world; only the idle loops
+		// animate here, one frame per 60 ms.
+		if s.clock != nil {
+			s.speed = s.clock.c.Speed
+		}
+		if s.frame*5/18 != (s.frame-1)*5/18 {
+			s.viewFrame()
+		}
+	} else if s.frame*5/18 != (s.frame-1)*5/18 {
 		for k := 0; k <= s.speed; k++ {
-			if k > 0 && len(s.party) > 0 && s.party[0].Dead() {
+			if k > 0 && len(s.Party) > 0 && s.Party[0].Dead() {
 				break
 			}
-			s.step()
+			s.Step()
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || mx < edgeScrollZone {
+	if s.keyHeld(ebiten.KeyArrowLeft) || mx < edgeScrollZone {
 		s.camX -= scrollSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || mx >= ScreenWidth-edgeScrollZone {
+	if s.keyHeld(ebiten.KeyArrowRight) || mx >= ScreenWidth-edgeScrollZone {
 		s.camX += scrollSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) || my < edgeScrollZone {
+	if s.keyHeld(ebiten.KeyArrowUp) || my < edgeScrollZone {
 		s.camY -= scrollSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) || my >= ScreenHeight-edgeScrollZone {
+	if s.keyHeld(ebiten.KeyArrowDown) || my >= ScreenHeight-edgeScrollZone {
 		s.camY += scrollSpeed
 	}
 	s.clampCamera()
@@ -1286,82 +1183,27 @@ func (s *startScene) Update() {
 	// draw, so the follow stops a scroll at the margin. The port does both
 	// on every update; following only once per 60 ms frame let the scroll
 	// show for a few updates and then snap back (the camera shook).
-	if s.follow && s.hero != nil {
+	if s.follow && s.Hero != nil {
 		s.followHero()
 	}
 }
 
-// step advances the world by one game tick (60 ms): characters, the
-// pick-up on arrival, map exits, pile respawn and the AI.
-func (s *startScene) step() {
-	s.tick++
-	for _, m := range s.members {
-		if m == nil {
-			continue
-		}
-		moving := m.walking || len(m.path) > 0
-		if m.act == 0 {
-			m.update()
-		}
-		stopped := !m.walking && len(m.path) == 0
-		if moving && stopped && m.cell != m.goal && m.intent&gamestate.IntentWalk != 0 {
-			// 0x0042218D: the path ran out short of the goal (31 steps,
-			// mapdata.PathSteps) or a step was blocked; with the walk bit
-			// the planner (0x0041ED8C) searches again. If that fails the
-			// walk ends there, without a pick-up or an exit.
-			if p := mapdata.FindPath(m.cell, m.goal, m.blocked); len(p) > 0 {
-				m.path = p
-				continue
-			}
-		}
-		atGoal := m.cell == m.goal
-		switch {
-		case m.pickIntent && stopped:
-			m.pickIntent = false
-			if atGoal {
-				s.arrive(m)
-			}
-		case moving && stopped && atGoal:
-			// 0x00422346: a member's walk that ends at its goal without the
-			// pick-up intent on an exit cell takes the exit (0x00421BB8). A
-			// village's exit needs its bridge (ExitOpen, 0x00421C82).
-			if x, ok := s.game.ExitAt(s.mapNumber, m.cell.Row, m.cell.Col); ok && s.game.ExitOpen(x) {
-				s.changeMap(x)
-				return
-			}
-		}
-	}
-	s.activatePiles()
-	s.combatTick()
-	s.animateObjects()
-	s.updateNPCs()
-	for _, m := range s.members {
-		if m != nil {
-			s.idleLoop(&m.walker, s.party[m.k].Dead())
-		}
-	}
-	for _, n := range s.npcs {
-		s.idleLoop(&n.walker, s.game.Entities[n.entity].Dead())
-	}
+// windowOpen reports an open window over the view: the character window,
+// a dialogue or the quest log, the trade or pile window, the map.
+func (s *startScene) windowOpen() bool {
+	return s.inv.open || s.talk.open() || s.trade.open() || s.wmap.open
 }
 
-// idleLoop is the idle case of the action tables (party 0x004223AD,
-// creatures 0x0041291C) for a walker that is not walking or acting: the
-// idle action starts at frame 0 (0x00410450 → 0x004143DC), advances one
-// frame per tick (0x00413DE4) and starts over after its last frame. Every
-// start rolls the idle sound (0x004143DC: human voice on rand() % 100 >
-// 95; animated models their own rule).
-func (s *startScene) idleLoop(w *walker, dead bool) {
-	if dead || w.walking || len(w.path) > 0 || w.act != 0 {
-		w.idle = -1
-		return
-	}
-	if w.idle >= 0 && w.idle+1 < len(w.framesFor(0)) {
-		w.idle++
-		return
-	}
-	w.idle = 0
-	s.actionSound(w, gamestate.ActIdle)
+// keyJust is a key press for the game, none while the chat line takes the
+// keyboard (lanchat.go).
+func (s *startScene) keyJust(k ebiten.Key) bool {
+	return !s.chatTyping() && inpututil.IsKeyJustPressed(k)
+}
+
+// keyHeld is a held key for the game, none while the chat line takes the
+// keyboard.
+func (s *startScene) keyHeld(k ebiten.Key) bool {
+	return !s.chatTyping() && ebiten.IsKeyPressed(k)
 }
 
 // Game speed 0x00A3E764: 0 normal, 1 double, 2 triple. Numpad + / −
@@ -1370,10 +1212,10 @@ func (s *startScene) idleLoop(w *walker, dead bool) {
 const maxSpeed = 2
 
 func (s *startScene) updateSpeed() {
-	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadAdd) || inpututil.IsKeyJustPressed(ebiten.KeyEqual) {
+	if s.keyJust(ebiten.KeyNumpadAdd) || s.keyJust(ebiten.KeyEqual) {
 		s.speed = min(maxSpeed, s.speed+1)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadSubtract) || inpututil.IsKeyJustPressed(ebiten.KeyMinus) {
+	if s.keyJust(ebiten.KeyNumpadSubtract) || s.keyJust(ebiten.KeyMinus) {
 		s.speed = max(0, s.speed-1)
 	}
 }
@@ -1386,7 +1228,7 @@ func (s *startScene) visible(x, y, w, h int) bool {
 func (s *startScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 	s.updateLight()
-	window := s.inv.open || s.talk.open() || s.trade.open() || s.wmap.open
+	window := s.windowOpen()
 	if s.tiling && window {
 		// 0x0042AE68: with background tiling («T», 0x00A3E744) an open
 		// window hides the world; the window tiles INTR slot 5 behind it.
@@ -1399,28 +1241,38 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 			s.hovered, s.hoveredBuilding = -1, 0 // the window covers the world
 		}
 	}
-	if s.hero != nil {
+	if s.lan && s.Hero != nil {
+		// Over the world, under the windows: the map, character, dialogue
+		// and trade windows cover it like the original's.
+		s.drawLANStatus(screen)
+	}
+	if s.Hero != nil {
 		s.drawHelp(screen)
 	}
-	if len(s.party) > 0 {
-		s.hud.Draw(screen, s.party, *s.buttonEntity(),
-			func(k int) bool { return gamestate.Selected(s.sel, s.party[k].Index) },
-			func(k int) bool { m := s.members[k]; return m != nil && m.act == gamestate.ActFlinch })
+	if len(s.Party) > 0 {
+		s.hud.Draw(screen, s.Party, *s.ButtonEntity(),
+			func(k int) bool { return gamestate.Selected(s.Sel, s.Party[k].Index) },
+			func(k int) bool { m := s.Members[k]; return m != nil && m.Act == gamestate.ActFlinch })
 	} else {
 		s.hud.Draw(screen, nil, gamestate.Entity{}, nil, nil)
 	}
 	s.inv.tiled = s.tiling
-	if s.inv.open && len(s.party) > 0 {
-		s.inv.draw(screen, s.hud, s.game, s.tables, *s.current(), s.hand.Box)
+	if s.inv.open && len(s.Party) > 0 {
+		s.inv.draw(screen, s.hud, s.Game, s.Tables, *s.Current(), s.hand.Box)
 	}
-	if len(s.party) > 0 {
-		s.inv.drawQuick(screen, s.hud, s.game, s.tables, *s.current(), s.hand.Box)
+	if len(s.Party) > 0 {
+		s.inv.drawQuick(screen, s.hud, s.Game, s.Tables, *s.Current(), s.hand.Box)
 	}
-	s.talk.draw(screen, s.hud, s.game, s.tiling, s.inv.strip.y)
+	s.talk.draw(screen, s.hud, s.Game, s.tiling, s.inv.strip.y)
 	if s.trade.open() {
-		s.trade.draw(screen, s.hud, s.game, s.tables, s.tiling)
+		s.trade.draw(screen, s.hud, s.Game, s.Tables, s.tiling)
 	}
-	s.wmap.draw(screen, s.hud, s.game, s.mapNumber, s.tiling)
+	if s.lan && s.wmap.open {
+		s.wmap.counts = s.playerCounts()
+		mx, my := ebiten.CursorPosition()
+		s.wmap.hoverNames = s.lanMapPlayers(s.wmap.lanRegionAt(mx, my))
+	}
+	s.wmap.draw(screen, s.hud, s.Game, s.MapNumber, s.tiling, s.font, s.talk.hi)
 	if text := s.statusText(); text != nil {
 		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.
 		s.font.drawWrapped(screen, text, viewLeft+10, viewBottom+5, viewRight-viewLeft-15)
@@ -1476,21 +1328,21 @@ func (s *startScene) drawWorld(screen *ebiten.Image) ([]sceneFrame, []int) {
 	var chars []sceneFrame
 	var owners []int // entity index per chars entry
 	addChar := func(w *walker) {
-		if f, ok := w.frame(s.tick); ok && s.visible(f.x-64, f.y-64, f.img.Bounds().Dx()+128, f.img.Bounds().Dy()+128) {
-			f.raw = s.lit.Lit(w.cell.Row, w.cell.Col) // 0x00427285
+		if f, ok := walkerFrame(w, s.Tick); ok && s.visible(f.x-64, f.y-64, f.img.Bounds().Dx()+128, f.img.Bounds().Dy()+128) {
+			f.raw = s.lit.Lit(w.Cell.Row, w.Cell.Col) // 0x00427285
 			chars = append(chars, f)
-			owners = append(owners, w.entity)
+			owners = append(owners, w.Entity)
 			drawShadow(&chars[len(chars)-1])
 		}
 	}
-	for _, m := range s.members {
-		if m != nil && !s.party[m.k].Dead() {
-			addChar(&m.walker)
+	for _, m := range s.Members {
+		if m != nil && !s.Party[m.K].Dead() {
+			addChar(&m.Walker)
 		}
 	}
-	for _, n := range s.npcs {
-		if !s.game.Entities[n.entity].Dead() { // corpses: drawCorpses
-			addChar(&n.walker)
+	for _, n := range s.NPCs {
+		if !s.Game.Entities[n.Entity].Dead() { // corpses: drawCorpses
+			addChar(&n.Walker)
 		}
 	}
 	depth := func(f *sceneFrame) int { return f.y + f.img.Bounds().Dy() }
@@ -1565,13 +1417,36 @@ func (s *startScene) hitTest(chars []sceneFrame, owners []int) int {
 
 // entity returns the current state of an entity: the HUD copy for party
 // members (it carries HP changes), otherwise the GAME.N record.
-func (s *startScene) entity(i int) gamestate.Entity {
-	for _, e := range s.party {
+func (s *startScene) Entity(i int) gamestate.Entity {
+	for _, e := range s.Party {
 		if e.Index == i {
 			return e
 		}
 	}
-	return s.game.Entities[i]
+	return s.Game.Entities[i]
 }
 
 func toEbiten(img *image.RGBA) *ebiten.Image { return ebiten.NewImageFromImage(img) }
+
+// installHooks connects the simulation to this scene (world.Hooks): sounds,
+// the status line, the windows, the buildings' sprites, the map change,
+// and the animated objects.
+func (s *startScene) installHooks() {
+	s.Hooks = world.Hooks{
+		PlaySound:        s.playAt,
+		ActionSound:      s.actionSound,
+		Message:          s.showMessage,
+		WindowOpen:       func() bool { return s.inv != nil && s.inv.open },
+		TradeOpen:        func() bool { return s.trade.open() },
+		OpenPileWindow:   s.openPileWindow,
+		BuildingsChanged: s.updateBuildings,
+		BuildingHit: func(p int) func(x, y int) bool {
+			if o := s.buildingObject(p); o != nil {
+				return o.buildingHit
+			}
+			return nil
+		},
+		ChangeMap: s.changeMap,
+		Animate:   s.animateObjects,
+	}
+}

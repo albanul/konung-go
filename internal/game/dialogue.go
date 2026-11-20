@@ -6,6 +6,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/gamestate"
+	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
 )
 
@@ -26,6 +27,9 @@ type talkWindow struct {
 	greeting int  // 0x00A3E7C0: last greeting sound
 	replies  []image.Rectangle
 	q        *resfmt.Quests
+	// lan is a LAN world's part of window 2: the players and the
+	// nations' counts, and the quest log the server keeps (lanplayers.go).
+	lan *lanQList
 }
 
 // Quest log button (hotspot 6, «Информация к размышлению (Q)»): the toggle
@@ -138,6 +142,9 @@ func (w *talkWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, tiled bo
 func (w *talkWindow) drawLog(dst *ebiten.Image, q *resfmt.Quests, g *gamestate.Game, stripTop int) {
 	l := &w.layout
 	entries := g.QuestLog()
+	if w.lan != nil {
+		entries = w.lan.log
+	}
 	w.logCount = 0
 	y := l.Lines.Y
 	for _, id := range entries {
@@ -150,6 +157,10 @@ func (w *talkWindow) drawLog(dst *ebiten.Image, q *resfmt.Quests, g *gamestate.G
 			break
 		}
 	}
+	if w.lan != nil {
+		// LAN_KONG.EXE 0x00425A2F: the players follow the log.
+		w.drawLANList(dst, l.Lines.X, y, stripTop)
+	}
 }
 
 // canTalk is the right-click test of 0x004238EE for the character under
@@ -161,7 +172,7 @@ func (s *startScene) canTalk(hero gamestate.Entity) bool {
 	if s.hovered < 0 || s.assets == nil || s.assets.quests == nil {
 		return false
 	}
-	e := s.entity(s.hovered)
+	e := s.Entity(s.hovered)
 	if e.Dialogue == gamestate.NoDialogue || e.Dead() {
 		return false
 	}
@@ -175,18 +186,18 @@ func (s *startScene) canTalk(hero gamestate.Entity) bool {
 // newTalk writes the scene's party back into the game (the scripts work on
 // the global records, like the game) and returns the script context.
 func (s *startScene) newTalk() *gamestate.Talk {
-	s.storeWorld()
+	s.StoreWorld()
 	return &gamestate.Talk{
-		G: s.game, Q: s.assets.quests, T: s.tables,
-		Hero: s.party[0].Index, Map: s.mapNumber, Time: s.gameTime(),
-		Rand: s.rng.IntN, Drop: s.dropAtHero,
+		G: s.Game, Q: s.assets.quests, T: s.Tables,
+		Hero: s.Party[0].Index, Map: s.MapNumber, Time: s.GameTime(),
+		Rand: s.Rng.IntN, Drop: s.dropAtHero,
 	}
 }
 
 // talkTo opens the dialogue of entity i (0x004364F0, then the window
 // 0x0042DBBC(0)); the greeting plays when no line has speech.
 func (s *startScene) talkTo(i int) {
-	s.hand.Return(&s.party[0])
+	s.returnHand(&s.Party[0])
 	tk := s.newTalk()
 	d := tk.OpenDialogue(i, &s.talk.greeting)
 	s.afterTalk(tk, d)
@@ -197,6 +208,10 @@ func (s *startScene) talkTo(i int) {
 
 // chooseReply is a click on reply k (0x00423501 → 0x0041F18C).
 func (s *startScene) chooseReply(k int) {
+	if s.view != nil {
+		s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderReply, Index: k}) // the server runs it
+		return
+	}
 	d := s.talk.d
 	tk := s.newTalk()
 	tk.NPC = d.NPC
@@ -216,8 +231,8 @@ func (s *startScene) afterTalk(tk *gamestate.Talk, d *gamestate.Dialogue) {
 	if tk.Events.PartyChanged {
 		s.rebuild()
 	} else {
-		for k := range s.party {
-			s.party[k] = s.game.Entities[s.party[k].Index]
+		for k := range s.Party {
+			s.Party[k] = s.Game.Entities[s.Party[k].Index]
 		}
 	}
 	if tk.Events.Trade != nil {
@@ -232,7 +247,7 @@ func (s *startScene) afterTalk(tk *gamestate.Talk, d *gamestate.Dialogue) {
 func (s *startScene) dropAtHero(item int) {
 	held := s.hand.Item
 	s.hand.Item = item
-	s.dropHeld(&s.party[0])
+	s.dropHeld(&s.Party[0])
 	s.hand.Item = held
 }
 
@@ -242,13 +257,14 @@ func (s *startScene) dropAtHero(item int) {
 // records, as a loaded save is (restore mode: no respawn, alarms kept).
 func (s *startScene) rebuild() {
 	st := s.saveState()
-	st.Active = nil // the piles stay in s.game; keep their active list
-	ns, err := s.assets.buildScene(s.game, s.mapNumber, s, &st)
+	st.Active = nil // the piles stay in s.Game; keep their active list
+	ns, err := s.assets.buildScene(s.Game, s.MapNumber, s, &st)
 	if err != nil {
-		log.Printf("rebuild KONUNG.%d: %v", s.mapNumber, err)
+		log.Printf("rebuild KONUNG.%d: %v", s.MapNumber, err)
 		return
 	}
-	ns.pileAt = s.pileAt
+	ns.PileAt = s.PileAt
 	ns.camX, ns.camY, ns.follow = s.camX, s.camY, s.follow
 	*s = *ns
+	s.installHooks() // the hooks act on the live scene
 }

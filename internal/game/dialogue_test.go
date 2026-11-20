@@ -27,13 +27,13 @@ func newVolkScene(t *testing.T) *startScene {
 // once, the hero does not walk, and the replies lead to the end.
 func TestRightClickTalks(t *testing.T) {
 	s := newVolkScene(t)
-	from := s.hero.cell
+	from := s.Hero.Cell
 	s.hovered = 355 // the elder of «Родники»
-	s.click(&s.party[0], viewLeft+100, viewTop+100, 0, true)
+	s.click(&s.Party[0], viewLeft+100, viewTop+100, 0, true)
 	if s.talk.d == nil || len(s.talk.d.Replies) != 1 {
 		t.Fatalf("no dialogue: %+v", s.talk.d)
 	}
-	if s.hero.walking || len(s.hero.path) > 0 || s.lead().pickIntent || s.hero.cell != from {
+	if s.Hero.Walking || len(s.Hero.Path) > 0 || s.Lead().PickIntent || s.Hero.Cell != from {
 		t.Fatal("the hero walks to the NPC")
 	}
 	r := s.talk.replies[0]
@@ -51,7 +51,7 @@ func TestRightClickTalks(t *testing.T) {
 	}
 	// The quest log toggles and lists nothing yet.
 	s.talk.toggleLog()
-	if !s.talk.open() || len(s.game.QuestLog()) != 0 || s.escape() || s.talk.log {
+	if !s.talk.open() || len(s.Game.QuestLog()) != 0 || s.escape() || s.talk.log {
 		t.Fatal("quest log")
 	}
 }
@@ -67,16 +67,16 @@ func TestHireRebuildsScene(t *testing.T) {
 	}
 	ok := gamestate.ScriptFunc(tk, 291)
 	s.afterTalk(tk, nil)
-	if ok != 1 || len(s.party) != 2 || s.party[1].Group != 0 {
-		t.Fatalf("party %d after hire", len(s.party))
+	if ok != 1 || len(s.Party) != 2 || s.Party[1].Group != 0 {
+		t.Fatalf("party %d after hire", len(s.Party))
 	}
-	if m, _ := s.partyMember(s.party[1].Index); m == nil || m.intent&gamestate.IntentFollow == 0 {
+	if m, _ := s.PartyMember(s.Party[1].Index); m == nil || m.Intent&gamestate.IntentFollow == 0 {
 		t.Error("the hired smith has no member walker, or does not follow")
 	}
-	if _, ok := s.byEntity[s.party[1].Index]; ok {
+	if _, ok := s.ByEntity[s.Party[1].Index]; ok {
 		t.Error("the hired smith is still an NPC")
 	}
-	if s.hero == nil || s.party[0].Index != s.hero.entity {
+	if s.Hero == nil || s.Party[0].Index != s.Hero.Entity {
 		t.Error("hero lost in rebuild")
 	}
 }

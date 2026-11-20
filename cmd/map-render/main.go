@@ -3,6 +3,7 @@
 //
 //	go run ./cmd/map-render assets/Konung/KONUNG.1 output/konung1.png
 //	go run ./cmd/map-render -all output/site/maps   # every KONUNG.N + index.html
+//	go run ./cmd/map-render -mapsres assets/Konung/MAPS.RES -all output/site/lanmaps   # LAN maps
 package main
 
 import (
@@ -30,9 +31,10 @@ func main() {
 	exePath := flag.String("exe", "assets/Konung/konung.exe", "path to konung.exe (equipment overlay tables, with -game)")
 	objectsPath := flag.String("objects", "assets/Konung/OBJECTS.RES", "path to OBJECTS.RES")
 	terrainOnly := flag.Bool("terrain", false, "render the terrain layer only")
+	mapsRes := flag.String("mapsres", "", "with -all: render the maps of the LAN version's MAPS.RES instead of the KONUNG.N files in -dir")
 	gamePath := flag.String("game", "", "GAME.N start state to also draw characters and creatures, e.g. assets/Konung/GAME.0 (Volk); default: map content only")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: map-render [-graph GRAPH.RES] <KONUNG.N> <out.png>\n       map-render [-graph GRAPH.RES] [-dir assets/Konung] -all <outdir>")
+		fmt.Fprintln(os.Stderr, "usage: map-render [-graph GRAPH.RES] <KONUNG.N> <out.png>\n       map-render [-graph GRAPH.RES] [-dir assets/Konung] -all <outdir>\n       map-render -mapsres assets/Konung/MAPS.RES -all <outdir>")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -72,6 +74,10 @@ func main() {
 		}
 	}
 	switch {
+	case *mapsRes != "" && *gamePath != "":
+		fail(fmt.Errorf("-game does not apply to MAPS.RES maps"))
+	case *mapsRes != "" && *all != "" && flag.NArg() == 0:
+		err = r.renderMapsRes(*mapsRes, *all)
 	case *all != "" && flag.NArg() == 0:
 		err = r.renderAll(*dir, *all)
 	case *all == "" && flag.NArg() == 2:
@@ -112,6 +118,12 @@ func (r *renderer) renderOne(mapPath, outPath string) (mapInfo, error) {
 	if err != nil {
 		return mapInfo{}, err
 	}
+	return r.render(mapPath, data, outPath)
+}
+
+// render draws one KONUNG.N given as bytes; mapPath names it in messages and
+// its extension is the map number used with -game.
+func (r *renderer) render(mapPath string, data []byte, outPath string) (mapInfo, error) {
 	m, err := mapdata.Parse(data)
 	if err != nil {
 		return mapInfo{}, fmt.Errorf("%s: %w", mapPath, err)
@@ -212,19 +224,53 @@ func (r *renderer) renderAll(dir, outDir string) error {
 		}
 		infos = append(infos, info)
 	}
+	return writeIndex(outDir, "maps", "KONUNG.N map renders", "", infos)
+}
+
+// renderMapsRes renders every map of the LAN version's MAPS.RES (map n =
+// entry n-1) into outDir with an index page.
+func (r *renderer) renderMapsRes(path, outDir string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	maps, err := mapdata.SplitMapsRes(data)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return err
+	}
+	var infos []mapInfo
+	for i, m := range maps {
+		name := fmt.Sprintf("MAPS.RES #%d", i+1)
+		info, err := r.render(name, m.Map, filepath.Join(outDir, fmt.Sprintf("lan_%02d.png", i+1)))
+		if err != nil {
+			return err
+		}
+		infos = append(infos, info)
+	}
+	return writeIndex(outDir, "lanmaps", "LAN version maps (MAPS.RES)",
+		"The LAN version's own maps: MAPS.RES entry n is map n (1-based), a KONUNG.N followed by its LIGHTS.N (loader 0x00417DB0 in LAN_KONG.EXE). Drawn with the single-player GRAPH.RES and OBJECTS.RES.", infos)
+}
+
+// writeIndex writes outDir/index.html listing the rendered maps and, inside
+// the site, the navigation for section.
+func writeIndex(outDir, section, title, note string, infos []mapInfo) error {
 	f, err := os.Create(filepath.Join(outDir, "index.html"))
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	page := struct {
-		Style template.CSS
-		Nav   template.HTML
-		Maps  []mapInfo
-	}{Maps: infos}
+		Style       template.CSS
+		Nav         template.HTML
+		Title, Note string
+		Maps        []mapInfo
+	}{Title: title, Note: note, Maps: infos}
 	root, inSite := sitenav.SectionRoot(outDir)
 	if inSite {
-		page.Style, page.Nav = template.CSS(sitenav.Style), sitenav.Nav("maps")
+		page.Style, page.Nav = template.CSS(sitenav.Style), sitenav.Nav(section)
 	}
 	if err := indexTemplate.Execute(f, page); err != nil {
 		return err
@@ -236,7 +282,7 @@ func (r *renderer) renderAll(dir, outDir string) error {
 }
 
 var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
-<meta charset="utf-8"><title>KONUNG.N map renders</title>
+<meta charset="utf-8"><title>{{.Title}}</title>
 <style>
 body{background:#1b1b1b;color:#ddd;font:14px sans-serif;margin:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
@@ -246,7 +292,8 @@ figcaption{margin-top:6px}
 {{.Style}}
 </style>
 {{.Nav}}
-<h1>KONUNG.N map renders</h1>
+<h1>{{.Title}}</h1>
+{{if .Note}}<p>{{.Note}}</p>{{end}}
 <p>Terrain, flat decorations, shadows and static objects (no characters, animation, or lighting). Click a map for the full-size PNG.</p>
 <div class="grid">{{range .Maps}}
 <figure><a href="{{.File}}"><img src="{{.File}}" loading="lazy" alt="{{.Name}}"></a>

@@ -14,6 +14,14 @@ func (g Group) WanderArea() (Area, bool) {
 	return a, g.Index != 0 && a.RowMax > a.RowMin+1 && a.ColMax > a.ColMin+1
 }
 
+// SetWanderArea writes the group's rectangle (the LAN server narrows its
+// villages' whole-map rectangles, lanserver.villageBounds).
+func (g *Group) SetWanderArea(a Area) {
+	for off, v := range map[int]int{0x08: a.RowMin, 0x0C: a.RowMax, 0x10: a.ColMin, 0x14: a.ColMax} {
+		binary.LittleEndian.PutUint16(g.Raw[off:], uint16(v))
+	}
+}
+
 // Contains reports whether a cell lies inside the rectangle.
 func (a Area) Contains(row, col int) bool {
 	return row >= a.RowMin && row <= a.RowMax && col >= a.ColMin && col <= a.ColMax

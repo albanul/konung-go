@@ -38,7 +38,7 @@ func loadFlames(path string) (*flameImages, error) {
 // flame is one flame of a placed object: its world position, type and
 // current frame (placement byte +0x08 + i).
 type flame struct {
-	x, y, typ, k int
+	x, y, typ, K int
 }
 
 // newFlames sets up an object's flames like the map loader (0x0043CCC2):
@@ -47,12 +47,12 @@ type flame struct {
 func (s *startScene) newFlames(placed []mapdata.PlacedFlame) []flame {
 	var out []flame
 	for _, p := range placed {
-		start, end := s.tables.FlameCycle(p.Type)
+		start, end := s.Tables.FlameCycle(p.Type)
 		k := start
 		if span := end - start + 1; span >= 2 {
-			k += s.rng.IntN(span)
+			k += s.Rng.IntN(span)
 		}
-		out = append(out, flame{x: p.X, y: p.Y, typ: p.Type, k: k})
+		out = append(out, flame{x: p.X, y: p.Y, typ: p.Type, K: k})
 	}
 	return out
 }
@@ -70,16 +70,16 @@ func (s *startScene) drawFlames(dst *ebiten.Image, o *sceneObject, advance bool)
 	}
 	for i := range o.flames {
 		f := &o.flames[i]
-		if f.k >= 0 && f.k < len(frames) {
-			img := frames[f.k]
+		if f.K >= 0 && f.K < len(frames) {
+			img := frames[f.K]
 			if s.visible(f.x, f.y, img.Bounds().Dx(), img.Bounds().Dy()) {
 				drawAt(dst, img, f.x-s.camX, f.y-s.camY)
 			}
 		}
 		if advance {
-			f.k++
-			if start, end := s.tables.FlameCycle(f.typ); f.k >= end {
-				f.k = start
+			f.K++
+			if start, end := s.Tables.FlameCycle(f.typ); f.K >= end {
+				f.K = start
 			}
 		}
 	}

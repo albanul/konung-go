@@ -98,6 +98,34 @@ func DirectionTo(ax, ay, bx, by float64) Direction {
 	return [8]Direction{4, 5, 6, 7, 0, 1, 2, 3}[sector]
 }
 
+// StepDirection is the facing of a step from cell a to cell b: the
+// neighbour's direction, else the direction between their centres.
+func StepDirection(a, b Cell) Direction {
+	for _, n := range Neighbors(a) {
+		if n.Cell == b {
+			return n.Dir
+		}
+	}
+	ax, ay := CellCenter(a)
+	bx, by := CellCenter(b)
+	return DirectionTo(float64(ax), float64(ay), float64(bx), float64(by))
+}
+
+// TurnToward is facing cur turned one octant toward d, the shorter way
+// (0x004391BC).
+func TurnToward(cur, d Direction) Direction {
+	c, t := int(cur), int(d)
+	if c > t {
+		t += 8
+	}
+	if t-c > 4 {
+		c = (c + 7) % 8
+	} else {
+		c = (c + 1) % 8
+	}
+	return Direction(c)
+}
+
 // PathSteps is how many steps a path search keeps: the entity's path
 // buffer +0x13 holds 31 directions and an end byte (0x0043F740).
 const PathSteps = 31

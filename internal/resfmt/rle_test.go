@@ -115,6 +115,27 @@ func TestLoadType5File_RealFile(t *testing.T) {
 	}
 }
 
+func TestType5Entries_RealFile(t *testing.T) {
+	file, err := os.ReadFile("../../assets/Konung/MENU640R.RES")
+	if err != nil {
+		t.Skip("skipping real file test: MENU640R.RES not found")
+	}
+	entries, err := Type5Entries(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 15 {
+		t.Fatalf("got %d entries, want 15", len(entries))
+	}
+	// Offsets from docs/konung_menu_res.md.
+	if entries[1].Offset != 0x0970EC || entries[2].Offset != 0x12E1D8 {
+		t.Errorf("offsets %#x, %#x; want 0x970ec, 0x12e1d8", entries[1].Offset, entries[2].Offset)
+	}
+	if _, err := Type5Entries(file[:len(file)-1]); err == nil {
+		t.Error("truncated file accepted")
+	}
+}
+
 func TestTintPalette(t *testing.T) {
 	var p [256]color.RGBA
 	p[1] = color.RGBA{0, 255, 0, 255}

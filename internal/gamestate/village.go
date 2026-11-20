@@ -43,6 +43,10 @@ type Settlement struct {
 	Posts [postCount]Post
 	Fence int  // +1: fence pieces (non-zero = fortified)
 	Flags byte // +0x4B2: SettlementHostile, SettlementStrangers, SettlementIndependent, … (anger.go)
+	// Aggressors is the LAN settlement's +0x4E: one bit per player slot that
+	// attacked the village or one of its nation's players (lanvillage.go);
+	// single player has no such field (0).
+	Aggressors uint16
 	// Raw is the record as loaded; encode writes the fields above over it.
 	// The dialogue scripts read and write a few more fields through it
 	// (tribute +0x10, building records +0x18, training times +0x3F8).
@@ -52,23 +56,27 @@ type Settlement struct {
 func parseSettlements(data []byte) []Settlement {
 	var out []Settlement
 	for i := 0; i < settlementCount; i++ {
-		r := data[settlementOffset+i*settlementStride:][:settlementStride]
-		s := Settlement{Index: i, Group: int(r[2]), Map: int(r[3]), Fence: int(r[1]), Flags: r[0x4B2]}
-		copy(s.Raw[:], r)
-		for k := range s.Posts {
-			p := r[postOffset+k*8:]
-			s.Posts[k] = Post{
-				Slot:     k + 1,
-				Facing:   int(p[0]),
-				Dialogue: int(p[1]),
-				Entity:   int(binary.LittleEndian.Uint16(p[2:])),
-				Row:      int(binary.LittleEndian.Uint16(p[4:])),
-				Col:      int(binary.LittleEndian.Uint16(p[6:])),
-			}
-		}
-		out = append(out, s)
+		out = append(out, settlementFrom(i, data[settlementOffset+i*settlementStride:][:settlementStride]))
 	}
 	return out
+}
+
+// settlementFrom decodes a GAME.N-layout settlement record r.
+func settlementFrom(i int, r []byte) Settlement {
+	s := Settlement{Index: i, Group: int(r[2]), Map: int(r[3]), Fence: int(r[1]), Flags: r[0x4B2]}
+	copy(s.Raw[:], r)
+	for k := range s.Posts {
+		p := r[postOffset+k*8:]
+		s.Posts[k] = Post{
+			Slot:     k + 1,
+			Facing:   int(p[0]),
+			Dialogue: int(p[1]),
+			Entity:   int(binary.LittleEndian.Uint16(p[2:])),
+			Row:      int(binary.LittleEndian.Uint16(p[4:])),
+			Col:      int(binary.LittleEndian.Uint16(p[6:])),
+		}
+	}
+	return s
 }
 
 // VillageGroup reports whether group g runs the village AI (kind bit 0x80
