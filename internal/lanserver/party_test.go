@@ -403,3 +403,68 @@ func TestDismissHireling(t *testing.T) {
 		t.Fatal("the part is not back at its place")
 	}
 }
+
+func (v *viewer) looks(i int) ([netplay.EquipSlots]netplay.EquipLook, bool) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	eq, ok := v.equip[i]
+	return eq, ok
+}
+
+// A hireling's equipment reaches the other players on its map (MsgLooks:
+// the world's characters whose equipment differs from GAME.RES), not its
+// own player (whose client has its items); once dismissed, its own player
+// is told too.
+func TestHirelingLookToOthers(t *testing.T) {
+	w0 := load(t)
+	w0.AddPlayer(0, 2, nil)
+	v := villagers7(w0)[0]
+	nextTo(t, w0, 0, v)
+	chief(w0, 0, 30, 5000)
+	path, ok := explorePath(w0, 0, v, func() bool { return w0.hireling(0, v) })
+	if !ok {
+		t.Fatal("no path to the hire")
+	}
+
+	w := load(t)
+	ss := startSession(t, w)
+	a := enter(t, ss, "Ivar", 2)
+	b := enter(t, ss, "Olaf", 2) // the same start, map 7
+	ss.host.mu.Lock()
+	nextTo(t, w, a.at.Slot, v)
+	chief(w, a.at.Slot, 30, 5000)
+	ss.host.mu.Unlock()
+	a.c.Order(netplay.OrderPayload{Kind: netplay.OrderTalk, Target: v})
+	waitUntil(t, "the dialogue", func() bool { d := a.dialogue(); return d.Open && d.NPC == v })
+	for _, k := range path {
+		a.c.Order(netplay.OrderPayload{Kind: netplay.OrderReply, Index: k})
+	}
+	waitUntil(t, "the party", func() bool { p := a.party(); return len(p.Hirelings) == 1 })
+	if _, ok := b.looks(v); ok {
+		t.Fatal("a look sent before the equipment changed")
+	}
+	// Its player puts a new armour on it (the character window's
+	// work, here directly on the server's record).
+	ss.host.mu.Lock()
+	m := w.PlayerMap(a.at.Slot)
+	_, he := w.Maps[m].Member(v)
+	k := gamestate.EquipArmour
+	item := w.Game.SetItemKind(0, gamestate.CatArmour, 3)
+	he.Equipment[k] = item
+	ss.host.mu.Unlock()
+	waitUntil(t, "the look at the other player", func() bool {
+		eq, ok := b.looks(v)
+		return ok && eq[k] == netplay.EquipLook{Item: true, Category: gamestate.CatArmour, Type: 3}
+	})
+	if _, ok := a.looks(v); ok {
+		t.Fatal("its own player was sent its own hireling's look")
+	}
+	// Dismissed: it goes home with the armour; its former player is told.
+	a.c.Order(netplay.OrderPayload{Kind: netplay.OrderTalk, Target: v})
+	waitUntil(t, "the hireling's dialogue", func() bool { d := a.dialogue(); return d.Open && d.NPC == v })
+	a.c.Order(netplay.OrderPayload{Kind: netplay.OrderReply, Index: 0})
+	waitUntil(t, "the look at its former player", func() bool {
+		eq, ok := a.looks(v)
+		return ok && eq[k].Item && eq[k].Category == gamestate.CatArmour
+	})
+}

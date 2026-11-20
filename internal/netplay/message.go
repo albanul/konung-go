@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 16
+const ProtocolVersion = 17
 
 // MsgType identifies a message.
 type MsgType int
@@ -62,6 +62,7 @@ const (
 	MsgParty                           // server → client: PartyPayload, the own hero's hirelings (party.go)
 	MsgAmulets                         // server → client: AmuletsPayload, the amulet parts and the nations' counts (amulets.go; the original's 0x16)
 	MsgPlayers                         // server → client: PlayersPayload, the players in the world and the own quest log (players.go; Q)
+	MsgLooks                           // server → client: LooksPayload, the equipment of characters that changed it (looks.go)
 )
 
 var msgNames = map[MsgType]string{
@@ -71,7 +72,7 @@ var msgNames = map[MsgType]string{
 	MsgClock: "clock", MsgHero: "hero", MsgOrder: "order", MsgView: "view", MsgPlayer: "player",
 	MsgEvents: "events", MsgMapChange: "map-change", MsgInventory: "inventory", MsgPiles: "piles",
 	MsgPileWindow: "pile-window", MsgDialogue: "dialogue", MsgParty: "party", MsgAmulets: "amulets",
-	MsgPlayers: "players",
+	MsgPlayers: "players", MsgLooks: "looks",
 }
 
 func (t MsgType) String() string {

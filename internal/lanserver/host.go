@@ -102,6 +102,9 @@ type hostPlayer struct {
 	until time.Time // lingering after its player left: removed then
 	view  Viewer
 	looks map[int]netplay.Look // players' heroes sent to this player, as sent
+	// equip are the world's characters' equipment as this player was told
+	// (MsgLooks; kept over a session's reset: the client's copy keeps it).
+	equip map[int]equipLook
 	// The items, piles, pile window, dialogue and party as last sent
 	// (JSON), so only changes go out.
 	inv, piles, pileWin, dialogue, party, amulets, list []byte
@@ -157,7 +160,7 @@ func (h *Host) Start(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPay
 		h.players[p.ID], h.bySlot[slot] = hp, hp
 	}
 	hp.info, hp.hero, hp.dead = p, hero, false
-	hp.view, hp.looks = Viewer{}, map[int]netplay.Look{}
+	hp.view, hp.looks, hp.equip = Viewer{}, map[int]netplay.Look{}, map[int]equipLook{}
 	hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party, hp.amulets, hp.list = nil, nil, nil, nil, nil, nil, nil
 	m, c, err := h.W.AddPlayer(hp.slot, p.Model, hero)
 	if err != nil {
@@ -485,6 +488,9 @@ func (h *Host) report() ([]Kill, []delivery, []save) {
 				hp.looks[o.slot] = l
 				h.sendTo(hp, netplay.MsgPlayer, netplay.PlayerPayload{Slot: o.slot, Player: o.info, Hero: o.hero, Look: l})
 			}
+		}
+		if eq := h.W.Looks(hp.slot, view.Map, hp.equip); len(eq) > 0 {
+			h.sendTo(hp, netplay.MsgLooks, netplay.LooksPayload{Equip: eq})
 		}
 		evs := byMap[view.Map]
 		if hp.bmap != view.Map || hp.bversion != h.W.buildingsVersion {

@@ -47,6 +47,7 @@ type World struct {
 	Tick   int
 
 	exits  []gamestate.MapExit
+	base   []equipLook // the characters' GAME.RES equipment (looks.go)
 	tmpl   [netplay.Models]*gamestate.Game
 	frames *frameCache
 
@@ -108,7 +109,7 @@ func Load(f Files) (*World, error) {
 		return nil, fmt.Errorf("MAPS.RES has %d maps, want %d", len(maps), Maps)
 	}
 	w := &World{Game: lw.Game, Tables: tables, exits: lw.Game.Exits, players: map[int]int{}, hired: map[int][]hireling{},
-		frames: &frameCache{graph: f.Graph, objects: f.Objects, n: map[frameKey]int{}}}
+		frames: &frameCache{graph: f.Graph, objects: f.Objects, n: map[frameKey]int{}}, base: baseLooks(lw.Game)}
 	if f.Quests != nil {
 		if w.Quests, err = resfmt.ParseQuests(f.Quests); err != nil {
 			return nil, err

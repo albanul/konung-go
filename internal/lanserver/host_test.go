@@ -75,12 +75,13 @@ type viewer struct {
 	msgs      [][]byte
 	dlg       netplay.DialoguePayload
 	pty       netplay.PartyPayload
-	changes   []netplay.EnterPayload  // map changes (MsgMapChange)
-	arrows    []netplay.Event         // EventArrow (arrows_test.go)
-	buildings []netplay.Building      // EventBuilding (villages_test.go)
-	amulets   *netplay.AmuletsPayload // MsgAmulets (amulets_test.go)
-	list      *netplay.PlayersPayload // MsgPlayers (players_test.go)
-	lists     int                     // MsgPlayers received
+	changes   []netplay.EnterPayload                        // map changes (MsgMapChange)
+	arrows    []netplay.Event                               // EventArrow (arrows_test.go)
+	buildings []netplay.Building                            // EventBuilding (villages_test.go)
+	amulets   *netplay.AmuletsPayload                       // MsgAmulets (amulets_test.go)
+	list      *netplay.PlayersPayload                       // MsgPlayers (players_test.go)
+	lists     int                                           // MsgPlayers received
+	equip     map[int][netplay.EquipSlots]netplay.EquipLook // MsgLooks (party_test.go)
 }
 
 // amuletState is the last MsgAmulets, false before one came.
@@ -200,6 +201,18 @@ func (v *viewer) read() {
 				v.mu.Lock()
 				v.list = &p
 				v.lists++
+				v.mu.Unlock()
+			}
+		case netplay.MsgLooks:
+			var p netplay.LooksPayload
+			if m.Decode(&p) == nil {
+				v.mu.Lock()
+				if v.equip == nil {
+					v.equip = map[int][netplay.EquipSlots]netplay.EquipLook{}
+				}
+				for i, eq := range p.Equip {
+					v.equip[i] = eq
+				}
 				v.mu.Unlock()
 			}
 		case netplay.MsgDialogue:

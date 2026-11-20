@@ -783,6 +783,11 @@ func (m *Menu) applyLAN() {
 			if msg.Decode(&p) == nil {
 				w.applyPlayers(p)
 			}
+		case netplay.MsgLooks:
+			var p netplay.LooksPayload
+			if msg.Decode(&p) == nil {
+				w.applyLooks(p)
+			}
 		}
 	}
 }

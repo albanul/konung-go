@@ -55,6 +55,9 @@ type lanView struct {
 	// list is the player list and own quest log the server last sent
 	// (MsgPlayers, lanplayers.go).
 	list *netplay.PlayersPayload
+	// equip are the drawing-only item records of the world's characters
+	// whose equipment the server sent (MsgLooks), by entity.
+	equip map[int]*[netplay.EquipSlots]int
 	// reported is each character's last report and its tick: between
 	// reports the scene shows the report advanced by
 	// netplay.CharState.Predict, as the server expects.
@@ -224,6 +227,43 @@ func (s *startScene) applyPlayerLook(slot int, vp *viewPlayer) {
 	e.WeaponMode = l.Weapon
 	if n := s.ByEntity[slot]; n != nil {
 		n.Look = lookOf(*e)
+	}
+}
+
+// applyLooks puts the equipment the server sent (MsgLooks) on the world's
+// characters (another player's hireling, a villager the smith equipped) as
+// item records of this game that only drawing reads. The own party's come
+// with MsgInventory.
+func (s *startScene) applyLooks(p netplay.LooksPayload) {
+	v := s.view
+	if v.equip == nil {
+		v.equip = map[int]*[netplay.EquipSlots]int{}
+	}
+	for i, eq := range p.Equip {
+		if i < world.LANPlayers || i >= len(s.Game.Entities) || s.PartyIndex(i) >= 0 {
+			continue
+		}
+		items := v.equip[i]
+		if items == nil {
+			items = &[netplay.EquipSlots]int{}
+			v.equip[i] = items
+		}
+		e := &s.Game.Entities[i]
+		for k, it := range eq {
+			if !it.Item {
+				if items[k] != 0 {
+					s.Game.SetItemKind(items[k], -1, 0)
+					items[k] = 0
+				}
+				e.Equipment[k] = 0
+				continue
+			}
+			items[k] = s.Game.SetItemKindTop(items[k], it.Category, it.Type)
+			e.Equipment[k] = items[k]
+		}
+		if n := s.ByEntity[i]; n != nil {
+			n.Look = lookOf(*e)
+		}
 	}
 }
 
