@@ -76,14 +76,17 @@ func TestLANViewItems(t *testing.T) {
 		t.Errorf("pile order: %+v", sent)
 	}
 
-	// Clicks are orders: a held item dropped on the map, the own portrait,
-	// a bag cell; nothing changes here.
+	// Clicks are orders for the window's member: a held item dropped on
+	// the map, on the own portrait (give to the holder: use), the hand's
+	// return; nothing changes here.
 	sent = nil
 	bag := s.Party[0].Bag
 	s.lanClick(&s.Party[0], viewLeft+200, viewTop+200, 0, false)
 	s.lanClick(&s.Party[0], 0, 0, hotspotPortrait, false)
 	s.returnHand(&s.Party[0])
-	if len(sent) != 3 || sent[0].Item != netplay.ItemDrop || sent[1].Item != netplay.ItemSelf || sent[2].Item != netplay.ItemReturn {
+	hero := s.Party[0].Index
+	if len(sent) != 3 || sent[0].Item != netplay.ItemDrop || sent[1].Item != netplay.ItemGive || sent[1].Index != hero ||
+		sent[2].Item != netplay.ItemReturn || sent[0].Member != hero {
 		t.Errorf("orders %+v", sent)
 	}
 	if s.Party[0].Bag != bag || !s.hand.Holding() {

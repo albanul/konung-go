@@ -532,6 +532,10 @@ func (v *lanView) ownerGroup(game *gamestate.Game, c netplay.CharState) {
 // gone from the party walkers of the world again.
 func (s *startScene) applyParty(p netplay.PartyPayload) {
 	v := s.view
+	cur := -1
+	if len(s.Party) > 0 {
+		cur = s.Current().Index
+	}
 	v.party = append([]int(nil), p.Hirelings...)
 	want := map[int]bool{}
 	for _, i := range p.Hirelings {
@@ -567,5 +571,12 @@ func (s *startScene) applyParty(p netplay.PartyPayload) {
 		e.Group = 0 // the own party here
 		s.AddMember(i, cell, dir, v.attach)
 	}
-	s.Cur = 0 // the character window shows the own hero only
+	// The window's member stays when it is still in the party; else the
+	// hero.
+	s.Cur = 0
+	for k, e := range s.Party {
+		if e.Index == cur {
+			s.Cur = k
+		}
+	}
 }

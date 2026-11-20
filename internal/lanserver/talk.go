@@ -119,7 +119,7 @@ func (w *World) Talk(slot, npc int) {
 	if abs(ax-bx) > TalkRange || abs(ay-by) > TalkRange {
 		return
 	}
-	st.hand.Return(e)
+	w.returnHand(slot)
 	w.runTalk(slot, s, func(tk *gamestate.Talk) *gamestate.Dialogue {
 		d := tk.OpenDialogue(npc, &st.lastGreeting)
 		st.greeting = tk.Events.Greeting

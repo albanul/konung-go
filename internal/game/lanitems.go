@@ -15,9 +15,15 @@ import (
 // here changes an item itself; only the scroll of the bag strip and of the
 // pile window's lists are the viewer's own.
 
-// itemOrder sends an item click.
+// itemOrder sends an item click for the party member the character window
+// and the bag strip show (the current member, the original's 0x4A member
+// index).
 func (s *startScene) itemOrder(act string, index int, on bool) {
-	s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderItem, Item: act, Index: index, On: on})
+	o := netplay.OrderPayload{Kind: netplay.OrderItem, Item: act, Index: index, On: on}
+	if len(s.Party) > 0 {
+		o.Member = s.Current().Index
+	}
+	s.viewOrder(o)
 }
 
 // returnHand puts the held item back (gamestate.Hand.Return): in a LAN
@@ -50,15 +56,16 @@ func (s *startScene) lanClick(cur *gamestate.Entity, mx, my, spot int, right boo
 		portrait = k
 	}
 	switch {
-	case portrait == 0 && s.hand.Holding() && !right:
-		s.itemOrder(netplay.ItemSelf, 0, false) // 0x00422E21: use or drink
+	case portrait >= 0 && s.hand.Holding() && !right:
+		// 0x00422E21: the held item on a portrait is used on its holder
+		// (its own portrait, or a dead member's) or given to that member
+		// (0x4D on the original's server).
+		s.itemOrder(netplay.ItemGive, s.Party[portrait].Index, false)
 	case portrait >= 0 && s.hand.Holding():
-		// Giving a hireling an item is not ported in a LAN world.
 	case portrait >= 0 && right:
 		s.Sel = gamestate.Deselect(s.Sel, s.Party[portrait].Index) // 0x00423D02 (no Ctrl dialogue here)
 	case portrait >= 0:
-		s.portraitClick(portrait) // 0x00422EA8: the selection
-		s.Cur = 0                 // the character window and the strip show the own hero only
+		s.portraitClick(portrait) // 0x00422EA8: the selection, the window's and the strip's member
 	case !inView(mx, my):
 		// HUD: the buttons were handled by updateControls.
 	case s.inv.showStrip() && (spot == hotspotBagLeft || spot == hotspotBagRight):
@@ -119,9 +126,10 @@ func (s *startScene) lanPileApply(accept bool) {
 	}
 }
 
-// applyInventory mirrors the own hero's items (MsgInventory): the item
-// records, the hero's record except what the view keeps (position, facing,
-// action, HP, the stance and death bits), and the hand.
+// applyInventory mirrors the own party's items (MsgInventory): the item
+// records, the hero's and the hirelings' records except what the view
+// keeps (position, facing, action, HP, the stance and death bits), and the
+// hand.
 func (s *startScene) applyInventory(inv netplay.InventoryPayload) {
 	if len(s.Party) == 0 {
 		return
@@ -129,15 +137,35 @@ func (s *startScene) applyInventory(inv netplay.InventoryPayload) {
 	for i, r := range inv.Items {
 		s.Game.SetItemRecord(i, r)
 	}
-	e := &s.Party[0]
+	s.applyRecord(&s.Party[0], inv.Hero)
+	for _, r := range inv.Hirelings {
+		if _, e := s.PartyMember(r.Index); e != nil && r.Index >= world.LANPlayers {
+			s.applyRecord(e, r)
+		}
+	}
+	s.hand.Item, s.hand.Cursor, s.hand.Box = inv.Hand.Item, inv.Hand.Cursor, inv.Hand.Box
+	if s.hand.Holding() {
+		// The window shows the held item's holder (single player keeps
+		// the window's member while an item is held).
+		for k, e := range s.Party {
+			if e.Index == inv.Holder {
+				s.Cur = k
+			}
+		}
+	}
+}
+
+// applyRecord takes party member e's record r from the server, keeping
+// what the view sets (position, facing, action, HP, the stance and death
+// bits) and the client's group, raw bytes and index.
+func (s *startScene) applyRecord(e *gamestate.Entity, r gamestate.Entity) {
 	keep := *e
-	*e = inv.Hero
+	*e = r
 	e.Raw, e.Index, e.Group = keep.Raw, keep.Index, keep.Group
 	e.Row, e.Col, e.Variant, e.Type, e.Step, e.HP = keep.Row, keep.Col, keep.Variant, keep.Type, keep.Step, keep.HP
 	e.Flags3 = e.Flags3&^0x04 | keep.Flags3&0x04
 	e.Flags4 = e.Flags4&^0x80 | keep.Flags4&0x80
 	s.Game.Entities[e.Index] = *e
-	s.hand.Item, s.hand.Cursor, s.hand.Box = inv.Hand.Item, inv.Hand.Cursor, inv.Hand.Box
 	if m, _ := s.PartyMember(e.Index); m != nil {
 		m.Look = lookOf(*e)
 	}

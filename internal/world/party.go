@@ -468,7 +468,17 @@ func (s *World) Revive(e *gamestate.Entity) bool {
 		return false
 	}
 	hr, hc := w.Cell.Row, w.Cell.Col
-	if l := s.Lead(); l != nil {
+	switch {
+	case s.LAN:
+		// A LAN world has a hero per player: a member comes back by its
+		// own player's hero (itself for a hero), else where it lies.
+		if m != nil {
+			if l := s.leaderOf(m); l != nil {
+				hr, hc = l.Cell.Row, l.Cell.Col
+			}
+		}
+	case s.Lead() != nil:
+		l := s.Lead()
 		hr, hc = l.Cell.Row, l.Cell.Col
 	}
 	target.Row, target.Col = w.Cell.Row, w.Cell.Col

@@ -19,6 +19,7 @@ const (
 	ItemJewel    = "jewel"    // jewellery box Index (0–4)
 	ItemBox      = "box"      // the in-hand box (hotspot 19)
 	ItemSelf     = "self"     // the held item dropped on the own portrait (use or drink)
+	ItemGive     = "give"     // the held item dropped on party member Index's portrait (gamestate.Game.ClickPortrait: give, or use on the dead)
 	ItemDrop     = "drop"     // the held item put on the ground under the hero
 	ItemReturn   = "return"   // the held item goes back where it came from
 	ItemBoxClear = "boxclear" // the window opened: the in-hand box empties (0x004246D1)
@@ -46,14 +47,20 @@ type HandState struct {
 	Box    int `json:"box,omitempty"`
 }
 
-// InventoryPayload is the own hero as the server keeps it: its record
-// (bag, equipment, jewellery, quiver, gold, level, stats, skills; the
-// client keeps its own position, action and HP, which MsgView carries),
-// every item record it holds, and the hand.
+// InventoryPayload is the own party as the server keeps it: the hero's
+// and the hirelings' records (bag, equipment, jewellery, quiver, gold,
+// level, stats, skills; the client keeps their own position, action and
+// HP, which MsgView carries), every item record they hold, and the hand.
 type InventoryPayload struct {
 	Hero  gamestate.Entity   `json:"hero"`
 	Items map[int]ItemRecord `json:"items"`
 	Hand  HandState          `json:"hand"`
+	// Hirelings are the own hirelings' records as Hero (their windows and
+	// bag strips; Items has their items too), in hiring order.
+	Hirelings []gamestate.Entity `json:"hirelings,omitempty"`
+	// Holder is the party member the held item came from (the window it
+	// was taken in); 0 with an empty hand.
+	Holder int `json:"holder,omitempty"`
 }
 
 // PileState is a pile on the map: its index in the server's pile table and

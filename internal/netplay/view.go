@@ -58,6 +58,10 @@ type OrderPayload struct {
 	// Sel is the player's selection (entity indices: its hero and
 	// hirelings) for walk, right, stance and weapon; empty: the hero.
 	Sel []int `json:"sel,omitempty"`
+	// Member is the party member an item click is for (OrderItem): the
+	// character the window and the bag strip show, the original's 0x4A
+	// member index (+3 & 3); 0 or the hero's index: the hero.
+	Member int `json:"member,omitempty"`
 }
 
 // CharState is a character on the own hero's map at a tick: entity, cell

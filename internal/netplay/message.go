@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 12
+const ProtocolVersion = 13
 
 // MsgType identifies a message.
 type MsgType int
@@ -55,7 +55,7 @@ const (
 	MsgPlayer                          // server → client: PlayerPayload, a player's hero as it looks (0x5A)
 	MsgEvents                          // server → client: EventsPayload, sounds on the own hero's map
 	MsgMapChange                       // server → client: EnterPayload, the own hero took an exit to another map
-	MsgInventory                       // server → client: InventoryPayload, the own hero's items and hand (items.go)
+	MsgInventory                       // server → client: InventoryPayload, the own party's items and hand (items.go)
 	MsgPiles                           // server → client: PilesPayload, the piles on the own hero's map
 	MsgPileWindow                      // server → client: PileWindowPayload, window 7 (the pile window or a trade) opened, changed or closed
 	MsgDialogue                        // server → client: DialoguePayload, the dialogue window opened, changed or closed (talk.go)

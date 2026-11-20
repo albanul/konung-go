@@ -93,6 +93,9 @@ func (w *World) moveParty(slot int) {
 			kept = append(kept, h)
 			continue
 		}
+		if st := w.items[slot]; st != nil && st.holder == h.entity {
+			w.returnHand(slot) // the held item back in its bag before it moves
+		}
 		e, on := gamestate.Entity{}, false
 		if from > 0 {
 			e, on = w.Maps[from].RemoveMember(h.entity)
@@ -136,6 +139,7 @@ func (w *World) dropHireling(h hireling) {
 // they were hired on (or the nearest free one), in their village's area;
 // the dead are dropped.
 func (w *World) sendHome(slot int) {
+	w.returnHand(slot) // an item taken from a hireling goes back to it first
 	for _, h := range w.hired[slot] {
 		from := w.hirelingMap(h.entity)
 		e, on := gamestate.Entity{}, false

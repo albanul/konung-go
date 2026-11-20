@@ -20,8 +20,12 @@ import (
 // itemState is a player's side of the items.
 type itemState struct {
 	hand gamestate.Hand
-	pile *gamestate.Trade // the open pile window, nil when closed
-	msgs [][]byte         // status-line messages for the client
+	// holder is the party member (entity index: the hero or a hireling)
+	// the held item was taken from, whose window it is used in; set while
+	// the hand is empty, so it is the hero's index then.
+	holder int
+	pile   *gamestate.Trade // the open pile window, nil when closed
+	msgs   [][]byte         // status-line messages for the client
 
 	// Dialogues and trade (talk.go): the open dialogue and trade, the
 	// quest flags, the last greeting (no repeat) and the open dialogue's.
@@ -38,7 +42,7 @@ func (w *World) state(slot int) *itemState {
 	}
 	st := w.items[slot]
 	if st == nil {
-		st = &itemState{hand: gamestate.NewHand()}
+		st = &itemState{hand: gamestate.NewHand(), holder: slot}
 		w.items[slot] = st
 	}
 	return st
@@ -72,19 +76,67 @@ func (w *World) openPile(n, slot, i int) {
 func (w *World) closeItems(slot int) {
 	st := w.state(slot)
 	st.pile, st.talk, st.trade = nil, nil, nil
-	if m, ok := w.players[slot]; ok {
-		if _, e := w.Maps[m].Member(slot); e != nil {
+	w.returnHand(slot)
+	st.hand.Box = 0
+}
+
+// returnHand puts slot's held item back where it came from: the holder's
+// bag (the hero or a hireling, wherever it is a party member), the hero's
+// when the holder is no party member any more.
+func (w *World) returnHand(slot int) {
+	st := w.state(slot)
+	if !st.hand.Holding() {
+		st.holder = slot
+		return
+	}
+	if n := w.hirelingMap(st.holder); n > 0 && w.hireling(slot, st.holder) {
+		if _, e := w.Maps[n].Member(st.holder); e != nil {
 			st.hand.Return(e)
 		}
 	}
-	st.hand.Box = 0
+	if st.hand.Holding() {
+		if m, ok := w.players[slot]; ok {
+			if _, e := w.Maps[m].Member(slot); e != nil {
+				st.hand.Return(e)
+			}
+		}
+	}
+	st.holder = slot
+}
+
+// itemMember is the party member an item click of slot's client is for
+// (OrderPayload.Member, the original's 0x4A member index): the hero (0 or
+// its index) or one of its living hirelings on the hero's map; nil
+// otherwise.
+func (w *World) itemMember(s *world.World, slot, i int) (*world.Member, *gamestate.Entity) {
+	if i == 0 || i == slot {
+		return s.Member(slot)
+	}
+	if !w.hireling(slot, i) {
+		return nil, nil
+	}
+	mem, e := s.Member(i)
+	if mem == nil || e.Dead() {
+		return nil, nil
+	}
+	return mem, e
+}
+
+// usesHand are the item actions on the window's (or the strip's) member
+// that take from or put into the hand: while the hand holds an item they
+// must be its holder's (single player cannot switch the window then).
+var usesHand = map[string]bool{
+	netplay.ItemBag: true, netplay.ItemEquip: true, netplay.ItemJewel: true,
+	netplay.ItemBox: true, netplay.ItemSelf: true,
 }
 
 // Item applies an item click of slot's client (OrderItem) with the
 // single-player rules: the bag strip (ClickBag, UseBagItem), the character
-// window (equipment, jewellery, the in-hand box, the raises, «АВТО»), the
-// own portrait (use or drink the held item), a drop on the ground, the
-// hand's return and the pile window's «Ok»/«Закрыть». Misc items that need
+// window (equipment, jewellery, the in-hand box, the raises, «АВТО») of the
+// party member it shows (OrderPayload.Member: the hero or a hireling), a
+// party member's portrait (use or drink the held item on its holder, give
+// it to another member, ClickPortrait), a drop on the ground, the hand's
+// return and the pile window's «Ok»/«Закрыть». Misc items that need
 // the single-player world (orbs, keys, the whistle, the doll, the lamp, the
 // magnet, the seer's scroll) do nothing here (gamestate.Game.World is nil),
 // and the shovel's dig mode is not offered.
@@ -94,12 +146,30 @@ func (w *World) Item(slot int, o netplay.OrderPayload) {
 		return
 	}
 	s := w.Maps[m]
-	mem, e := s.Member(slot)
-	if mem == nil || e.Dead() {
+	if hero, he := s.Member(slot); hero == nil || he.Dead() {
+		return
+	}
+	mem, e := w.itemMember(s, slot, o.Member)
+	if mem == nil {
 		return
 	}
 	st := w.state(slot)
 	h, t := &st.hand, w.Tables
+	if !h.Holding() {
+		st.holder = mem.Entity
+	}
+	holder, he := s.Member(st.holder)
+	if holder == nil || (st.holder != slot && !w.hireling(slot, st.holder)) {
+		w.returnHand(slot) // the holder left the party or the map
+		holder, he = s.Member(slot)
+		st.holder = slot
+	}
+	if usesHand[o.Item] && h.Holding() && mem != holder {
+		return
+	}
+	// «Живая Вода» on a dead member revives it on this map (populate.go
+	// installs the last map built; the server's maps share one Game).
+	w.Game.Reviver = s.Revive
 	msg := 0
 	switch o.Item {
 	case netplay.ItemBag:
@@ -132,14 +202,26 @@ func (w *World) Item(slot int, o netplay.OrderPayload) {
 		msg = w.Game.LANClickBox(h, e, t) // no poison or oil on items in the network game
 	case netplay.ItemSelf:
 		if h.Holding() {
-			msg = w.Game.ClickPortrait(h, e, e, t)
+			msg = w.Game.ClickPortrait(h, he, he, t)
 		}
+	case netplay.ItemGive:
+		// 0x00422E21 on the client, then 0x4D (server 0x0044BA34) moves the
+		// item between two members of the player's group.
+		if !h.Holding() || (o.Index != slot && !w.hireling(slot, o.Index)) {
+			return
+		}
+		to, te := s.Member(o.Index)
+		if to == nil {
+			return
+		}
+		msg = w.Game.ClickPortrait(h, he, te, t)
+		to.Look = world.LookOf(*te)
 	case netplay.ItemDrop:
 		if h.Holding() {
-			w.drop(s, mem, h)
+			w.drop(s, holder, h)
 		}
 	case netplay.ItemReturn:
-		h.Return(e)
+		h.Return(he)
 	case netplay.ItemBoxClear:
 		h.Box = 0
 	case netplay.ItemRaise:
@@ -161,6 +243,10 @@ func (w *World) Item(slot int, o netplay.OrderPayload) {
 		h.Cursor = gamestate.CursorPointer // no dig mode on the server
 	}
 	mem.Look = world.LookOf(*e) // a weapon or armour changed: frames and look follow
+	holder.Look = world.LookOf(*he)
+	if !h.Holding() {
+		st.holder = slot
+	}
 	if msg != 0 {
 		w.say(slot, t.CString(msg))
 	}
@@ -176,7 +262,9 @@ func (w *World) Item(slot int, o netplay.OrderPayload) {
 func (w *World) drop(s *world.World, mem *world.Member, h *gamestate.Hand) {
 	item := h.Item
 	h.Cursor = gamestate.CursorPointer
-	if w.deliver(s, mem, mem.Entity, item) {
+	// Only a hero delivers the amulet (a port rule: the original's
+	// 0x00437A5C also takes a hireling's).
+	if mem.Entity < world.LANPlayers && w.deliver(s, mem, mem.Entity, item) {
 		h.Item = 0 // the amulet delivered on the nation's spot (0x00437B24); its record is free
 		return
 	}
@@ -254,9 +342,10 @@ func samePileItems(orig, got [netplay.PileLists][netplay.PileListSlots]int) bool
 		slices.Equal(set(orig[2], orig[3]), set(got[2], got[3]))
 }
 
-// Inventory is slot's hero as its client is sent it (MsgInventory): the
-// record (its raw bytes left out: the client keeps its own), the records
-// of every item it holds or has in the hand and the box, and the hand.
+// Inventory is slot's party as its client is sent it (MsgInventory): the
+// hero's record and its hirelings' (their raw bytes left out: the client
+// keeps its own), the records of every item they hold or the hand and the
+// box have, the hand and the held item's holder.
 func (w *World) Inventory(slot int) (netplay.InventoryPayload, bool) {
 	e, ok := w.Hero(slot)
 	if !ok {
@@ -282,7 +371,30 @@ func (w *World) Inventory(slot int) (netplay.InventoryPayload, bool) {
 	}
 	add(st.hand.Box)
 	e.Raw = [len(e.Raw)]byte{}
-	return netplay.InventoryPayload{Hero: e, Items: items, Hand: hand}, true
+	out := netplay.InventoryPayload{Hero: e, Items: items, Hand: hand}
+	if st.hand.Holding() {
+		out.Holder = st.holder
+	}
+	for _, hl := range w.hired[slot] {
+		n := w.hirelingMap(hl.entity)
+		if n == 0 {
+			continue
+		}
+		_, he := w.Maps[n].Member(hl.entity)
+		if he == nil {
+			continue
+		}
+		r := *he
+		for _, l := range [][]int{r.Equipment[:], r.Bag[:], r.Extra[:]} {
+			for _, i := range l {
+				add(i)
+			}
+		}
+		add(r.Quiver)
+		r.Raw = [len(r.Raw)]byte{}
+		out.Hirelings = append(out.Hirelings, r)
+	}
+	return out, true
 }
 
 // Piles are the active piles on map m and their items' records
@@ -369,7 +481,7 @@ func (w *World) SavedItems(slot int) []Item {
 	if e == nil {
 		return nil
 	}
-	w.state(slot).hand.Return(e)
+	w.returnHand(slot)
 	var out []Item
 	put := func(sl string, k, i int) {
 		if i <= 0 {

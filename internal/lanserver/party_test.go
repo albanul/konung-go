@@ -1,6 +1,7 @@
 package lanserver
 
 import (
+	"slices"
 	"testing"
 
 	"konung1.5/internal/gamestate"
@@ -288,6 +289,28 @@ func TestHireOverNetwork(t *testing.T) {
 	waitUntil(t, "the hireling back", func() bool {
 		c, ok := a.char(v)
 		return ok && gamestate.Dist(c.Row, c.Col, at.Row, at.Col) <= 12
+	})
+
+	// The hireling's items come with the inventory; the hero gives it a
+	// bag item: lifted in the hero's window, dropped on its portrait.
+	waitUntil(t, "the hireling's inventory", func() bool {
+		inv, _, _ := a.items()
+		return len(inv.Hirelings) == 1 && inv.Hirelings[0].Index == v
+	})
+	ss.host.mu.Lock()
+	he := hero(w, a.at.Slot)
+	gift := w.Game.SetItemKind(0, gamestate.CatBlade, 18)
+	he.Bag = [32]int{gift}
+	ss.host.mu.Unlock()
+	a.c.Order(netplay.OrderPayload{Kind: netplay.OrderItem, Item: netplay.ItemBag, Index: 0, Member: a.at.Slot})
+	a.c.Order(netplay.OrderPayload{Kind: netplay.OrderItem, Item: netplay.ItemGive, Index: v, Member: a.at.Slot})
+	waitUntil(t, "the gift in the hireling's bag", func() bool {
+		inv, _, _ := a.items()
+		if len(inv.Hirelings) != 1 || inv.Hand.Item != 0 {
+			return false
+		}
+		_, ok := inv.Items[gift]
+		return ok && slices.Contains(inv.Hirelings[0].Bag[:], gift) && !slices.Contains(inv.Hero.Bag[:], gift)
 	})
 }
 
