@@ -141,27 +141,58 @@ func (w *World) dropHireling(h hireling) {
 func (w *World) sendHome(slot int) {
 	w.returnHand(slot) // an item taken from a hireling goes back to it first
 	for _, h := range w.hired[slot] {
-		from := w.hirelingMap(h.entity)
-		e, on := gamestate.Entity{}, false
-		if from > 0 {
-			e, on = w.Maps[from].RemoveMember(h.entity)
-		}
-		if !on || e.Dead() {
-			w.dropHireling(h)
-			continue
-		}
-		e.Group, e.Flags2 = h.group, 0
-		gamestate.LeaveStance(&e)
-		w.Game.Entities[h.entity] = e
-		s := w.Maps[h.home]
-		area, hasArea := w.VillageArea(h.home)
-		n := s.AddNPC(h.entity, h.cell, h.dir, w.attach)
-		if hasArea && n.Mode == world.NPCVillager {
-			n.Area = area
-			n.StepRows, n.StepCols = lanVillageRows, lanVillageCols
-		}
+		w.goHome(h)
 	}
 	delete(w.hired, slot)
+}
+
+// goHome takes hireling h out of its player's party: alive, a villager
+// again on the cell it was hired on (or the nearest free one) in its
+// village's area; dead, dropped.
+func (w *World) goHome(h hireling) {
+	from := w.hirelingMap(h.entity)
+	e, on := gamestate.Entity{}, false
+	if from > 0 {
+		e, on = w.Maps[from].RemoveMember(h.entity)
+	}
+	if !on || e.Dead() {
+		w.dropHireling(h)
+		return
+	}
+	e.Group, e.Flags2 = h.group, 0
+	gamestate.LeaveStance(&e)
+	w.Game.Entities[h.entity] = e
+	s := w.Maps[h.home]
+	area, hasArea := w.VillageArea(h.home)
+	n := s.AddNPC(h.entity, h.cell, h.dir, w.attach)
+	if hasArea && n.Mode == world.NPCVillager {
+		n.Area = area
+		n.StepRows, n.StepCols = lanVillageRows, lanVillageCols
+	}
+}
+
+// dismiss is the port's 332 (the own hireling's dialogue,
+// gamestate.LANMemberDialogue): slot's hireling i leaves the party and
+// goes home (goHome, as at the hero's logout; the original's server case
+// 0x0044C154 puts it in the current map's village, but its dialogues never
+// reach it). The items it carries stay its own; amulet items among them
+// vanish and are put out again (0x0043B7FC, as in the original's case).
+func (w *World) dismiss(slot, i int) {
+	k := slices.IndexFunc(w.hired[slot], func(h hireling) bool { return h.entity == i })
+	if k < 0 {
+		return
+	}
+	h := w.hired[slot][k]
+	if st := w.items[slot]; st != nil && st.holder == i {
+		w.returnHand(slot) // the held item back in its bag first
+	}
+	if m := w.hirelingMap(i); m > 0 {
+		if _, e := w.Maps[m].Member(i); e != nil {
+			w.amuletsVanish(e)
+		}
+	}
+	w.hired[slot] = slices.Delete(w.hired[slot], k, k+1)
+	w.goHome(h)
 }
 
 // orderMembers are the members of slot's party that take an order: the

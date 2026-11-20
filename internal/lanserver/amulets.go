@@ -236,6 +236,29 @@ func (w *World) amuletsLeave(slot int) {
 	w.scanAmulets()
 }
 
+// amuletsVanish is 0x0043B7FC for the amulet items in record e's bag and
+// equipment (a dismissed hireling's): they vanish and their parts are put
+// out again.
+func (w *World) amuletsVanish(e *gamestate.Entity) {
+	var kinds []int
+	for _, l := range [][]int{e.Bag[:], e.Equipment[:]} {
+		for k, i := range l {
+			if a := w.amuletKind(i); a != 0 {
+				kinds = append(kinds, a)
+				w.Game.SetItemKind(i, -1, 0)
+				w.forgetAmulet(i)
+				l[k] = 0
+			}
+		}
+	}
+	for _, k := range kinds {
+		w.placeParts(k)
+	}
+	if len(kinds) > 0 {
+		w.scanAmulets()
+	}
+}
+
 // deliver is 0x00437A5C for a held item dropped by slot's hero on map s:
 // the whole amulet dropped on the spot of the hero's nation is delivered —
 // the item is gone, the player scores (EventAmulet), the nation's count

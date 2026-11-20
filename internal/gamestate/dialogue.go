@@ -77,12 +77,12 @@ type TalkEvents struct {
 	Greeting     int    // greeting sound to play on open, 0 = none
 	Trade        *Trade // script 275 opened the trade window (window 7)
 	Unported     []int
-	// Deferred are LAN script functions the port does not run (332
-	// dismiss).
-	Deferred []int
 	// Hired are the characters a LAN hero hired (291): the server makes
 	// them its hirelings (lanserver) after the dialogue step.
 	Hired []int
+	// Dismissed are the LAN hero's hirelings it let go (332): the server
+	// sends them home after the dialogue step.
+	Dismissed []int
 }
 
 func (t *Talk) rand(n int) int {
@@ -155,6 +155,9 @@ func (t *Talk) OpenDialogue(npc int, lastGreeting *int) *Dialogue {
 	dl := e.Dialogue
 	if t.LAN {
 		dl = LANDialogue(dl)
+		if npc >= LANPlayerSlots && e.Group == t.Party {
+			dl = LANMemberDialogue // an own hireling
+		}
 	}
 	if dl == NoDialogue || dl >= resfmt.QuestDialogues {
 		return nil

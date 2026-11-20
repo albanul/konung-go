@@ -62,8 +62,12 @@ func (s *startScene) lanClick(cur *gamestate.Entity, mx, my, spot int, right boo
 		// (0x4D on the original's server).
 		s.itemOrder(netplay.ItemGive, s.Party[portrait].Index, false)
 	case portrait >= 0 && s.hand.Holding():
+	case portrait >= 0 && right && s.lanTalkHireling(s.Party[portrait].Index):
+		// 0x00423D02 with Ctrl: the hireling's dialogue (its dismissal).
+		s.inv.quick = false
+		s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderTalk, Target: s.Party[portrait].Index})
 	case portrait >= 0 && right:
-		s.Sel = gamestate.Deselect(s.Sel, s.Party[portrait].Index) // 0x00423D02 (no Ctrl dialogue here)
+		s.Sel = gamestate.Deselect(s.Sel, s.Party[portrait].Index) // 0x00423D02
 	case portrait >= 0:
 		s.portraitClick(portrait) // 0x00422EA8: the selection, the window's and the strip's member
 	case !inView(mx, my):
@@ -235,6 +239,16 @@ func (s *startScene) lanCanTalk() bool {
 	}
 	return gamestate.LANTalks(e.Dialogue) && !e.Dead() && !s.Party[0].InStance() &&
 		!ebiten.IsKeyPressed(ebiten.KeyControl)
+}
+
+// lanTalkHireling reports whether a right click on party entity i opens
+// its dialogue: an own living hireling (not the hero) with Ctrl held, the
+// hero out of the stance (the server checks the same).
+func (s *startScene) lanTalkHireling(i int) bool {
+	if i < world.LANPlayers || s.PartyIndex(i) < 0 || s.assets == nil || s.assets.quests == nil {
+		return false
+	}
+	return !s.Entity(i).Dead() && !s.Party[0].InStance() && ebiten.IsKeyPressed(ebiten.KeyControl)
 }
 
 // applyDialogue shows the dialogue as the server has it (MsgDialogue); the

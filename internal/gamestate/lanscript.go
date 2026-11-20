@@ -27,7 +27,8 @@ import "konung1.5/internal/resfmt"
 //     vanishes.
 //   - 291 hire: Events.Hired, the server moves the character into the
 //     player's group (0x0044BED7, lanserver); 332 dismiss: not reached by
-//     the LAN dialogues, 0 (Events.Deferred).
+//     the original's LAN dialogues; the port's own hireling dialogue
+//     (LANMemberDialogue) reaches it: Events.Dismissed.
 //   - 349 party full: the hero and its hirelings (PartySize) against
 //     LANMaxParty (0x0042BFA0).
 //   - the rest: the single-player functions (scriptFuncs), on the hero's
@@ -90,10 +91,15 @@ func (t *Talk) lanScript(id int) int {
 		return 1
 	case 332:
 		// Dismiss (server 0x0044C154: back to the current map's village
-		// group): only the roles' dialogues offer it, for a role character
-		// in the party, which the LAN dialogues never hire (their 291
-		// needs a village that is the player's, 302 = 0); not ported.
-		t.Events.Deferred = append(t.Events.Deferred, id)
+		// group): in the original only the roles' dialogues offer it, for
+		// a role character in the party, which the LAN dialogues never
+		// hire. The port offers it to the own hirelings
+		// (LANMemberDialogue): Events.Dismissed, the server sends the
+		// hireling home (lanserver).
+		if t.NPC >= LANPlayerSlots && t.npc().Group == t.Party {
+			t.Events.Dismissed = append(t.Events.Dismissed, t.NPC)
+			return 1
+		}
 		return 0
 	case 349:
 		// 0x0042BFA0: the player group's member count against
@@ -127,6 +133,11 @@ const (
 	// LANHireDialogue is single player's dialogue of a villager to hire
 	// (the same as 8 and 9 up to the refusal's last words).
 	LANHireDialogue = 1
+	// LANMemberDialogue is what an own hireling says (Ctrl + right click,
+	// a port rule: neither game lets a plain hireling go): single
+	// player's dialogue 3, «Слушаю тебя, князь!», whose first reply
+	// dismisses it (332) and second ends the talk.
+	LANMemberDialogue = 3
 )
 
 // LANDialogue is the dialogue a character with GAME.RES dialogue d opens

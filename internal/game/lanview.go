@@ -487,6 +487,10 @@ func (s *startScene) viewOrder(o netplay.OrderPayload) {
 func (s *startScene) viewClick(mx, my int, right bool) {
 	c := mapdata.CellAt(mx+s.camX, my+s.camY)
 	switch {
+	case right && s.lanTalkHireling(s.hovered):
+		// Ctrl over an own hireling: its dialogue (the port's dismissal,
+		// gamestate.LANMemberDialogue), as single player's 0x004239EE.
+		s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderTalk, Target: s.hovered})
 	case right && s.hovered >= 0 && s.PartyIndex(s.hovered) >= 0:
 		s.selectInWorld(s.hovered) // 0x004239EE: an own party member: the selection
 	case right && s.lanCanTalk():

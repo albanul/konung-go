@@ -326,3 +326,80 @@ func (v *viewer) char(i int) (netplay.CharState, bool) {
 	c, ok := v.chars[i]
 	return c.Predict(v.since[i], v.tick), ok
 }
+
+// An own hireling talks (Ctrl + right click: the port's dialogue 3,
+// «Слушаю тебя, князь!», wherever it stands on the hero's map): the second
+// reply keeps it; the first dismisses it (332): it goes home a villager
+// again, with its items, and an amulet part in its bag is put out again.
+func TestDismissHireling(t *testing.T) {
+	w := load(t)
+	const slot = 0
+	if _, _, err := w.AddPlayer(slot, 2, nil); err != nil {
+		t.Fatal(err)
+	}
+	v := villagers7(w)[0]
+	nextTo(t, w, slot, v)
+	chief(w, slot, 30, 5000)
+	if !hireVia(t, w, slot, v) {
+		t.Fatal("hire failed")
+	}
+	w.state(slot).talk = nil
+	if !w.MoveTo(slot, 8, mapdata.Cell{Row: 60, Col: 30}) || w.hirelingMap(v) != 8 {
+		t.Fatal("the hireling did not come along to map 8")
+	}
+	open := func() *gamestate.Dialogue {
+		t.Helper()
+		w.Talk(slot, v)
+		d := w.state(slot).talk
+		if d == nil || d.Node != w.Quests.Starts[gamestate.LANMemberDialogue] || len(d.Replies) != 2 {
+			t.Fatalf("the hireling's dialogue: %+v", d)
+		}
+		return d
+	}
+	open()
+	w.Reply(slot, 1) // «Ничего, я проверял…»
+	if !w.hireling(slot, v) || w.state(slot).talk != nil {
+		t.Fatal("the second reply let the hireling go or kept the window")
+	}
+	// Another player's hireling does not talk to slot 1.
+	if _, _, err := w.AddPlayer(1, 2, nil); err != nil {
+		t.Fatal(err)
+	}
+	w.MoveTo(1, 8, mapdata.Cell{Row: 64, Col: 30})
+	w.Talk(1, v)
+	if w.state(1).talk != nil {
+		t.Fatal("another player's hireling talks")
+	}
+	// An amulet part in its bag.
+	p := w.amulets.rules.Points[0]
+	part := partAt(w, w.amulets.rules, 0)
+	if part == 0 {
+		t.Fatal("no part at its place")
+	}
+	pl := &w.Game.Piles[w.Maps[p[0]].PileAt[mapdata.Cell{Row: p[1], Col: p[2]}]]
+	for k, i := range pl.Items {
+		if i == part {
+			pl.Items[k] = 0
+		}
+	}
+	_, he := w.Maps[8].Member(v)
+	gamestate.BagInsert(he, part)
+	w.Step()
+	open()
+	w.Reply(slot, 0) // «Твоя служба мне больше не нужна…»
+	if w.hireling(slot, v) || w.hirelingMap(v) != 0 || len(w.Party(slot)) != 0 {
+		t.Fatal("the hireling is still in the party")
+	}
+	n := w.Maps[7].ByEntity[v]
+	if n == nil || n.Mode != world.NPCVillager || w.Game.Entities[v].Group != 16 {
+		t.Fatalf("not back in village 7: npc %v group %d", n != nil, w.Game.Entities[v].Group)
+	}
+	for _, i := range w.Game.Entities[v].Bag {
+		if w.amuletKind(i) != 0 {
+			t.Fatal("the amulet part went home with the hireling")
+		}
+	}
+	if partAt(w, w.amulets.rules, 0) == 0 {
+		t.Fatal("the part is not back at its place")
+	}
+}

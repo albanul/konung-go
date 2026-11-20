@@ -106,18 +106,30 @@ func (w *World) Talk(slot, npc int) {
 	if st.talk != nil || st.trade != nil || st.pile != nil {
 		return
 	}
-	n := s.ByEntity[npc]
-	if n == nil || npc < world.LANPlayers || npc >= len(w.Game.Entities) {
+	if npc < world.LANPlayers || npc >= len(w.Game.Entities) {
 		return
 	}
-	ne := w.Game.Entities[npc]
-	if ne.Dead() || !gamestate.LANTalks(ne.Dialogue) {
-		return
-	}
-	ax, ay := mapdata.CellCenter(mem.Cell)
-	bx, by := mapdata.CellCenter(n.Cell)
-	if abs(ax-bx) > TalkRange || abs(ay-by) > TalkRange {
-		return
+	if w.hireling(slot, npc) {
+		// An own hireling (Ctrl + right click, its portrait too): its
+		// dialogue (gamestate.LANMemberDialogue) wherever it stands on the
+		// hero's map, as single player's party members'.
+		if hm, he := s.Member(npc); hm == nil || !world.Alive(&hm.Walker, he) {
+			return
+		}
+	} else {
+		n := s.ByEntity[npc]
+		if n == nil {
+			return
+		}
+		ne := w.Game.Entities[npc]
+		if ne.Dead() || !gamestate.LANTalks(ne.Dialogue) {
+			return
+		}
+		ax, ay := mapdata.CellCenter(mem.Cell)
+		bx, by := mapdata.CellCenter(n.Cell)
+		if abs(ax-bx) > TalkRange || abs(ay-by) > TalkRange {
+			return
+		}
 	}
 	w.returnHand(slot)
 	w.runTalk(slot, s, func(tk *gamestate.Talk) *gamestate.Dialogue {
@@ -181,11 +193,11 @@ func (w *World) runTalk(slot int, s *world.World, f func(*gamestate.Talk) *games
 	if len(tk.Events.Unported) > 0 {
 		log.Printf("lan dialogue: script functions not ported: %v", tk.Events.Unported)
 	}
-	if len(tk.Events.Deferred) > 0 {
-		log.Printf("lan dialogue: script functions not ported: %v", tk.Events.Deferred)
-	}
 	for _, i := range tk.Events.Hired {
 		w.hire(slot, i)
+	}
+	for _, i := range tk.Events.Dismissed {
+		w.dismiss(slot, i)
 	}
 	st.talk = d
 	if tk.Events.Trade != nil {
