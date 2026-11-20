@@ -3,12 +3,12 @@ package game
 import (
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
@@ -127,15 +127,11 @@ var menuButtons800 = [paintedItems][4]int{
 
 func New(resourcePath, graphPath string) (*Menu, error) {
 	ebiten.SetCursorMode(ebiten.CursorModeHidden)
-	frames, err := resfmt.LoadType5File(resourcePath)
+	frames, err := loadType5File(resourcePath)
 	if err != nil {
 		return nil, fmt.Errorf("load menu resource %q: %w", resourcePath, err)
 	}
 	if err := checkMenuFrames(resourcePath, len(frames)); err != nil {
-		return nil, err
-	}
-	swordFrame, err := loadGraphSprite(graphPath, swordCursorSpriteIndex)
-	if err != nil {
 		return nil, err
 	}
 	objectsPath, err := FindGameResource("assets/Konung/OBJECTS.RES")
@@ -160,6 +156,10 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 	if err != nil {
 		return nil, err
 	}
+	swordFrame, err := loadGraphSprite(assets.graph, swordCursorSpriteIndex)
+	if err != nil {
+		return nil, err
+	}
 	newhPath, err := FindGameResource("assets/Konung/NEWH800R.RES")
 	if err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 
 	// 0x0042BA60: read the settings at startup; defaults without the file.
 	cfgPath := filepath.Join(gameDir, gamestate.ConfigFile)
-	cfgData, err := os.ReadFile(cfgPath)
+	cfgData, err := gamefs.ReadFile(cfgPath)
 	if err != nil {
 		cfgData = nil
 	} else if cfgData == nil {
@@ -206,7 +206,7 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		gameDir:    gameDir,
 	}
 	for i := range m.cursors {
-		img, err := loadGraphSprite(graphPath, i)
+		img, err := loadGraphSprite(assets.graph, i)
 		if err != nil {
 			return nil, err
 		}
@@ -278,6 +278,7 @@ func (m *Menu) endFilm() {
 }
 
 func (m *Menu) Update() error {
+	defer perf.update(time.Now())
 	if sfx != nil {
 		sfx.soundOn = m.config.Sound != 0 // checked at each play (0x0042A679)
 		sfx.update()
@@ -628,12 +629,15 @@ func (m *Menu) updateSettings() {
 func (m *Menu) writeConfig() {
 	c := m.config
 	c.Video = m.settings.video
-	if err := os.WriteFile(m.cfgPath, c.Marshal(), 0o644); err != nil {
+	if err := gamefs.WriteFile(m.cfgPath, c.Marshal()); err != nil {
 		log.Printf("write %s: %v", m.cfgPath, err)
 	}
 }
 
 func (m *Menu) Draw(screen *ebiten.Image) {
+	start := time.Now()
+	defer perf.overlay(screen)
+	defer perf.draw(start)
 	if f := m.film; f != nil {
 		if f.frozen == nil { // the frame the film starts on stays around it
 			f.frozen = ebiten.NewImage(ScreenWidth, ScreenHeight)
@@ -699,6 +703,7 @@ func (m *Menu) drawScreen(screen *ebiten.Image) {
 }
 
 func drawAt(dst, src *ebiten.Image, x, y int) {
+	perf.draws++
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(x), float64(y))
 	dst.DrawImage(src, op)

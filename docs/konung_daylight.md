@@ -88,7 +88,15 @@ Pitfalls:
 * `startScene.updateLight` runs at the start of each `Draw` with the port's game time (`World.GameTime`, the value saved as `0x00A3E770`). It rolls the moon at time-of-day 0 and takes the fixed map light or `gamestate.DayTint`. The menu sets `dayNight` from the setting.
 * A Kage shader (`tintShaderSrc`) applies the three 32-entry tables to the decoded RGBA sprites. Because the tint is a per-channel lookup on the 5-bit values, this gives the same colours as tinting the palette.
 * The day passes at the game time rate, one unit per 60 ms tick, so a day of 21600 units lasts 21.6 minutes at normal speed, as in the original.
-* The lit path is computed on the CPU (`resfmt.LightTerrainCell`) per visible lit cell and frame, because the flicker changes every frame. The cell's composed layers are cached (`litCell`), and the frame's tables are built once (`resfmt.NewLitTables`). This costs about 34 µs per cell.
+* The lit path runs on the GPU (`game.litShaderSrc`, `startScene.drawLitShader`). `resfmt.LightTerrainCell` stays as the reference and as the fallback when the shader does not compile.
+  * The shader reads three 114×64 images that hold the CPU path's inputs as exact bytes:
+    * the composed cell, as 5-bit R/G/B, alpha 0 where empty (`resfmt.LitCellImage`, uploaded once per cell, `litCell.enc`);
+    * its light mask (`LitMaskImage`, once per mask, `sceneAssets.litMaskImgs`);
+    * the tables (`LitTablesImage`: red at (c, L), green at (32 + c, L), blue at (64 + c, 0)).
+  * Only the tables image is uploaded when the light changes (`litLUT`, `litGen`).
+  * `resfmt.TestLitShaderEncoding` checks `LitShaderReference` (the shader's lookups in Go) against `LightTerrainCell` for every 15-bit colour and light. `game.TestLitShaderCompiles` checks that the shader compiles. The GPU output itself is not tested, because the container has no GPU.
+  * The flicker is rolled once per game frame (60 ms, `s.frame*5/18`, like the flames), not per 60 Hz update. That matches the game's drawn frames.
+  * Cost: a night frame of `KONUNG.1` (59 lit cells) drew in about 1.4 ms of CPU natively, the same as day. The CPU path took 4–8 ms per light change, and in the browser build it also uploaded 59 textures.
 * Flames: [flames and transparency](konung_flames.md).
 
 ## Open questions

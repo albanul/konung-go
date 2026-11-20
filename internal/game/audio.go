@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"log"
 	"math/rand/v2"
-	"os"
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/vorbis"
+	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/resfmt"
@@ -32,7 +32,7 @@ type soundSystem struct {
 	sounds  map[int][]byte // SOUNDS.RES PCM by id
 	active  []*audio.Player
 	tracks  [][]byte
-	music   *audio.Player
+	music   musicPlayer
 	track   int // 0x00A3E7D4
 	musicDB int
 	soundOn bool // setting 0x00A3E75C
@@ -45,12 +45,10 @@ var sfx *soundSystem
 // starts a random track (0x00438E80), at the volume of the music setting.
 func startAudio(dir string, musicOn, soundOn bool) {
 	a := &soundSystem{sounds: map[int][]byte{}, soundOn: soundOn, Rng: rand.New(rand.NewPCG(7, 9))}
-	if f, err := os.Open(filepath.Join(dir, "SOUNDS.RES")); err != nil {
+	if data, err := gamefs.ReadFile(filepath.Join(dir, "SOUNDS.RES")); err != nil {
 		log.Print(err)
 	} else {
-		st, _ := f.Stat()
-		entries, err := resfmt.LoadSoundEntries(f, st.Size())
-		f.Close()
+		entries, err := resfmt.LoadSoundEntries(bytes.NewReader(data), int64(len(data)))
 		if err != nil {
 			log.Printf("SOUNDS.RES: %v", err)
 		}
@@ -60,7 +58,7 @@ func startAudio(dir string, musicOn, soundOn bool) {
 			}
 		}
 	}
-	if data, err := os.ReadFile(filepath.Join(dir, "MUSICS.RES")); err != nil {
+	if data, err := gamefs.ReadFile(filepath.Join(dir, "MUSICS.RES")); err != nil {
 		log.Print(err)
 	} else if a.tracks, err = resfmt.LoadMusicTracks(data); err != nil {
 		log.Print(err)
@@ -117,6 +115,12 @@ func (a *soundSystem) playTrack(i int) {
 		a.music.Close()
 		a.music = nil
 	}
+	if p := newWebMusic(a.tracks[i]); p != nil {
+		// The browser decodes the Ogg itself (audio_js.go).
+		a.track, a.music = i, p
+		p.SetVolume(resfmt.DSGain(a.musicDB))
+		return
+	}
 	stream, err := vorbis.DecodeWithSampleRate(audioRate, bytes.NewReader(a.tracks[i]))
 	if err != nil {
 		log.Printf("MUSICS.RES track %d: %v", i, err)
@@ -130,6 +134,14 @@ func (a *soundSystem) playTrack(i int) {
 	a.track, a.music = i, p
 	p.SetVolume(resfmt.DSGain(a.musicDB))
 	p.Play()
+}
+
+// musicPlayer plays a music track: an *audio.Player decoding the Ogg in
+// Go, or in the browser build an <audio> element (webMusic).
+type musicPlayer interface {
+	SetVolume(float64)
+	IsPlaying() bool
+	Close() error
 }
 
 // setMusic is 0x0042A420: the music setting changes the volume only.

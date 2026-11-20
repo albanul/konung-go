@@ -51,7 +51,7 @@ State 7 (`0x00438D3C`) sets state 1 and draws the main menu.
 
 ## Port
 
-No pure-Go WMV3 decoder exists, and macOS and browsers have no system WMV decoder. So the films are converted once, and the port decodes the result in pure Go on every platform (desktop, macOS, WASM):
+No pure-Go WMV3 decoder exists, and macOS and browsers have no system WMV decoder. So the films are converted once. The desktop port decodes the result in pure Go. The browser build plays a WebM remux of the same streams itself ([browser build](konung_web.md#behaviour-differences)):
 
 * `cmd/video-convert <Video dir>` runs ffmpeg (needs the WMV3 decoder, `libsvtav1` and `libvorbis`; Fedora's `ffmpeg-free` lacks WMV3, use RPM Fusion's `ffmpeg` or Homebrew's). For each `X.flm` it writes `x.ivf` (AV1, SVT-AV1 preset 6, CRF 35, key frame every 120 frames) and `x.ogg` (Vorbis q3). All 19 films: 62 MB → 23 MB. ffmpeg turns interior drop frames into duplicates, so the frame counts match the source chunk counts less trailing empty chunks.
 * `resfmt.ParseIVF`, `resfmt.FilmDecoder` (AV1 via `github.com/gen2brain/gav1d`, BSD-2, pure Go), `resfmt.YUVToRGBA` (BT.601 limited range unless the stream signals BT.709 or full range), `resfmt.FilmPaths`, `resfmt.DefeatFilm`, `resfmt.FilmRect`.
@@ -59,7 +59,7 @@ No pure-Go WMV3 decoder exists, and macOS and browsers have no system WMV decode
 * The scene asks for the in-game films through `World.Film` / `filmToMenu`, which the menu plays after the scene's update: `DEFEAT<map>` from `World.SettlementTick` after the surrender message (the message stays on the frozen frame around the film; then back to the game), `WIN` from `World.Arrive` on pile record 0 (`Pile.Index` 0; then the menu with the game still running). `GAMEOVER` comes from `World.GameOver`.
 * Missing converted files behave like a failed `CreateAviWnd`: the next state follows at once.
 
-Validation: `game.TestSurrenderFilm` and `game.TestWinPile` (the triggers), `resfmt.TestFilmsMatchSources` (frame counts per film; `FILM_ALL=1` decodes all of them, ~1 min) and `resfmt.TestFilmDefeat1`. Frame 50 of `defeat1` matches ffmpeg's WMV3 decode of the original at 36 dB PSNR. Decode speed of `defeat1` (101 frames) on the container: 0.7 s with SIMD and 2.9 s with `-tags noasm`, against 8.4 s of film. WASM speed has not been measured.
+Validation: `game.TestSurrenderFilm` and `game.TestWinPile` (the triggers), `resfmt.TestFilmsMatchSources` (frame counts per film; `FILM_ALL=1` decodes all of them, ~1 min) and `resfmt.TestFilmDefeat1`. Frame 50 of `defeat1` matches ffmpeg's WMV3 decode of the original at 36 dB PSNR. Decode speed of `defeat1` (101 frames) on the container: 0.7 s with SIMD and 2.9 s with `-tags noasm`, against 8.4 s of film. In WASM the scalar decoder runs far below real time in both Chromium and Firefox (observed), so the browser build plays the films with `<video>` instead (`film_js.go`).
 
 ## Not ported / open
 

@@ -6,12 +6,12 @@ import (
 	"image/color"
 	"log"
 	"math/rand/v2"
-	"os"
 	"path/filepath"
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
@@ -101,8 +101,11 @@ type startScene struct {
 	lighting      bool // setting 0x00A3E734: the lit terrain path at night
 	litPath       bool // this frame draws lit terrain cells (0x0042565D)
 	flicker       resfmt.LitTerrainLight
-	litCells      map[[2]int]*litCell // composed lit terrain cells, relit each frame
+	litCells      map[[2]int]*litCell // composed lit terrain cells, relit when the light changes
 	litTables     *resfmt.LitTables
+	litGen        int  // bumped when the lit path's light (flicker, tint) changes
+	lightFrame    int  // game frame (60 ms) of the last flicker roll
+	lightRolled   bool // the flicker has been rolled at least once
 	litBuf        *image.RGBA
 	transparency  bool           // setting 0x00A3E700: flames are blended (0x0043D8EF)
 	flameFrame    int            // game frame (60 ms) of the last flame advance
@@ -111,6 +114,9 @@ type startScene struct {
 	tint          resfmt.Tint    // 0x0051EC7C, this frame's light
 	tintU         map[string]any // shader tables for tint
 	tintSh        *ebiten.Shader // nil if the shader failed to compile
+	litSh         *ebiten.Shader // lit terrain shader; nil: the CPU path
+	litLUT        *ebiten.Image  // resfmt.LitTablesImage of the current light
+	litLUTGen     int            // litGen litLUT was written for
 	camX, camY    int
 	frame         int // drawn frames (Update calls)
 	speed         int // 0x00A3E764
@@ -164,11 +170,12 @@ type sceneAssets struct {
 	largeFont      *gameFont
 	rawTiles       []*image.RGBA
 	tiles          []*ebiten.Image
-	glow           *ebiten.Image  // LIGHTS.RES glow map (resfmt.GlowMask); nil if the file is missing
-	arrowGlow      *ebiten.Image  // LIGHTS.RES incendiary arrow glow (resfmt.ArrowGlow); nil if missing
-	lightMasks     [][]byte       // LIGHTS.RES light masks for the lit terrain path; nil if missing
-	flames         *flameImages   // FLAMES.RES; nil if missing
-	quests         *resfmt.Quests // QUESTR.RES dialogues; nil if missing (no one talks)
+	glow           *ebiten.Image   // LIGHTS.RES glow map (resfmt.GlowMask); nil if the file is missing
+	arrowGlow      *ebiten.Image   // LIGHTS.RES incendiary arrow glow (resfmt.ArrowGlow); nil if missing
+	lightMasks     [][]byte        // LIGHTS.RES light masks for the lit terrain path; nil if missing
+	litMaskImgs    []*ebiten.Image // resfmt.LitMaskImage per light mask, made on first use
+	flames         *flameImages    // FLAMES.RES; nil if missing
+	quests         *resfmt.Quests  // QUESTR.RES dialogues; nil if missing (no one talks)
 	// lanMaps, when set, are the LAN version's maps (MAPS.RES; map n =
 	// entry n−1) used instead of KONUNG.N and LIGHTS.N.
 	lanMaps []mapdata.MapsResEntry
@@ -191,10 +198,10 @@ func (a *sceneAssets) mapFile(n int) (data, lights []byte, name string, err erro
 		return e.Map, e.Lights, fmt.Sprintf("MAPS.RES #%d", n), nil
 	}
 	name = filepath.Join(a.mapDir, fmt.Sprintf("KONUNG.%d", n))
-	if data, err = os.ReadFile(name); err != nil {
+	if data, err = gamefs.ReadFile(name); err != nil {
 		return nil, nil, "", err
 	}
-	lights, _ = os.ReadFile(filepath.Join(a.mapDir, fmt.Sprintf("LIGHTS.%d", n)))
+	lights, _ = gamefs.ReadFile(filepath.Join(a.mapDir, fmt.Sprintf("LIGHTS.%d", n)))
 	return data, lights, name, nil
 }
 
@@ -204,20 +211,20 @@ func (a *sceneAssets) mapFile(n int) (data, lights []byte, name string, err erro
 func loadSceneAssets(graphPath, objectsPath, mapDir, exePath, intrPath string) (*sceneAssets, error) {
 	a := &sceneAssets{mapDir: mapDir}
 	var err error
-	if a.graph, err = os.ReadFile(graphPath); err != nil {
+	if a.graph, err = gamefs.ReadFile(graphPath); err != nil {
 		return nil, err
 	}
-	if a.objects, err = os.ReadFile(objectsPath); err != nil {
+	if a.objects, err = gamefs.ReadFile(objectsPath); err != nil {
 		return nil, err
 	}
-	exeData, err := os.ReadFile(exePath)
+	exeData, err := gamefs.ReadFile(exePath)
 	if err != nil {
 		return nil, err
 	}
 	if a.tables, err = resfmt.NewExeTables(exeData); err != nil {
 		return nil, err
 	}
-	intrData, err := os.ReadFile(intrPath)
+	intrData, err := gamefs.ReadFile(intrPath)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +246,7 @@ func loadSceneAssets(graphPath, objectsPath, mapDir, exePath, intrPath string) (
 	a.tiles = make([]*ebiten.Image, len(a.rawTiles))
 	// LIGHTS.RES sits next to GRAPH.RES (0x0043B7FC); without it piles don't glow.
 	lightsPath := filepath.Join(filepath.Dir(graphPath), "LIGHTS.RES")
-	if data, err := os.ReadFile(lightsPath); err != nil {
+	if data, err := gamefs.ReadFile(lightsPath); err != nil {
 		log.Printf("%s: %v", lightsPath, err)
 	} else if glow, err := resfmt.LightsGlow(data); err != nil {
 		log.Printf("%s: %v", lightsPath, err)
@@ -251,7 +258,7 @@ func loadSceneAssets(graphPath, objectsPath, mapDir, exePath, intrPath string) (
 		a.lightMasks, _ = resfmt.LightMasks(data)
 	}
 	// QUESTR.RES next to GAME.N (0x0043BDD5): dialogues and quest texts.
-	if data, err := readGameFile(mapDir, "QUESTR.RES"); err != nil {
+	if data, err := gamefs.ReadFileFold(mapDir, "QUESTR.RES"); err != nil {
 		log.Printf("QUESTR.RES: %v", err)
 	} else if a.quests, err = resfmt.ParseQuests(data); err != nil {
 		log.Printf("QUESTR.RES: %v", err)
@@ -269,7 +276,7 @@ func loadSceneAssets(graphPath, objectsPath, mapDir, exePath, intrPath string) (
 // the start map KONUNG.<model·3 + 1>.
 func (a *sceneAssets) newGame(hero gamestate.Entity) (*startScene, error) {
 	a.gamePath = filepath.Join(a.mapDir, fmt.Sprintf("GAME.%d", hero.Model))
-	gameData, err := os.ReadFile(a.gamePath)
+	gameData, err := gamefs.ReadFile(a.gamePath)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +288,7 @@ func (a *sceneAssets) newGame(hero gamestate.Entity) (*startScene, error) {
 	game.InitSettlementFlags(hero.Model) // 0x0043BD5C
 	// 0x0043BDD5: QUESTR.RES next to GAME.N; the game state takes the
 	// initial quest flags (the dialogues stay in sceneAssets.quests).
-	if questr, err := readGameFile(a.mapDir, "QUESTR.RES"); err != nil {
+	if questr, err := gamefs.ReadFileFold(a.mapDir, "QUESTR.RES"); err != nil {
 		log.Printf("QUESTR.RES: %v", err)
 	} else if err := game.SetQuestFlags(questr); err != nil {
 		log.Printf("QUESTR.RES: %v", err)
@@ -368,6 +375,9 @@ func (a *sceneAssets) buildScene(game *gamestate.Game, mapNumber int, prev *star
 		log.Printf("LIGHTS.%d: %v", mapNumber, err)
 	}
 	if s.tintSh, err = loadTintShader(); err != nil {
+		log.Print(err)
+	}
+	if s.litSh, err = loadLitShader(); err != nil {
 		log.Print(err)
 	}
 	if prev != nil {

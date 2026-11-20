@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/lanfight"
 	"konung1.5/internal/mapdata"
@@ -82,7 +83,7 @@ type viewPlayer struct {
 // world, the MAPS.RES map, and the own hero (the type's GAME.N hero with
 // the account's values, lanfight.Hero) as the only party member.
 func (a *sceneAssets) lanView(gameDir string, exe *gamestate.LANExe, at netplay.EnterPayload, hero *netplay.Hero, model int, name string) (*startScene, error) {
-	data, err := readGameFile(gameDir, "MAPS.RES")
+	data, err := gamefs.ReadFileFold(gameDir, "MAPS.RES")
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +97,7 @@ func (a *sceneAssets) lanView(gameDir string, exe *gamestate.LANExe, at netplay.
 	if model < 0 || model >= netplay.Models || at.Slot < 0 || at.Slot >= world.LANPlayers {
 		return nil, fmt.Errorf("hero model %d, slot %d", model, at.Slot)
 	}
-	res, err := readGameFile(gameDir, "GAME.RES")
+	res, err := gamefs.ReadFileFold(gameDir, "GAME.RES")
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func (a *sceneAssets) lanView(gameDir string, exe *gamestate.LANExe, at netplay.
 	la.view = true
 	la.lanExe = exe
 	if exe != nil {
-		if into, err := readGameFile(gameDir, "INTO640R.RES"); err != nil {
+		if into, err := gamefs.ReadFileFold(gameDir, "INTO640R.RES"); err != nil {
 			log.Printf("LAN map window: %v", err)
 		} else if la.lanMap, err = newLANWorldMap(exe, into, a.graph); err != nil {
 			log.Printf("LAN map window: %v", err)

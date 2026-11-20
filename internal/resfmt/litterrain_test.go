@@ -1,6 +1,7 @@
 package resfmt
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"os"
@@ -69,5 +70,30 @@ func TestLightTerrainCell(t *testing.T) {
 	LightTerrainCell(dst, ComposeTerrainCell(tile, nil), mask, NewLitTables(LitTerrainLight{Day: Tint{G: -20}, FlickG: 5}))
 	if got := got5(0)[1]; got != int(TintTable(5)[20]) {
 		t.Fatalf("clamped green %d", got)
+	}
+}
+
+// TestLitShaderEncoding: the lit shader's lookups on the encoded images
+// (LitShaderReference) give LightTerrainCell's output for every 15-bit
+// colour and every light.
+func TestLitShaderEncoding(t *testing.T) {
+	var buf TerrainCellBuffer
+	mask := make([]byte, LightMaskWidth*LightMaskHeight)
+	for i := range buf {
+		buf[i] = uint16(i * 7 % 0x8000) // 0 included: empty
+		mask[i] = byte(i % 40)          // values past 31 are masked
+	}
+	for _, light := range []LitTerrainLight{
+		{},
+		{Day: Tint{R: -60, G: -50, B: -70}, FlickR: 10, FlickG: 5},
+		{Day: Tint{R: 10, G: -20, B: -50}, FlickR: 23, FlickG: 11},
+	} {
+		tables := NewLitTables(light)
+		want := image.NewRGBA(image.Rect(0, 0, LightMaskWidth, LightMaskHeight))
+		LightTerrainCell(want, &buf, mask, tables)
+		got := LitShaderReference(LitCellImage(&buf), LitMaskImage(mask), LitTablesImage(tables))
+		if !bytes.Equal(got.Pix, want.Pix) {
+			t.Fatalf("light %+v: the shader encoding differs from LightTerrainCell", light)
+		}
 	}
 }

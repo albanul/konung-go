@@ -6,6 +6,7 @@ package main
 import (
 	"log"
 	"os"
+	"runtime"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"konung1.5/internal/game"
@@ -31,7 +32,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ebiten.SetFullscreen(true)
+	// In the browser the canvas fills the page; fullscreen needs a user gesture.
+	if runtime.GOOS != "js" {
+		ebiten.SetFullscreen(true)
+	}
 	ebiten.SetWindowSize(game.ScreenWidth, game.ScreenHeight)
 	ebiten.SetWindowTitle("Князь: Легенды лесной страны")
 	ebiten.SetCursorMode(ebiten.CursorModeHidden)

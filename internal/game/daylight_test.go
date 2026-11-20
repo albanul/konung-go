@@ -12,3 +12,10 @@ func TestTintShaderCompiles(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestLitShaderCompiles: the lit terrain shader (litShaderSrc) is valid Kage.
+func TestLitShaderCompiles(t *testing.T) {
+	if _, err := loadLitShader(); err != nil {
+		t.Fatal(err)
+	}
+}

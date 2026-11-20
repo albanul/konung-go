@@ -76,7 +76,7 @@ type previewKey struct {
 }
 
 func newNewHeroScreen(path string, a *sceneAssets) (*newHeroScreen, error) {
-	frames, err := resfmt.LoadType5File(path)
+	frames, err := loadType5File(path)
 	if err != nil {
 		return nil, err
 	}

@@ -63,6 +63,7 @@ Port: `startAudio` (from `game.New`) and `soundSystem.update` (each `Menu.Update
 * The game draws a frame every 60 ms ([menu](konung_menu.md)). `soundTick` runs once per such frame (updates · 5/18). It plays queued rule sounds, idle sounds and the ambient roll.
 * Sound rolls use the audio system's own RNG, so the AI's random sequence is unaffected.
 * All sounds are loaded up front, so the per-map loading delay is not reproduced.
+* In the browser build the music plays in an `<audio>` element, not through the Go Vorbis decoder (`audio_js.go`, [browser build](konung_web.md#behaviour-differences)). Sound effects still go through Ebitengine.
 
 ## Dialogue greeting
 
