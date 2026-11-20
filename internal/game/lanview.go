@@ -107,6 +107,7 @@ func (a *sceneAssets) lanView(gameDir string, exe *gamestate.LANExe, at netplay.
 	la := *a // the same resources, maps from MAPS.RES
 	la.lanMaps = maps
 	la.view = true
+	la.lanExe = exe
 	if exe != nil {
 		if into, err := readGameFile(gameDir, "INTO640R.RES"); err != nil {
 			log.Printf("LAN map window: %v", err)

@@ -10,7 +10,7 @@ The scene draw `0x0042894C` calls `0x00429330` once per drawn frame and stores t
 
 1. Clear `0x00A4E2A0` (night lights). Let `d = [0x00A3E770] % 0x5460`: game time mod 21600 (`gamestate.DayLength`).
 2. If `d == 0`: roll the moon, `0x00A3E738 = rand() % 100 < 90`. The flag starts at 0 (`.bss`) and is not saved.
-3. If the map has a fixed light (`0x00A3E70C`, set by the map loader `0x0043C108` from byte `0x0045AE8F + map`): return dword `0x0045AD40 + 4·map`. Maps 42–51 have the flag. `KONUNG.42` = (−70, 0, 0), 44 = (−20, −1, −70), 45 = (0, −50, −50), the others (−1, −1, −1).
+3. If the map has a fixed light (`0x00A3E70C`, set by the map loader `0x0043C108` from byte `0x0045AE8F + map`): return dword `0x0045AD40 + 4·map`. Maps 42–51 have the flag. The LAN version has its own table ([LAN version](konung_lan.md): only its map 18, «B1»). `KONUNG.42` = (−70, 0, 0), 44 = (−20, −1, −70), 45 = (0, −50, −50), the others (−1, −1, −1).
 4. If day/night `0x00A3E71C` is off: return 0.
 5. Otherwise pick a segment by `d`. The thresholds are 12 `int16` at `0x0045AE70`: 1800, 1830, 3570, 3600, 5400, 8100, 11700, 11880, 11910, 16155, 16200, 18900. The code loads each as `dword[0x0045AE6E + 2k] >> 16`. In a ramp, `v = (d − start) / 2`, and past the ramp length the segment holds its end value. Float products are truncated toward zero (`0x0043FE4C` sets the FPU to chop).
 

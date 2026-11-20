@@ -132,3 +132,42 @@ func TestLANPipe(t *testing.T) {
 	}
 	t.Skip("no animal group in the LAN world")
 }
+
+// The doll reaches another player's hireling hired in another map's
+// village (its record stays in that village's range) and spares the
+// user's own.
+func TestLANDollHirelings(t *testing.T) {
+	w := load(t)
+	const ivar, olaf = 0, 1
+	for _, slot := range []int{ivar, olaf} {
+		if _, _, err := w.AddPlayer(slot, 2, nil); err != nil { // Михаил: map 7
+			t.Fatal(err)
+		}
+	}
+	vs := villagers7(w)
+	if len(vs) < 2 {
+		t.Fatal("map 7 has too few villagers")
+	}
+	for k, slot := range []int{ivar, olaf} {
+		nextTo(t, w, slot, vs[k])
+		if !w.hire(slot, vs[k]) {
+			t.Fatalf("hire %d", vs[k])
+		}
+	}
+	for _, slot := range []int{ivar, olaf} {
+		if !w.MoveTo(slot, 4, mapdata.Cell{Row: 60, Col: 30}) || w.hirelingMap(vs[slot]) != 4 {
+			t.Fatalf("slot %d's hireling did not come to map 4", slot)
+		}
+	}
+	useBag(t, w, ivar, gamestate.MiscDoll)
+	const curse = 19
+	if _, e := w.Maps[4].Member(vs[olaf]); e == nil || e.Enchants[0] != curse {
+		t.Error("Olaf's hireling from map 7 was not cursed")
+	}
+	if _, e := w.Maps[4].Member(vs[ivar]); e == nil || e.Enchants[0] == curse {
+		t.Error("Ivar's own hireling was cursed")
+	}
+	if hero(w, olaf).Enchants[0] != curse {
+		t.Error("Olaf was not cursed")
+	}
+}

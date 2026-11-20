@@ -97,7 +97,7 @@ func (s *startScene) updateLight() {
 		s.moon = s.Rng.IntN(100) < gamestate.MoonChance
 	}
 	t, night := resfmt.Tint{}, false
-	if fixed, ok := s.Tables.MapLight(s.MapNumber); ok {
+	if fixed, ok := s.mapLight(); ok {
 		t = fixed
 	} else if s.dayNight {
 		t, night = gamestate.DayTint(now, s.Tables.DayThresholds(), s.moon)
@@ -175,4 +175,17 @@ func (s *startScene) drawTinted(dst, img *ebiten.Image, x, y int, raw bool) {
 	op.Images[0] = img
 	op.GeoM.Translate(float64(x), float64(y))
 	dst.DrawRectShader(b.Dx(), b.Dy(), s.tintSh, op)
+}
+
+// mapLight is the map's fixed light: single player's table (the caves), in
+// a LAN world LAN_KONG.EXE's own (gamestate.LANExe.MapLight; single
+// player's flags would be read with the LAN map numbers).
+func (s *startScene) mapLight() (resfmt.Tint, bool) {
+	if s.lan {
+		if s.assets == nil || s.assets.lanExe == nil {
+			return resfmt.Tint{}, false
+		}
+		return s.assets.lanExe.MapLight(s.MapNumber)
+	}
+	return s.Tables.MapLight(s.MapNumber)
 }

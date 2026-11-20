@@ -379,6 +379,19 @@ func (g *Game) joinAmulet(e *Entity, t *resfmt.ExeTables, typ, target int, tgt I
 // othersOnMap calls f for every member of every group on map m other than
 // e's (group order, then member order), as the map-wide cases loop.
 func (g *Game) othersOnMap(w World, e *Entity, m int, f func(i int, member *Entity)) {
+	if g.LAN {
+		// LAN_KONG.EXE's groups are member lists (a hireling is in its
+		// player's group); the port keeps a hireling in its village's
+		// range with its group byte changed, so go by each character's
+		// own group.
+		for i := range g.Entities {
+			gi := g.Entities[i].Group
+			if gi >= 0 && gi < len(g.Groups) && gi != e.Group && g.Groups[gi].Map == m {
+				f(i, w.Entity(i))
+			}
+		}
+		return
+	}
 	for gi, gr := range g.Groups {
 		if gi == e.Group || gr.Map != m {
 			continue

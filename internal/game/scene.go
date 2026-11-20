@@ -176,7 +176,8 @@ type sceneAssets struct {
 	// first one starts with.
 	view      bool
 	viewState *lanView
-	lanMap    *lanWorldMap // the LAN map window (M); nil in single player
+	lanMap    *lanWorldMap      // the LAN map window (M); nil in single player
+	lanExe    *gamestate.LANExe // LAN_KONG.EXE's tables (the maps' fixed light); nil in single player
 }
 
 // mapFile returns map n's KONUNG.N and LIGHTS.N bytes (nil lights when the

@@ -8,6 +8,7 @@ import (
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/mapdata"
 	"konung1.5/internal/netplay"
+	"konung1.5/internal/resfmt"
 )
 
 // viewScene builds a LAN viewer for a Волк hero in slot 3 on map 1's start.
@@ -195,5 +196,34 @@ func TestLANWorldMap(t *testing.T) {
 		if (m == 1) != (tinted > drawn/2) {
 			t.Errorf("map %d: %d of %d pixels tinted", m, tinted, drawn)
 		}
+	}
+}
+
+// LAN fixed light: «B1» (map 18) keeps its tint at night, the other maps
+// follow the time of day; single player's cave flags are not read with
+// the LAN map numbers.
+func TestLANFixedLight(t *testing.T) {
+	exeData, err := os.ReadFile("../../assets/Konung/LAN_KONG.EXE")
+	if err != nil {
+		t.Skip("LAN_KONG.EXE not available:", err)
+	}
+	exe, err := gamestate.ParseLANExe(exeData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := viewScene(t)
+	s.assets.lanExe = exe
+	s.dayNight = true
+	s.Tick = 12000 // night (8100 ≤ time of day < 18900)
+	night := func(m int) resfmt.Tint {
+		s.MapNumber = m
+		s.updateLight()
+		return s.tint
+	}
+	if got := night(18); got != (resfmt.Tint{R: -1, G: -1, B: -1}) {
+		t.Errorf("B1 at night: tint %+v, want its fixed (−1, −1, −1)", got)
+	}
+	if got := night(1); got == (resfmt.Tint{R: -1, G: -1, B: -1}) || got.Zero() {
+		t.Errorf("A3 at night: tint %+v, want the night's", got)
 	}
 }

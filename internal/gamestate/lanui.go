@@ -75,6 +75,27 @@ type LANExe struct {
 	// Rating is the «Рейтинг» screen's layout at 800×600 (0x004797AC +
 	// 0x3C·video mode, read by 0x004271AC).
 	Rating LANRatingLayout
+	// fixedLight and lightTint are the LAN maps' fixed light (MapLight).
+	fixedLight [LANMaps + 1]bool
+	lightTint  [LANMaps + 1]resfmt.Tint
+}
+
+// LAN fixed light: the map loader 0x00417CE0 sets 0xA6EAD0 from the byte
+// at lanFixedLightVA + map; the day/night routine (0x0041F9E4) then uses
+// the packed tint at lanLightTintVA + 4·map (single player's scheme with
+// the LAN's own tables).
+const (
+	lanFixedLightVA = 0x0047904F
+	lanLightTintVA  = 0x00478E44
+)
+
+// MapLight returns LAN map m's fixed light: a map with the flag (only map
+// 18, «B1», in the shipped exe) ignores the time of day and uses its tint.
+func (x *LANExe) MapLight(m int) (resfmt.Tint, bool) {
+	if m < 1 || m > LANMaps || !x.fixedLight[m] {
+		return resfmt.Tint{}, false
+	}
+	return x.lightTint[m], true
 }
 
 // LANRatingLayout is where the «Рейтинг» screen draws its rows: the
@@ -214,6 +235,14 @@ func ParseLANExe(exe []byte) (*LANExe, error) {
 	}
 	for m := 1; m <= LANMaps; m++ {
 		x.MapNames[m] = cString(names[(m-1)*0x28:][:0x28])
+	}
+	flags, err := at(lanFixedLightVA)
+	if err != nil || len(flags) <= LANMaps {
+		return nil, fmt.Errorf("LAN_KONG.EXE: fixed light flags")
+	}
+	for m := 1; m <= LANMaps; m++ {
+		x.fixedLight[m] = flags[m] != 0
+		x.lightTint[m] = resfmt.UnpackTint(uint32(at32(lanLightTintVA + 4*m)))
 	}
 	rl := lanRatingLayoutVA + 0x3C*lanMapMode
 	v := func(k int) int { return at32(rl + 4*k) }

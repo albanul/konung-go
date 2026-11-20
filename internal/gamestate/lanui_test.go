@@ -28,6 +28,13 @@ func TestParseLANExe(t *testing.T) {
 		Heroes: 517, Hirelings: 557, Monsters: 597, Rating: 658, ClanY: 300, ClanDY: 19, ClanRankX: 92, ClanNameX: 129, ClanRatingX: 389}) {
 		t.Errorf("rating layout = %+v", r)
 	}
+	// Fixed light: only map 18 («B1»), tint (−1, −1, −1).
+	for m := 1; m <= LANMaps; m++ {
+		tint, fixed := x.MapLight(m)
+		if fixed != (m == 18) || fixed && tint != (resfmt.Tint{R: -1, G: -1, B: -1}) {
+			t.Errorf("map %d: fixed %v tint %+v", m, fixed, tint)
+		}
+	}
 	// Nested menu hotspots: the first match wins.
 	if HitRects(x.MenuRects, 300, 140) != 0 || HitRects(x.MenuRects, 300, 320) != 2 || HitRects(x.MenuRects, 300, 430) != 4 || HitRects(x.MenuRects, 100, 100) != -1 {
 		t.Error("menu hit test")
