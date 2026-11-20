@@ -304,3 +304,12 @@ func abs(x int) int {
 	}
 	return x
 }
+
+// QuestLog is slot's quest log (the Q window): the texts of its set quest
+// flags (gamestate.QuestLogOf on the player's flags).
+func (w *World) QuestLog(slot int) []uint32 {
+	if _, ok := w.players[slot]; !ok {
+		return nil
+	}
+	return gamestate.QuestLogOf(w.state(slot).quests[:])
+}

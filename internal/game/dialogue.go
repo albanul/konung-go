@@ -27,6 +27,9 @@ type talkWindow struct {
 	greeting int  // 0x00A3E7C0: last greeting sound
 	replies  []image.Rectangle
 	q        *resfmt.Quests
+	// lan is a LAN world's part of window 2: the players and the
+	// nations' counts, and the quest log the server keeps (lanplayers.go).
+	lan *lanQList
 }
 
 // Quest log button (hotspot 6, «Информация к размышлению (Q)»): the toggle
@@ -139,6 +142,9 @@ func (w *talkWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, tiled bo
 func (w *talkWindow) drawLog(dst *ebiten.Image, q *resfmt.Quests, g *gamestate.Game, stripTop int) {
 	l := &w.layout
 	entries := g.QuestLog()
+	if w.lan != nil {
+		entries = w.lan.log
+	}
 	w.logCount = 0
 	y := l.Lines.Y
 	for _, id := range entries {
@@ -150,6 +156,10 @@ func (w *talkWindow) drawLog(dst *ebiten.Image, q *resfmt.Quests, g *gamestate.G
 		if y >= stripTop-45 {
 			break
 		}
+	}
+	if w.lan != nil {
+		// LAN_KONG.EXE 0x00425A2F: the players follow the log.
+		w.drawLANList(dst, l.Lines.X, y, stripTop)
 	}
 }
 

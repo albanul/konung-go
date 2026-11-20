@@ -122,11 +122,15 @@ func (g *Game) SetQuestFlag(i int, on bool) {
 
 // QuestLog is what the quest log (window 2, 0x0042DEDB) lists: the text of
 // every set flag that has one, in flag order.
-func (g *Game) QuestLog() []uint32 {
+func (g *Game) QuestLog() []uint32 { return QuestLogOf(g.Quests[:]) }
+
+// QuestLogOf is QuestLog of the quest flags q (the 0x00625068 layout): a
+// LAN player's flags, kept by the server per player.
+func QuestLogOf(q []byte) []uint32 {
 	var out []uint32
 	for i := range QuestFlagCount {
-		if g.QuestFlag(i) {
-			if id := int(g.Quests[4*i+2]) | int(g.Quests[4*i+3])<<8; id != resfmt.QuestNone {
+		if 4*i+3 < len(q) && q[4*i]&questFlagBit != 0 {
+			if id := int(q[4*i+2]) | int(q[4*i+3])<<8; id != resfmt.QuestNone {
 				out = append(out, uint32(id))
 			}
 		}

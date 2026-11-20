@@ -19,6 +19,7 @@ func (s *startScene) applyAmulets(p netplay.AmuletsPayload) {
 		s.playAt(gamestate.AmuletSound, s.Hero.Cell)
 	}
 	s.amulets = &p
+	s.talk.lan = s.lanQ() // the holders and counts of the Q window
 }
 
 // setAmuletStatus gives the map window the amulet status (0x0041ED44): the

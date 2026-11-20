@@ -78,6 +78,8 @@ type viewer struct {
 	arrows    []netplay.Event         // EventArrow (arrows_test.go)
 	buildings []netplay.Building      // EventBuilding (villages_test.go)
 	amulets   *netplay.AmuletsPayload // MsgAmulets (amulets_test.go)
+	list      *netplay.PlayersPayload // MsgPlayers (players_test.go)
+	lists     int                     // MsgPlayers received
 }
 
 // amuletState is the last MsgAmulets, false before one came.
@@ -188,6 +190,14 @@ func (v *viewer) read() {
 			if m.Decode(&p) == nil {
 				v.mu.Lock()
 				v.amulets = &p
+				v.mu.Unlock()
+			}
+		case netplay.MsgPlayers:
+			var p netplay.PlayersPayload
+			if m.Decode(&p) == nil {
+				v.mu.Lock()
+				v.list = &p
+				v.lists++
 				v.mu.Unlock()
 			}
 		case netplay.MsgDialogue:

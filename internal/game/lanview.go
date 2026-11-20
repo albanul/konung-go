@@ -52,6 +52,9 @@ type lanView struct {
 	// (lanarrows.go).
 	arrows    []viewArrow
 	arrowTick int
+	// list is the player list and own quest log the server last sent
+	// (MsgPlayers, lanplayers.go).
+	list *netplay.PlayersPayload
 }
 
 // viewPlayer is a player's hero as the server described it.

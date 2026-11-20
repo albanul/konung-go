@@ -778,6 +778,11 @@ func (m *Menu) applyLAN() {
 			if msg.Decode(&p) == nil {
 				w.applyAmulets(p)
 			}
+		case netplay.MsgPlayers:
+			var p netplay.PlayersPayload
+			if msg.Decode(&p) == nil {
+				w.applyPlayers(p)
+			}
 		}
 	}
 }

@@ -104,7 +104,7 @@ type hostPlayer struct {
 	looks map[int]netplay.Look // players' heroes sent to this player, as sent
 	// The items, piles, pile window, dialogue and party as last sent
 	// (JSON), so only changes go out.
-	inv, piles, pileWin, dialogue, party, amulets []byte
+	inv, piles, pileWin, dialogue, party, amulets, list []byte
 	// The building states sent (by map and placement), the map and the
 	// buildings version checked last (buildings.go).
 	buildings      map[buildingKey]int
@@ -158,7 +158,7 @@ func (h *Host) Start(p netplay.PlayerInfo, hero *netplay.Hero) (netplay.EnterPay
 	}
 	hp.info, hp.hero, hp.dead = p, hero, false
 	hp.view, hp.looks = Viewer{}, map[int]netplay.Look{}
-	hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party, hp.amulets = nil, nil, nil, nil, nil, nil
+	hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party, hp.amulets, hp.list = nil, nil, nil, nil, nil, nil, nil
 	m, c, err := h.W.AddPlayer(hp.slot, p.Model, hero)
 	if err != nil {
 		delete(h.players, p.ID)
@@ -255,7 +255,7 @@ func (h *Host) EndSession() error {
 	for _, hp := range h.players {
 		hp.dead = false
 		hp.view, hp.looks = Viewer{}, map[int]netplay.Look{}
-		hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party, hp.amulets = nil, nil, nil, nil, nil, nil
+		hp.inv, hp.piles, hp.pileWin, hp.dialogue, hp.party, hp.amulets, hp.list = nil, nil, nil, nil, nil, nil, nil
 		saves = append(saves, h.saveOf(hp))
 	}
 	h.mu.Unlock()
@@ -503,11 +503,17 @@ func (h *Host) report() ([]Kill, []delivery, []save) {
 		h.sendTo(hp, netplay.MsgView, view)
 	}
 	amulets := h.W.Amulets()
+	listed := h.listed()
 	for _, hp := range h.players {
 		h.sendItems(hp)
 		if b, err := json.Marshal(amulets); err == nil && !bytes.Equal(b, hp.amulets) {
 			hp.amulets = b
 			h.sendTo(hp, netplay.MsgAmulets, amulets)
+		}
+		list := netplay.PlayersPayload{Players: listed, Log: h.W.QuestLog(hp.slot)}
+		if b, err := json.Marshal(list); err == nil && !bytes.Equal(b, hp.list) {
+			hp.list = b
+			h.sendTo(hp, netplay.MsgPlayers, list)
 		}
 	}
 	return kills, delivered, saves
@@ -553,4 +559,17 @@ func (h *Host) sendTo(hp *hostPlayer, t netplay.MsgType, payload any) {
 	if err == nil {
 		h.send(hp.info.ID, m)
 	}
+}
+
+// listed is the Q window's player list (MsgPlayers): every hero in the
+// world, its player's or left behind (lingering), by slot, as the original
+// lists the player groups 0–15 that have a member (0x00425A2F); h.mu held.
+func (h *Host) listed() []netplay.ListedPlayer {
+	out := []netplay.ListedPlayer{}
+	for slot := range world.LANPlayers {
+		if hp := h.bySlot[slot]; hp != nil {
+			out = append(out, netplay.ListedPlayer{Slot: slot, Name: hp.info.Name, Clan: hp.info.Clan, Nation: hp.info.Model})
+		}
+	}
+	return out
 }
