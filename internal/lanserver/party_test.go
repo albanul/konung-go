@@ -324,5 +324,5 @@ func (v *viewer) char(i int) (netplay.CharState, bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	c, ok := v.chars[i]
-	return c, ok
+	return c.Predict(v.since[i], v.tick), ok
 }

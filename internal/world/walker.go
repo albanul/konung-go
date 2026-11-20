@@ -128,16 +128,7 @@ func (w *Walker) WalkSteps() int {
 }
 
 // StepDir is the direction of the step in progress, from From to Cell.
-func (w *Walker) StepDir() mapdata.Direction {
-	for _, n := range mapdata.Neighbors(w.From) {
-		if n.Cell == w.Cell {
-			return n.Dir
-		}
-	}
-	ax, ay := mapdata.CellCenter(w.From)
-	bx, by := mapdata.CellCenter(w.Cell)
-	return mapdata.DirectionTo(float64(ax), float64(ay), float64(bx), float64(by))
-}
+func (w *Walker) StepDir() mapdata.Direction { return mapdata.StepDirection(w.From, w.Cell) }
 
 // startStep enters Path[0] (0x0041492E): the walker takes the cell and
 // frees the one it leaves at once. If someone holds the cell the walk
@@ -223,18 +214,7 @@ func (w *Walker) AdvanceAct() bool {
 func (w *Walker) ActSteps() int { return w.FrameCount(w.Act) }
 
 // TurnToward turns one octant toward d, the shorter way (0x004391BC).
-func (w *Walker) TurnToward(d mapdata.Direction) {
-	cur, t := int(w.Dir), int(d)
-	if cur > t {
-		t += 8
-	}
-	if t-cur > 4 {
-		cur = (cur + 7) % 8
-	} else {
-		cur = (cur + 1) % 8
-	}
-	w.Dir = mapdata.Direction(cur)
-}
+func (w *Walker) TurnToward(d mapdata.Direction) { w.Dir = mapdata.TurnToward(w.Dir, d) }
 
 // Anchor is the cell the body is drawn from: while walking the cell being
 // left (+0xE8/+0xF0 keep its centre until the step ends), else the cell.

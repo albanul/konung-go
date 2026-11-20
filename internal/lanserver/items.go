@@ -370,7 +370,7 @@ func (w *World) Inventory(slot int) (netplay.InventoryPayload, bool) {
 		add(st.hand.Item)
 	}
 	add(st.hand.Box)
-	e.Raw = [len(e.Raw)]byte{}
+	viewOwned(&e)
 	out := netplay.InventoryPayload{Hero: e, Items: items, Hand: hand}
 	if st.hand.Holding() {
 		out.Holder = st.holder
@@ -391,10 +391,22 @@ func (w *World) Inventory(slot int) (netplay.InventoryPayload, bool) {
 			}
 		}
 		add(r.Quiver)
-		r.Raw = [len(r.Raw)]byte{}
+		viewOwned(&r)
 		out.Hirelings = append(out.Hirelings, r)
 	}
 	return out, true
+}
+
+// viewOwned clears what a party member's record in MsgInventory does not
+// carry: the raw bytes, and what the client takes from the view instead
+// (game: applyRecord keeps its group, position, facing, step, HP and the
+// stance and death bits), so walking and fighting do not resend the
+// inventory.
+func viewOwned(e *gamestate.Entity) {
+	e.Raw = [len(e.Raw)]byte{}
+	e.Group, e.Row, e.Col, e.Variant, e.Type, e.Step, e.HP = 0, 0, 0, 0, 0, 0, 0
+	e.Flags3 &^= 0x04
+	e.Flags4 &^= 0x80
 }
 
 // Piles are the active piles on map m and their items' records

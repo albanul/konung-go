@@ -61,6 +61,12 @@ type Char struct {
 	Dead    bool
 	Stance  bool
 	Weapon  int
+	// WalkSteps is the walk's frame count while walking, ActSteps the
+	// action's while acting, Throttle a creature's walk throttle
+	// (netplay.CharState.Predict).
+	WalkSteps, ActSteps, Throttle int
+	// Path is the walk's cells still to enter (row, col pairs).
+	Path []int
 }
 
 // MapState is a map's characters at a tick.
@@ -78,22 +84,36 @@ func (w *World) Snapshot(m int) MapState {
 		return out
 	}
 	s := w.Maps[m]
-	add := func(wk *world.Walker, e *gamestate.Entity, player bool) {
+	add := func(wk *world.Walker, e *gamestate.Entity, player bool, throttle int) {
 		owner := 0
 		if player && wk.Entity >= world.LANPlayers {
 			player, owner = false, e.Group+1 // a hireling: drawn as its GAME.RES record
 		}
-		out.Chars = append(out.Chars, Char{
+		c := Char{
 			Entity: wk.Entity, Player: player, Owner: owner, Row: wk.Cell.Row, Col: wk.Cell.Col,
 			FromRow: wk.From.Row, FromCol: wk.From.Col, Walking: wk.Walking, Step: wk.StepT, Facing: int(wk.Dir),
 			Act: wk.Act, ActStep: wk.ActStep, HP: e.HP, Dead: e.Dead(), Stance: e.InStance(), Weapon: e.WeaponMode,
-		})
+		}
+		if c.Walking || len(wk.Path) > 0 {
+			c.WalkSteps, c.Throttle = wk.WalkSteps(), throttle
+			for _, p := range wk.Path {
+				c.Path = append(c.Path, p.Row, p.Col)
+			}
+		}
+		if c.Act != 0 {
+			c.ActSteps = wk.ActSteps()
+		}
+		out.Chars = append(out.Chars, c)
 	}
 	for _, mem := range s.Members {
-		add(&mem.Walker, &s.Party[mem.K], true)
+		add(&mem.Walker, &s.Party[mem.K], true, 0)
 	}
 	for _, n := range s.NPCs {
-		add(&n.Walker, &s.Game.Entities[n.Entity], false)
+		throttle := 0
+		if n.Mode == world.NPCCreature {
+			throttle = s.Game.Entities[n.Entity].Throttle // world.World.UpdateNPCs
+		}
+		add(&n.Walker, &s.Game.Entities[n.Entity], false, throttle)
 	}
 	return out
 }

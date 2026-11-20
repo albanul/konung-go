@@ -1,5 +1,7 @@
 package netplay
 
+import "konung1.5/internal/mapdata"
+
 // The world view. The server runs the world (internal/lanserver, as
 // LAN_KONG.EXE's server, tick 0x445988); a client sends orders for its hero
 // (MsgOrder, the original's 0x55) and draws what the server reports about
@@ -68,6 +70,11 @@ type OrderPayload struct {
 // (while walking the one being entered), the cell being left and the walk
 // step, facing, action and its step, HP, death, stance and weapon. Short
 // JSON keys: a busy map sends many.
+//
+// Steps, ActSteps and Throttle let the client advance the walk and action
+// steps by itself between reports (Predict): the server sends a character
+// only when its state differs from what the client predicts from the last
+// one it was sent (lanserver.World.View).
 type CharState struct {
 	Entity  int  `json:"e"`
 	Player  bool `json:"p,omitempty"`
@@ -85,11 +92,108 @@ type CharState struct {
 	Dead    bool `json:"d,omitempty"`
 	Stance  bool `json:"st,omitempty"`
 	Weapon  int  `json:"wp,omitempty"`
+	// Steps is the walk's frame count while walking (or about to: Path),
+	// ActSteps the action's while acting, Throttle a creature's walk
+	// throttle (it steps only on ticks t with t & Throttle == Throttle,
+	// world.World.UpdateNPCs).
+	Steps    int `json:"n,omitempty"`
+	ActSteps int `json:"an,omitempty"`
+	Throttle int `json:"m,omitempty"`
+	// Path is the next cells of the walk (row, col pairs; at most
+	// PredictCells of them).
+	Path []int `json:"pa,omitempty"`
 }
 
-// ViewPayload is the own hero's map at a tick. Full: every character on
-// the map (after entering or a map change); else only those that changed
-// since the last view, and Gone the ones no longer on it.
+// PredictCells is how many cells of a walk's path a report carries.
+const PredictCells = 3
+
+// Predict is c, reported at tick from, advanced to tick to the way the
+// server's walker advances one tick (world.Walker.Update) while nothing else
+// changes: it starts the next step of Path, turns an octant toward the
+// step's direction, shows the next walk frame, and after the last one enters
+// the next cell of Path or stops (on the throttle's ticks, not while
+// acting); an action advances a step per tick up to its last frame. The
+// server reports a character when its state differs from this (Same), so a
+// client applying Predict between reports has the server's state at every
+// view tick.
+func (c CharState) Predict(from, to int) CharState {
+	if to <= from || c.Dead {
+		return c
+	}
+	path := c.Path
+	for t := from + 1; t <= to; t++ {
+		if c.Act == 0 && (c.Walking || len(path) > 0) && (c.Throttle == 0 || t&c.Throttle == c.Throttle) {
+			path = c.walkTick(path)
+		}
+		if c.Act != 0 && c.ActStep+1 < c.ActSteps {
+			c.ActStep++
+		}
+	}
+	c.Path = path
+	return c
+}
+
+// walkTick is one tick of world.Walker.Update on c with path; it returns
+// what is left of path.
+func (c *CharState) walkTick(path []int) []int {
+	enter := func() {
+		c.FromRow, c.FromCol, c.Row, c.Col = c.Row, c.Col, path[0], path[1]
+		path = path[2:]
+	}
+	if !c.Walking {
+		enter()
+		c.Walking, c.Step = true, 0
+	}
+	from, cell := mapdata.Cell{Row: c.FromRow, Col: c.FromCol}, mapdata.Cell{Row: c.Row, Col: c.Col}
+	if d := mapdata.StepDirection(from, cell); mapdata.Direction(c.Facing) != d {
+		c.Facing = int(mapdata.TurnToward(mapdata.Direction(c.Facing), d))
+		return path
+	}
+	if c.Step+1 < c.Steps {
+		c.Step++
+		return path
+	}
+	c.Step = 0
+	if len(path) == 0 {
+		// The walk ends: a standing character's report has no walk fields.
+		c.Walking, c.FromRow, c.FromCol, c.Steps, c.Throttle = false, 0, 0, 0, 0
+		return nil
+	}
+	enter()
+	return path
+}
+
+// Same reports whether the client's prediction p matches the server's state
+// c: every field, and p's path the start of c's (a report carries only the
+// next PredictCells cells of a walk).
+func (p CharState) Same(c CharState) bool {
+	if len(p.Path) > len(c.Path) {
+		return false
+	}
+	for i, v := range p.Path {
+		if c.Path[i] != v {
+			return false
+		}
+	}
+	return p.Entity == c.Entity && p.Player == c.Player && p.Owner == c.Owner && p.Row == c.Row && p.Col == c.Col &&
+		p.FromRow == c.FromRow && p.FromCol == c.FromCol && p.Walking == c.Walking && p.Step == c.Step &&
+		p.Facing == c.Facing && p.Act == c.Act && p.ActStep == c.ActStep && p.HP == c.HP && p.Dead == c.Dead &&
+		p.Stance == c.Stance && p.Weapon == c.Weapon && p.Steps == c.Steps && p.ActSteps == c.ActSteps &&
+		p.Throttle == c.Throttle
+}
+
+// Report is c as it is sent: its path cut to PredictCells cells.
+func (c CharState) Report() CharState {
+	if len(c.Path) > 2*PredictCells {
+		c.Path = c.Path[: 2*PredictCells : 2*PredictCells]
+	}
+	return c
+}
+
+// ViewPayload is the own hero's map at a tick, sent for every tick the
+// world ran. Full: every character on the map (after entering or a map
+// change); else only those whose state differs from their last report
+// advanced to Tick (CharState.Predict), and Gone the ones no longer on it.
 type ViewPayload struct {
 	Map   int         `json:"map"`
 	Tick  int         `json:"tick"`
@@ -110,11 +214,11 @@ type PlayerPayload struct {
 
 // Event kinds.
 const (
-	EventSound    = "sound"    // Sound at (Row, Col)
-	EventAction   = "action"   // Entity started action Act (its sound is the client's)
-	EventMsg      = "msg"      // a status-line message for the own hero (Text, CP866)
-	EventArrow    = "arrow"    // an arrow released at Tick (Arrow): the client flies it (the original's 0x12)
-	EventBuilding = "building" // a village building's state (Building; the original's 0x5E)
+	EventSound    = "s" // Sound at (Row, Col)
+	EventAction   = "a" // Entity started action Act (its sound is the client's)
+	EventMsg      = "m" // a status-line message for the own hero (Text, CP866)
+	EventArrow    = "r" // an arrow released at Tick (Arrow): the client flies it (the original's 0x12)
+	EventBuilding = "b" // a village building's state (Building; the original's 0x5E)
 )
 
 // Arrow is an arrow as it leaves the bow (gamestate.Arrow's flight

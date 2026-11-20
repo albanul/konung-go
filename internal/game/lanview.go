@@ -55,6 +55,15 @@ type lanView struct {
 	// list is the player list and own quest log the server last sent
 	// (MsgPlayers, lanplayers.go).
 	list *netplay.PlayersPayload
+	// reported is each character's last report and its tick: between
+	// reports the scene shows the report advanced by
+	// netplay.CharState.Predict, as the server expects.
+	reported map[int]reportedChar
+}
+
+type reportedChar struct {
+	cs   netplay.CharState
+	tick int
 }
 
 // viewPlayer is a player's hero as the server described it.
@@ -240,6 +249,9 @@ func (s *startScene) applyView(v netplay.ViewPayload) {
 	}
 	s.Tick = v.Tick         // the server's clock: time of day
 	s.flyViewArrows(v.Tick) // on the cells of the last view, as the server's flight
+	if v.Full || s.view.reported == nil {
+		s.view.reported = map[int]reportedChar{}
+	}
 	if v.Full {
 		keep := map[int]bool{}
 		for _, c := range v.Chars {
@@ -251,10 +263,23 @@ func (s *startScene) applyView(v netplay.ViewPayload) {
 			}
 		}
 	}
+	// The characters not reported: their last report advanced to this
+	// tick (walk and action steps, the next cells of a walk).
+	got := map[int]bool{}
 	for _, c := range v.Chars {
+		got[c.Entity] = true
+	}
+	for e, r := range s.view.reported {
+		if !got[e] && (r.cs.Walking || len(r.cs.Path) > 0 || r.cs.Act != 0) {
+			s.applyChar(r.cs.Predict(r.tick, v.Tick))
+		}
+	}
+	for _, c := range v.Chars {
+		s.view.reported[c.Entity] = reportedChar{c, v.Tick}
 		s.applyChar(c)
 	}
 	for _, e := range v.Gone {
+		delete(s.view.reported, e)
 		if n := s.ByEntity[e]; n != nil {
 			s.removeNPC(n)
 		}

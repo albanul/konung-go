@@ -58,6 +58,7 @@ type viewer struct {
 	at    netplay.EnterPayload
 	mu    sync.Mutex
 	chars map[int]netplay.CharState
+	since map[int]int // the tick each character was reported at
 	tick  int
 	m     int
 	bytes int // view message bytes received
@@ -127,18 +128,19 @@ func (v *viewer) read() {
 			v.mu.Lock()
 			v.bytes += len(m.Payload)
 			v.views++
-			if p.Full {
-				v.chars = map[int]netplay.CharState{}
+			if p.Full || v.since == nil {
+				v.chars, v.since = map[int]netplay.CharState{}, map[int]int{}
 			}
 			v.m, v.tick = p.Map, p.Tick
 			for _, c := range p.Chars {
-				v.chars[c.Entity] = c
+				v.chars[c.Entity], v.since[c.Entity] = c, p.Tick
 				if c.Entity != v.at.Slot && (c.Act == gamestate.ActFlinch || c.Act == gamestate.ActDeath || c.HP < gamestate.HPFull) && c.Player {
 					v.hits = append(v.hits, c)
 				}
 			}
 			for _, e := range p.Gone {
 				delete(v.chars, e)
+				delete(v.since, e)
 			}
 			v.mu.Unlock()
 		case netplay.MsgPlayer:
@@ -233,7 +235,7 @@ func (v *viewer) state() (int, int, map[int]netplay.CharState) {
 	defer v.mu.Unlock()
 	out := map[int]netplay.CharState{}
 	for k, c := range v.chars {
-		out[k] = c
+		out[k] = c.Predict(v.since[k], v.tick) // as the game shows it between reports
 	}
 	return v.m, v.tick, out
 }

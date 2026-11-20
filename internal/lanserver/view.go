@@ -5,17 +5,26 @@ import (
 	"konung1.5/internal/netplay"
 )
 
-// Viewer is what one player was last sent of its hero's map, so the next
-// view carries only the changes (netplay.ViewPayload).
+// Viewer is what one player was last sent of its hero's map: each
+// character's state and the tick it was reported at, so the next view
+// carries only the characters whose state differs from the client's
+// prediction (netplay.CharState.Predict).
 type Viewer struct {
 	m    int
-	sent map[int]netplay.CharState
+	tick int // the last view's tick
+	sent map[int]sentChar
+}
+
+type sentChar struct {
+	cs   netplay.CharState
+	tick int
 }
 
 // View is slot's hero's map now, for its client: every character when the
-// map is new to v (entering, a map change), else the characters that
-// changed since the last view and the ones gone. ok is false when slot is
-// not in the world or nothing changed.
+// map is new to v (entering, a map change), else the characters whose
+// state is not what the client predicts from their last report, and the
+// ones gone. ok is false when slot is not in the world or the world has not
+// run since the last view.
 func (w *World) View(slot int, v *Viewer) (out netplay.ViewPayload, ok bool) {
 	m, in := w.players[slot]
 	if !in {
@@ -23,16 +32,20 @@ func (w *World) View(slot int, v *Viewer) (out netplay.ViewPayload, ok bool) {
 	}
 	out = netplay.ViewPayload{Map: m, Tick: w.Tick}
 	if v.m != m || v.sent == nil {
-		v.m, v.sent = m, map[int]netplay.CharState{}
+		v.m, v.sent = m, map[int]sentChar{}
 		out.Full = true
+	} else if w.Tick == v.tick {
+		return out, false
 	}
+	v.tick = w.Tick
 	now := map[int]bool{}
 	for _, c := range w.Snapshot(m).Chars {
 		cs := charState(c)
 		now[cs.Entity] = true
-		if old, seen := v.sent[cs.Entity]; out.Full || !seen || old != cs {
+		if old, seen := v.sent[cs.Entity]; out.Full || !seen || !old.cs.Predict(old.tick, w.Tick).Same(cs) {
+			cs = cs.Report()
 			out.Chars = append(out.Chars, cs)
-			v.sent[cs.Entity] = cs
+			v.sent[cs.Entity] = sentChar{cs, w.Tick}
 		}
 	}
 	for e := range v.sent {
@@ -41,13 +54,14 @@ func (w *World) View(slot int, v *Viewer) (out netplay.ViewPayload, ok bool) {
 			delete(v.sent, e)
 		}
 	}
-	return out, out.Full || len(out.Chars) > 0 || len(out.Gone) > 0
+	return out, true
 }
 
 func charState(c Char) netplay.CharState {
 	cs := netplay.CharState{
 		Entity: c.Entity, Player: c.Player, Owner: c.Owner, Row: c.Row, Col: c.Col, Walking: c.Walking, Facing: c.Facing,
 		Act: c.Act, ActStep: c.ActStep, HP: c.HP, Dead: c.Dead, Stance: c.Stance, Weapon: c.Weapon,
+		Steps: c.WalkSteps, ActSteps: c.ActSteps, Throttle: c.Throttle, Path: c.Path,
 	}
 	if c.Walking {
 		cs.FromRow, cs.FromCol, cs.Step = c.FromRow, c.FromCol, c.Step
