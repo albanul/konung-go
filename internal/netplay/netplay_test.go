@@ -665,3 +665,92 @@ func TestOrders(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 }
+
+// A team line reaches only the players of the sender's hero type (the
+// sender too); a line to everyone reaches all; the server names the
+// sender and clears a client's System flag.
+func TestTeamChat(t *testing.T) {
+	s := startServer(t, ServerConfig{Name: "Тест"})
+	a := dial(t, s, "Ivar", 1)
+	b := dial(t, s, "Olaf", 1)
+	c := dial(t, s, "Volk", 0)
+	if err := a.ChatTeam("за мной"); err != nil {
+		t.Fatal(err)
+	}
+	for _, cl := range []*Client{a, b} {
+		var chat ChatPayload
+		if waitFor(t, cl.Conn, MsgChat).Decode(&chat); chat.Text != "за мной" || chat.Name != "Ivar" || !chat.Team || chat.System {
+			t.Errorf("team chat = %+v", chat)
+		}
+	}
+	// Everyone: Volk gets this one, and it is the first chat he gets.
+	if err := a.Send(mustMessage(MsgChat, ChatPayload{Text: "всем", System: true})); err != nil {
+		t.Fatal(err)
+	}
+	var chat ChatPayload
+	if waitFor(t, c.Conn, MsgChat).Decode(&chat); chat.Text != "всем" || chat.Name != "Ivar" || chat.Team || chat.System {
+		t.Errorf("Volk's first chat = %+v, want the line to everyone", chat)
+	}
+}
+
+// The pause between sessions: the clock stands and orders are ignored;
+// the session's end line and the start's clear reach the players in the
+// world, not one still outside it.
+func TestSessionPause(t *testing.T) {
+	got := make(chan OrderPayload, 4)
+	s := startServer(t, ServerConfig{
+		Start: func(p PlayerInfo, _ *Hero) (EnterPayload, error) {
+			return EnterPayload{Position: Position{Map: 1, Row: 110, Col: 32}}, nil
+		},
+		OnOrder: func(p PlayerInfo, o OrderPayload) { got <- o },
+	})
+	a := dial(t, s, "Ivar", 1)
+	a.Enter(-1)
+	waitFor(t, a.Conn, MsgEntered)
+	outside := dial(t, s, "Olaf", 1)
+
+	s.EndChat("ИГРА ОКОНЧЕНА! Победа викингов!")
+	s.SetPaused(true)
+	var chat ChatPayload
+	if waitFor(t, a.Conn, MsgChat).Decode(&chat); !chat.End || !chat.System || chat.Text != "ИГРА ОКОНЧЕНА! Победа викингов!" {
+		t.Errorf("end line = %+v", chat)
+	}
+	var c ClockPayload
+	if waitFor(t, a.Conn, MsgClock).Decode(&c); c.Running {
+		t.Errorf("clock in the pause = %+v", c)
+	}
+	stood := s.Clock().Tick
+	a.Order(OrderPayload{Kind: OrderWalk, Row: 1, Col: 1})
+	time.Sleep(100 * time.Millisecond)
+	if s.Clock().Tick != stood {
+		t.Error("the clock ran in the pause")
+	}
+	select {
+	case o := <-got:
+		t.Fatalf("an order in the pause reached the world: %+v", o)
+	default:
+	}
+
+	s.StartChat()
+	s.SetPaused(false)
+	if waitFor(t, a.Conn, MsgChat).Decode(&chat); !chat.Clear || chat.Text != "" {
+		t.Errorf("start line = %+v", chat)
+	}
+	if waitFor(t, a.Conn, MsgClock).Decode(&c); !c.Running {
+		t.Errorf("clock after the pause = %+v", c)
+	}
+	a.Order(OrderPayload{Kind: OrderWalk, Row: 2, Col: 2})
+	select {
+	case o := <-got:
+		if o.Row != 2 {
+			t.Errorf("order after the pause = %+v", o)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no order after the pause")
+	}
+	// Olaf, not in the world, got neither line.
+	outside.Chat("hi")
+	if waitFor(t, outside.Conn, MsgChat).Decode(&chat); chat.Text != "hi" {
+		t.Errorf("Olaf's first chat = %+v, want his own line (no session lines outside the world)", chat)
+	}
+}

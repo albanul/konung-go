@@ -116,6 +116,14 @@ const HerbEmptyJar = 3
 // (0x00422347: 0x15).
 const AmuletSound = 0x15
 
+// SessionEndSound is the sound a client plays at the session's end (the
+// server's end line, 0x004225AA: 0x14).
+const SessionEndSound = 0x14
+
+// SessionEndText starts the server's session-end line (0x00470844); a
+// nation's win follows it (NationWins).
+const SessionEndText = "ИГРА ОКОНЧЕНА! "
+
 // NationWins are the session-end texts of a nation's win (0x00470824,
 // 0x00470833, 0x00470810), by nation.
 var NationWins = [3]string{"Победа славян!", "Победа викингов!", "Победа византийцев!"}

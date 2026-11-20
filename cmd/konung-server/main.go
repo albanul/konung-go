@@ -205,27 +205,25 @@ func run(dataDir string, st settings) error {
 	// The world clock is resent now and then, so clients stay in step.
 	sync := time.NewTicker(30 * time.Second)
 	defer sync.Stop()
-	// endSession is a session's end: the world anew, the ratings, a new
-	// session.
-	endSession := func() {
-		srv.SetSessionEnd(time.Now().Add(length))
-		if sw != nil {
-			// The world anew from GAME.RES, every hero back at its
-			// start, alive and healed, then saved (0x0044687C,
-			// 0x00448BB8).
-			if err := sw.host.EndSession(); err != nil {
-				log.Printf("session end: the world: %v", err)
+	sc := &sessionCycle{srv: srv, length: length, pause: sessionPause, ticker: sessions,
+		reset: func() {
+			if sw != nil {
+				// The world anew from GAME.RES, every hero back at its
+				// start, alive and healed, then saved (0x0044687C,
+				// 0x00448BB8).
+				if err := sw.host.EndSession(); err != nil {
+					log.Printf("session end: the world: %v", err)
+				}
 			}
-		}
-		if err := store.EndSession(); err != nil {
-			log.Printf("session end: %v", err)
-		} else {
-			log.Print("session over: ratings updated")
-		}
-		for _, p := range srv.Session().Players {
-			store.JoinSession(p.Name) // still online: in the next session too
-		}
-	}
+			if err := store.EndSession(); err != nil {
+				log.Printf("session end: %v", err)
+			} else {
+				log.Print("session over: ratings updated")
+			}
+			for _, p := range srv.Session().Players {
+				store.JoinSession(p.Name) // still online: in the next session too
+			}
+		}}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	for {
@@ -233,13 +231,14 @@ func run(dataDir string, st settings) error {
 		case <-sync.C:
 			srv.SyncClock()
 		case <-sessions.C:
-			endSession()
+			sc.end(-1)
+		case <-sc.pauseOver:
+			sc.start()
 		case n := <-won:
 			// A nation delivered the limit's amulets: the session ends
 			// now (0x00434438) and the next one gets its full length.
 			log.Printf("session ends early: %s", gamestate.NationWins[n])
-			sessions.Reset(length)
-			endSession()
+			sc.end(n)
 		case s := <-stop:
 			log.Printf("%v: stopping", s)
 			if sw != nil {

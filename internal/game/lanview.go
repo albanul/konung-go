@@ -39,6 +39,8 @@ import (
 type lanView struct {
 	slot    int                          // the own hero's entity (its server slot)
 	order   func(o netplay.OrderPayload) // sends an order
+	chat    func(text string, team bool) // sends a chat line (lanchat.go)
+	chats   chatState                    // the chat lines and the typed line
 	players map[int]*viewPlayer          // the players' heroes by slot
 	tmpl    [netplay.Models]*gamestate.Game
 	attach  world.Attach // sprites for a new party member (the scene's)

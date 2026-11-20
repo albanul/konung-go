@@ -82,10 +82,14 @@ func (s *startScene) drawLANStatus(dst *ebiten.Image) {
 	line := s.lanStatusLine()
 	s.font.drawLine(dst, line, viewRight-4-s.font.width(line), 5)
 	for k, n := range s.lanStatusIcons() {
+		if n < 0 {
+			continue // no item in this state word
+		}
 		img := s.hud.slot(n)
-		if n < 0 || img == nil {
+		if img == nil {
 			continue
 		}
 		drawAt(dst, img, viewRight+1-8-img.Bounds().Dx(), lanStatusIconY[k])
 	}
+	s.drawLANChat(dst) // the chat follows in the original's world view (0x0041F043)
 }

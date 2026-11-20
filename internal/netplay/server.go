@@ -138,6 +138,9 @@ type Server struct {
 	clockFrom  time.Time
 	clockOn    bool
 	sessionEnd time.Time
+	// paused is the pause between two sessions (SetPaused): the clock
+	// stands and orders are ignored.
+	paused bool
 
 	disc *announcer
 	wg   sync.WaitGroup
@@ -333,9 +336,23 @@ func (s *Server) serve(conn *Conn) {
 			if chat.Text == "" {
 				continue
 			}
+			s.mu.Lock()
+			chat.Name, chat.System, chat.End, chat.Clear = p.info.Name, false, false, false
 			out := mustMessage(MsgChat, chat)
 			out.From = id
-			s.Broadcast(out)
+			if chat.Team {
+				// 0x0044C9B0: a team line goes to the players of the
+				// sender's nation (the hero type entered with), the
+				// sender too.
+				for _, oid := range s.order {
+					if q := s.players[oid]; q.info.Model == p.info.Model {
+						q.conn.Send(out)
+					}
+				}
+			} else {
+				s.broadcastLocked(out)
+			}
+			s.mu.Unlock()
 		case MsgGame:
 			if s.cfg.OnGame != nil {
 				m.From = id
@@ -349,9 +366,9 @@ func (s *Server) serve(conn *Conn) {
 			var o OrderPayload
 			if m.Decode(&o) == nil && s.cfg.OnOrder != nil {
 				s.mu.Lock()
-				entered, info := p.entered, p.info
+				entered, info, paused := p.entered, p.info, s.paused
 				s.mu.Unlock()
-				if entered {
+				if entered && !paused {
 					s.cfg.OnOrder(info, o)
 				}
 			}

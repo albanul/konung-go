@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 17
+const ProtocolVersion = 18
 
 // MsgType identifies a message.
 type MsgType int
@@ -293,9 +293,21 @@ type EnterPayload struct {
 	Slot int `json:"slot"`
 }
 
-// ChatPayload is a chat line.
+// ChatPayload is a chat line. A client sends the text and whether it is
+// for its team only (the original's two chat buttons: without 0x80 the
+// server passes the line to the sender's nation only, 0x0044C9B0); the
+// server adds the sender's name. System marks a line of the server's own
+// (no name, the original's flag 0x80, 0x004224BF).
 type ChatPayload struct {
-	Text string `json:"text"`
+	Text   string `json:"text"`
+	Team   bool   `json:"team,omitempty"`
+	Name   string `json:"name,omitempty"`
+	System bool   `json:"system,omitempty"`
+	// End is the session's end (Server.EndChat): the client clears its
+	// chat, shows Text alone and plays the end sound. Clear is a
+	// session's start (Server.StartChat): the chat is cleared.
+	End   bool `json:"end,omitempty"`
+	Clear bool `json:"clear,omitempty"`
 }
 
 // Build checks c with the creation screen's rules (gamestate.LANHeroChoice)

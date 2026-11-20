@@ -87,6 +87,11 @@ func (c *Client) Chat(text string) error {
 	return c.Send(mustMessage(MsgChat, ChatPayload{Text: text}))
 }
 
+// ChatTeam sends a chat line to the players of the own hero's nation.
+func (c *Client) ChatTeam(text string) error {
+	return c.Send(mustMessage(MsgChat, ChatPayload{Text: text, Team: true}))
+}
+
 // SendGame sends a gameplay message (payload encoded as JSON) to the server.
 func (c *Client) SendGame(payload any) error {
 	m, err := NewMessage(MsgGame, payload)

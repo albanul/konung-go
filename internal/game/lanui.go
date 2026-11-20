@@ -113,6 +113,9 @@ type lanUI struct {
 	// sounds, map changes, the own hero's values) for the LAN viewer,
 	// queued from the wait on; the menu applies them (applyLAN).
 	worldMsgs []*netplay.Message
+	// inWorld is set when the world is entered (takeStart): chat lines
+	// before it are dropped (the world's chat starts empty, 0x0042F6C2).
+	inWorld bool
 	// clock is the server's world clock (MsgClock), nil until it arrives.
 	clock *serverClock
 
@@ -374,7 +377,10 @@ func (u *lanUI) readSession() {
 			switch m.Type {
 			case netplay.MsgView, netplay.MsgPlayer, netplay.MsgEvents, netplay.MsgMapChange, netplay.MsgHero,
 				netplay.MsgInventory, netplay.MsgPiles, netplay.MsgPileWindow, netplay.MsgDialogue, netplay.MsgParty,
-				netplay.MsgAmulets, netplay.MsgPlayers, netplay.MsgLooks:
+				netplay.MsgAmulets, netplay.MsgPlayers, netplay.MsgLooks, netplay.MsgChat:
+				if m.Type == netplay.MsgChat && !u.inWorld {
+					continue // before the world: the chat starts empty there (0x0042F6C2)
+				}
 				u.worldMsgs = append(u.worldMsgs, m)
 			case netplay.MsgClock:
 				var c netplay.ClockPayload
@@ -410,7 +416,7 @@ func (u *lanUI) disconnect() {
 		u.client = nil
 	}
 	u.session, u.hero = "", nil
-	u.worldMsgs, u.clock = nil, nil
+	u.worldMsgs, u.clock, u.inWorld = nil, nil, false
 }
 
 // rows is the server list: the sessions found, by name as the original
@@ -537,6 +543,9 @@ func (u *lanUI) ok() {
 func (u *lanUI) takeStart() (*netplay.EnterPayload, *netplay.Hero, string) {
 	at := u.start
 	u.start = nil
+	if at != nil {
+		u.inWorld = true
+	}
 	return at, u.hero, u.player
 }
 

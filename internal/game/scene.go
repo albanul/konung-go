@@ -534,7 +534,7 @@ func (s *startScene) updateControls(mx, my int) {
 	if left {
 		button = buttonAt(s.Tables, mx, my)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || button == hudStanceButton {
+	if s.keyJust(ebiten.KeySpace) || button == hudStanceButton {
 		s.returnHand(cur)
 		if s.view != nil {
 			// The first selected decides, as ToggleSelectionStance.
@@ -563,14 +563,14 @@ func (s *startScene) updateControls(mx, my int) {
 	for key, mode := range map[ebiten.Key]int{
 		ebiten.Key1: gamestate.WeaponBlade, ebiten.Key2: gamestate.WeaponAxe, ebiten.Key3: gamestate.WeaponBow,
 	} {
-		if inpututil.IsKeyJustPressed(key) {
+		if s.keyJust(key) {
 			weapon(mode)
 		}
 	}
 	if button == hudWeaponButton {
 		weapon(gamestate.WeaponCycle)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF) || button == hudGatherButton {
+	if s.keyJust(ebiten.KeyF) || button == hudGatherButton {
 		if s.view != nil {
 			s.returnHand(cur)
 			s.hud.press(hudGatherButton, hudGatherImage)
@@ -579,7 +579,7 @@ func (s *startScene) updateControls(mx, my int) {
 			s.gatherOrder()
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyA) || button == hudAttackButton {
+	if s.keyJust(ebiten.KeyA) || button == hudAttackButton {
 		if s.view != nil {
 			s.hud.press(hudAttackButton, hudAttackImage)
 			s.viewOrder(netplay.OrderPayload{Kind: netplay.OrderAttack})
@@ -587,14 +587,14 @@ func (s *startScene) updateControls(mx, my int) {
 			s.attackOrder()
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyM) || button == hudMapButton {
+	if s.keyJust(ebiten.KeyM) || button == hudMapButton {
 		s.toggleMap(cur) // 0x00436EB9, 0x00422C01
 	}
-	if (inpututil.IsKeyJustPressed(ebiten.KeyQ) || button == hudLogButton) && !s.inv.open && !s.wmap.open {
+	if (s.keyJust(ebiten.KeyQ) || button == hudLogButton) && !s.inv.open && !s.wmap.open {
 		s.talk.toggleLog() // 0x0042459C
 		s.hud.press(hudLogButton, hudLogImage)
 	}
-	if (inpututil.IsKeyJustPressed(ebiten.KeyI) || button == hudBagButton) && !s.talk.log && !s.wmap.open {
+	if (s.keyJust(ebiten.KeyI) || button == hudBagButton) && !s.talk.log && !s.wmap.open {
 		s.returnHand(cur)
 		s.inv.toggle()
 		if s.inv.open {
@@ -602,7 +602,7 @@ func (s *startScene) updateControls(mx, my int) {
 		}
 		s.hud.press(hudBagButton, hudBagImage)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBackquote) && !s.inv.open && !s.talk.open() {
+	if s.keyJust(ebiten.KeyBackquote) && !s.inv.open && !s.talk.open() {
 		s.inv.toggleQuick()
 		if s.inv.quick {
 			s.clearBox() // 0x00437253: showing the strip empties the in-hand box
@@ -1095,7 +1095,7 @@ func (s *startScene) escape() bool {
 
 func (s *startScene) Update() {
 	s.Game.World = s.Access()
-	if s.Hero != nil && godModeKey() {
+	if s.Hero != nil && !s.chatTyping() && godModeKey() {
 		godMode = !godMode
 	}
 	s.Game.GodMode = godMode
@@ -1106,11 +1106,14 @@ func (s *startScene) Update() {
 	}
 	s.hud.now = s.frame
 	mx, my := ebiten.CursorPosition()
+	if s.view != nil && s.Hero != nil {
+		s.updateChat()
+	}
 	if s.Hero != nil {
-		if inpututil.IsKeyJustPressed(ebiten.KeyS) && ebiten.IsKeyPressed(ebiten.KeyControl) { // 0x00436F2B
+		if s.keyJust(ebiten.KeyS) && ebiten.IsKeyPressed(ebiten.KeyControl) { // 0x00436F2B
 			s.follow = !s.follow
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
+		if s.keyJust(ebiten.KeyF1) {
 			s.hideHelp = !s.hideHelp
 		}
 		if s.clock == nil {
@@ -1152,16 +1155,16 @@ func (s *startScene) Update() {
 			s.Step()
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || mx < edgeScrollZone {
+	if s.keyHeld(ebiten.KeyArrowLeft) || mx < edgeScrollZone {
 		s.camX -= scrollSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || mx >= ScreenWidth-edgeScrollZone {
+	if s.keyHeld(ebiten.KeyArrowRight) || mx >= ScreenWidth-edgeScrollZone {
 		s.camX += scrollSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) || my < edgeScrollZone {
+	if s.keyHeld(ebiten.KeyArrowUp) || my < edgeScrollZone {
 		s.camY -= scrollSpeed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) || my >= ScreenHeight-edgeScrollZone {
+	if s.keyHeld(ebiten.KeyArrowDown) || my >= ScreenHeight-edgeScrollZone {
 		s.camY += scrollSpeed
 	}
 	s.clampCamera()
@@ -1174,16 +1177,34 @@ func (s *startScene) Update() {
 	}
 }
 
+// windowOpen reports an open window over the view: the character window,
+// a dialogue or the quest log, the trade or pile window, the map.
+func (s *startScene) windowOpen() bool {
+	return s.inv.open || s.talk.open() || s.trade.open() || s.wmap.open
+}
+
+// keyJust is a key press for the game, none while the chat line takes the
+// keyboard (lanchat.go).
+func (s *startScene) keyJust(k ebiten.Key) bool {
+	return !s.chatTyping() && inpututil.IsKeyJustPressed(k)
+}
+
+// keyHeld is a held key for the game, none while the chat line takes the
+// keyboard.
+func (s *startScene) keyHeld(k ebiten.Key) bool {
+	return !s.chatTyping() && ebiten.IsKeyPressed(k)
+}
+
 // Game speed 0x00A3E764: 0 normal, 1 double, 2 triple. Numpad + / −
 // (VK_ADD 0x6B at 0x00436FD2, VK_SUBTRACT 0x6D at 0x00436FF0); the port
 // also accepts = and − on the main keyboard.
 const maxSpeed = 2
 
 func (s *startScene) updateSpeed() {
-	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadAdd) || inpututil.IsKeyJustPressed(ebiten.KeyEqual) {
+	if s.keyJust(ebiten.KeyNumpadAdd) || s.keyJust(ebiten.KeyEqual) {
 		s.speed = min(maxSpeed, s.speed+1)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyNumpadSubtract) || inpututil.IsKeyJustPressed(ebiten.KeyMinus) {
+	if s.keyJust(ebiten.KeyNumpadSubtract) || s.keyJust(ebiten.KeyMinus) {
 		s.speed = max(0, s.speed-1)
 	}
 }
@@ -1196,7 +1217,7 @@ func (s *startScene) visible(x, y, w, h int) bool {
 func (s *startScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 	s.updateLight()
-	window := s.inv.open || s.talk.open() || s.trade.open() || s.wmap.open
+	window := s.windowOpen()
 	if s.tiling && window {
 		// 0x0042AE68: with background tiling («T», 0x00A3E744) an open
 		// window hides the world; the window tiles INTR slot 5 behind it.

@@ -290,7 +290,7 @@ func (m *Menu) Update() error {
 	}
 	// Escape is switched on the screen state 0x00A3E6D8 (0x00437430, jump
 	// table 0x0043756C).
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !(m.inWorld && m.world.chatTyping()) {
 		if m.inWorld {
 			if m.world.escape() {
 				m.inWorld = false
@@ -352,7 +352,7 @@ func (m *Menu) Update() error {
 	if m.inWorld {
 		// T (VK 0x54, 0x00436F58) toggles background tiling and writes
 		// KONUNG.CFG at once.
-		if inpututil.IsKeyJustPressed(ebiten.KeyT) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyT) && !m.world.chatTyping() {
 			m.config.Tiling = 1 - min(m.config.Tiling, 1)
 			m.writeConfig()
 		}
@@ -433,6 +433,16 @@ func (m *Menu) Update() error {
 			w.view.order = func(o netplay.OrderPayload) {
 				if lan.client != nil {
 					lan.client.Order(o)
+				}
+			}
+			w.view.chat = func(text string, team bool) {
+				if lan.client == nil {
+					return
+				}
+				if team {
+					lan.client.ChatTeam(text)
+				} else {
+					lan.client.Chat(text)
 				}
 			}
 			m.applyLAN()
@@ -787,6 +797,11 @@ func (m *Menu) applyLAN() {
 			var p netplay.LooksPayload
 			if msg.Decode(&p) == nil {
 				w.applyLooks(p)
+			}
+		case netplay.MsgChat:
+			var p netplay.ChatPayload
+			if msg.Decode(&p) == nil {
+				w.applyChat(p)
 			}
 		}
 	}

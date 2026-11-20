@@ -48,6 +48,7 @@ func (s *Server) runClockLocked() {
 	for _, p := range s.players {
 		on = on || p.entered
 	}
+	on = on && !s.paused
 	if on != s.clockOn {
 		s.clockBase, s.clockFrom, s.clockOn = s.clockLocked(), time.Now(), on
 	}
@@ -97,4 +98,41 @@ func (s *Server) Clock() ClockPayload {
 	var c ClockPayload
 	s.clockMessageLocked().Decode(&c)
 	return c
+}
+
+// SetPaused starts or ends the pause between two sessions (the original's
+// 105 ticks, 0x00434515 → 0x00448BB8): while paused the world clock
+// stands (the dedicated server's world takes no step) and the players'
+// orders are ignored; everyone in the world is told the clock.
+func (s *Server) SetPaused(on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.paused = on
+	s.runClockLocked()
+}
+
+// EndChat tells everyone in the world that the session is over (the
+// original's chat 0x57 with the flag byte 0xC0 | slot, 0x004345CB): text
+// is «ИГРА ОКОНЧЕНА! » and the winner's line, if any.
+func (s *Server) EndChat(text string) {
+	s.worldChat(ChatPayload{Text: text, System: true, End: true})
+}
+
+// StartChat tells everyone in the world that a session starts: their chat
+// is cleared (the original's chat 0x57 with the flag byte 0xFF and no
+// text, 0x00448CD3).
+func (s *Server) StartChat() {
+	s.worldChat(ChatPayload{System: true, Clear: true})
+}
+
+// worldChat sends a server's chat line to everyone in the world.
+func (s *Server) worldChat(c ChatPayload) {
+	m := mustMessage(MsgChat, c)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, id := range s.order {
+		if p := s.players[id]; p.entered {
+			p.conn.Send(m)
+		}
+	}
 }
