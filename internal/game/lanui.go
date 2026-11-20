@@ -30,6 +30,7 @@ const (
 	lanLogin
 	lanWaiting
 	lanNewHero
+	lanSettings // «Установки» (8, 0x0042DF6A)
 )
 
 // LAN menu items (hotspots 0x00479884, actions 0x0042E358) and the
@@ -95,6 +96,14 @@ type lanUI struct {
 
 	cfg     gamestate.LANConfig
 	cfgPath string
+	// settings is «Установки» (ME800R.RES frames 1 and 2, the single-player
+	// screen's layout); it edits config, the settings the single-player
+	// screen edits too, and writeSettings writes them (KONUNG.CFG) with the
+	// chosen video mode (a port rule: the original kept its own copy in
+	// LAN.CFG's words 1–6).
+	settings      *settingsScreen
+	config        *gamestate.Config
+	writeSettings func(video int32)
 	// rating is the «Рейтинг» table as last received (MsgRating), kept in
 	// hiscoresPath (HISCORES.DAT, the original's client cache: read at
 	// start 0x004313EC, written 0x004173CE).
@@ -177,6 +186,7 @@ func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath, newPath str
 	for _, f := range me {
 		u.menu = append(u.menu, toEbiten(f))
 	}
+	u.settings = newSettingsScreen(me[1], me[2]) // the settings background and marker
 	u.menuBG = u.menu[0]
 	for _, f := range play {
 		u.play = append(u.play, toEbiten(f))
@@ -240,6 +250,10 @@ func (u *lanUI) escape() bool {
 	case u.state == lanWaiting:
 		u.disconnect()
 		u.state = lanLogin
+	case u.state == lanSettings:
+		u.settings.restore(u.config) // as «Отмена»
+		sfx.setMusic(u.config.Music != 0)
+		u.state = lanMenu
 	case u.state == lanRating, u.state == lanLogin, u.state == lanNewHero:
 		u.toMenu()
 	case u.inGame:
@@ -273,6 +287,10 @@ func (u *lanUI) update() bool {
 		u.updateLogin(mx, my, click)
 	case lanNewHero:
 		u.updateNewHero(mx, my, click)
+	case lanSettings:
+		if click {
+			u.settingsClick(mx, my)
+		}
 	case lanWaiting:
 		// The original waits here for the server to start the game
 		// (state 0 → 10); the networked game is not ported yet.
@@ -307,7 +325,11 @@ func (u *lanUI) menuItem(item int) {
 	case lanItemNewHero:
 		u.openNewHero()
 	case lanItemSettings:
-		// «Установки» (state 8) is not ported yet.
+		// «Установки» (state 8, 0x0042DF6A: the values saved for «Отмена»).
+		if u.config != nil {
+			u.settings.open(*u.config)
+			u.state = lanSettings
+		}
 	}
 }
 
@@ -746,6 +768,10 @@ func (u *lanUI) draw(dst *ebiten.Image) {
 		u.drawLogin(dst)
 	case lanNewHero:
 		u.drawNewHero(dst)
+	case lanSettings:
+		if u.config != nil {
+			u.settings.draw(dst, *u.config)
+		}
 	}
 }
 
@@ -925,5 +951,24 @@ func (u *lanUI) drawRating(dst *ebiten.Image) {
 			f = u.focusFnt
 		}
 		f.drawLine(dst, t.text, t.x, t.y)
+	}
+}
+
+// settingsClick is a click on «Установки» (the single-player screen's
+// switch, the same hotspots): the boxes flip their settings at once (music
+// starts or stops), «Ok» saves them, «Отмена» restores them; both return
+// to the LAN menu. The video mode is stored only: the port runs at 800×600.
+func (u *lanUI) settingsClick(mx, my int) {
+	hit := u.settings.hit(mx, my)
+	closed, ok := u.settings.click(hit, u.config)
+	if hit == 6 || hit == settingsCancel {
+		sfx.setMusic(u.config.Music != 0)
+	}
+	if !closed {
+		return
+	}
+	u.state = lanMenu
+	if ok && u.writeSettings != nil {
+		u.writeSettings(u.settings.video)
 	}
 }

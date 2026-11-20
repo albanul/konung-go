@@ -46,7 +46,7 @@ Entity fields: skills `+0x48` healing, `+0x4C` smithing, `+0x42` trade, `+0x46` 
 | 28 | Берестяная грамота | `0x0041556E` | quest flag 0 set (`0x00625068` bit `0x80`); `0x0045D17C` «Ты прочитал Берестяную Грамоту» | yes |
 | 30 | Медная лампа с именем Короля скелетов | `0x0041558E` | every living character (not dead, action not 3/9) of the other groups on the map that are neither villages (`+0x1E` bit `0x80`) nor kind `0x53` dies: `+0x12` = 0, `+2` = 0, HP = 0, death action (3 in the stance, else 9), loot `0x00418510(m, 0, hero's level +0x33)`. No experience | yes |
 | 31 | Факел | `0x004156E6` | the [loot highlight](konung_potions.md#loot-highlight-0x00a3e758) | no |
-| 33 | Кукла | `0x004156F5` | every living character of the other groups on the map (villages included) gets enchantment 19 at `+0xD2` (stat 5 −5) | yes |
+| 33 | Кукла | `0x004156F5` | every living character of the other groups on the map (villages included) gets enchantment 19 at `+0xD2` (stat 5 −5); the network game's doll spares carriers of «Заячий хвост» ([LAN version: items](konung_lan.md#items)) | yes |
 | 35, 37 | Свисток, Дудочка | `0x004157D2` | the party's enemy group `0x0041FD74` (below); unless it is a village, its living members with `+4` bit `0x40` (animals) and `+4` ∉ {`0x44`, `0x53`, `0x54`, `0x57`} run: `0x004101E4` (below), then a walk there with `+2` = 8 (`0x004142D4`) | no |
 | 36 | Чаша воеводы | `0x00415914` | base Хар +10 | yes |
 | 38 | Святые мощи | `0x00415927` | enchantment 70 at `+0xD3` (as dialogue script 276) | yes |

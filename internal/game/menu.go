@@ -234,6 +234,11 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 				return nil, err
 			}
 			m.lan = lan
+			lan.config = &m.config
+			lan.writeSettings = func(video int32) {
+				m.settings.video = video // one video mode for both screens
+				m.writeConfig()
+			}
 			m.buttons[itemNetwork] = [2]*ebiten.Image{toEbiten(labels[0]), toEbiten(labels[1])}
 			b := labels[0].Bounds()
 			m.buttonRects[itemNetwork] = rect{x: networkLabelX, y: networkLabelY, w: b.Dx(), h: b.Dy()}

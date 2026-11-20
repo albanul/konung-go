@@ -155,7 +155,10 @@ func (g *Game) UseMisc(e *Entity, t *resfmt.ExeTables, target, item int) (bool, 
 	}
 	w := g.World
 	curMap := g.Groups[0].Map // 0x00A3E7FC
-	used := false             // item +0 = 0xFF
+	if g.LAN && e.Group >= 0 && e.Group < len(g.Groups) {
+		curMap = g.Groups[e.Group].Map // the user's player's map (0x00E24400)
+	}
+	used := false // item +0 = 0xFF
 	msg := 0
 	// skill adds to a skill word, capped when limit > 0 (unsigned compare).
 	skill := func(k, add, limit int) {
@@ -270,9 +273,13 @@ func (g *Game) UseMisc(e *Entity, t *resfmt.ExeTables, target, item int) (bool, 
 			return false, 0
 		}
 		g.othersOnMap(w, e, curMap, func(i int, m *Entity) {
-			if w.Alive(i) {
-				m.Enchants[0] = enchantDoll
+			if !w.Alive(i) || m.Group == e.Group {
+				return // the dead; in a LAN world the user's hirelings, kept in their village's range
 			}
+			if g.LAN && g.hasMisc(m, questHareTail) {
+				return // LAN_KONG.EXE's doll is the curse 0x004379D4: «Заячий хвост» in the bag protects
+			}
+			m.Enchants[0] = enchantDoll
 		})
 		used = true
 	case MiscWhistle, MiscPipe:
@@ -382,6 +389,16 @@ func (g *Game) othersOnMap(w World, e *Entity, m int, f func(i int, member *Enti
 			}
 		}
 	}
+}
+
+// hasMisc reports whether e's bag holds misc item typ.
+func (g *Game) hasMisc(e *Entity, typ int) bool {
+	for _, i := range e.Bag {
+		if c, t := g.ItemKind(i); i != 0 && c == CatQuest && t == typ {
+			return true
+		}
+	}
+	return false
 }
 
 // magnet is 0x0041521A: from every character of the other groups on the

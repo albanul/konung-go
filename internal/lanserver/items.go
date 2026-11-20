@@ -136,10 +136,11 @@ var usesHand = map[string]bool{
 // party member it shows (OrderPayload.Member: the hero or a hireling), a
 // party member's portrait (use or drink the held item on its holder, give
 // it to another member, ClickPortrait), a drop on the ground, the hand's
-// return and the pile window's «Ok»/«Закрыть». Misc items that need
-// the single-player world (orbs, keys, the whistle, the doll, the lamp, the
-// magnet, the seer's scroll) do nothing here (gamestate.Game.World is nil),
-// and the shovel's dig mode is not offered.
+// return and the pile window's «Ok»/«Закрыть». The misc items run with
+// the map seen from their user (miscWorld): the seer's scroll, the doll
+// and the pipe work as in LAN_KONG.EXE (0x004390F4's cases 3, 7, 9); the
+// items the network game does not have (orbs, keys, the lamp, the magnet,
+// the shovel) cannot be in a LAN world.
 func (w *World) Item(slot int, o netplay.OrderPayload) {
 	m, ok := w.players[slot]
 	if !ok {
@@ -170,6 +171,10 @@ func (w *World) Item(slot int, o netplay.OrderPayload) {
 	// «Живая Вода» on a dead member revives it on this map (populate.go
 	// installs the last map built; the server's maps share one Game).
 	w.Game.Reviver = s.Revive
+	// The misc items that reach beyond their user (the seer's scroll, the
+	// doll, the pipe) see this map from the member using them.
+	w.Game.World = miscWorld{World: s.Access(), s: s, user: mem, slot: slot}
+	defer func() { w.Game.World = nil }()
 	msg := 0
 	switch o.Item {
 	case netplay.ItemBag:
