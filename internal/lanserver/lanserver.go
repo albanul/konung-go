@@ -183,7 +183,9 @@ const villageRowMargin, villageColMargin = 4, 2
 // (rows 0–128, columns 0–64: a MAPS.RES map's fine grid), so there they
 // roam the map. Here the area is the box around the village's villagers
 // and its posts as GAME.RES places them, widened by villageRowMargin and
-// villageColMargin; the step ranges are the LAN server's.
+// villageColMargin, written into the group's rectangle, so it is also where
+// an aggressor alarms the village (LANVillageAlarm); the step ranges are
+// the LAN server's.
 func villageBounds(s *world.World) {
 	boxes := map[int]*gamestate.Area{}
 	grow := func(g, r, c int) {
@@ -210,13 +212,17 @@ func villageBounds(s *world.World) {
 			}
 		}
 	}
+	for g, a := range boxes {
+		*a = gamestate.Area{RowMin: max(a.RowMin-villageRowMargin, 0), RowMax: a.RowMax + villageRowMargin,
+			ColMin: max(a.ColMin-villageColMargin, 0), ColMax: a.ColMax + villageColMargin}
+		s.Game.Groups[g].SetWanderArea(*a) // the alarm's rectangle too (LANVillageAlarm)
+	}
 	for _, n := range s.NPCs {
 		a := boxes[n.Group]
 		if n.Mode != world.NPCVillager || a == nil {
 			continue
 		}
-		n.Area = gamestate.Area{RowMin: max(a.RowMin-villageRowMargin, 0), RowMax: a.RowMax + villageRowMargin,
-			ColMin: max(a.ColMin-villageColMargin, 0), ColMax: a.ColMax + villageColMargin}
+		n.Area = *a
 		n.StepRows, n.StepCols = lanVillageRows, lanVillageCols
 	}
 }

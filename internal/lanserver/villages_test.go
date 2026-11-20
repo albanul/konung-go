@@ -222,3 +222,73 @@ func TestBuildingStatesToPlayers(t *testing.T) {
 	ss.host.mu.Unlock()
 	waitUntil(t, "the standing building for Ivar", got(a, gamestate.BuildingStanding))
 }
+
+// The village's alarm rectangle is its area (villageBounds, a port rule),
+// not GAME.RES's whole map: its aggressor outside the area leaves it calm
+// and ends the villagers' chase; inside, the village attacks.
+func TestVillageAlarmArea(t *testing.T) {
+	w := load(t)
+	const ivar, m = 0, 4 // Драгомир's type, in his village
+	if _, _, err := w.AddPlayer(ivar, 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	st := w.Game.SettlementOnMap(m)
+	gr := &w.Game.Groups[st.Group]
+	area, ok := w.VillageArea(m)
+	if got, _ := gr.WanderArea(); !ok || got != area || area.RowMax-area.RowMin >= 100 {
+		t.Fatalf("group rectangle %+v, village area %+v", got, area)
+	}
+	st.MarkAggressor(ivar)
+	pass := func() {
+		for range gamestate.UpkeepTicks + 1 {
+			w.Step()
+		}
+	}
+	inside := mapdata.Cell{Row: (area.RowMin + area.RowMax) / 2, Col: (area.ColMin + area.ColMax) / 2}
+	out := mapdata.Cell{Row: area.RowMax + 15, Col: inside.Col}
+	if out.Row > 120 {
+		out.Row = area.RowMin - 15
+	}
+	if !w.MoveTo(ivar, m, out) {
+		t.Fatal("MoveTo")
+	}
+	if c := heroCell(w, ivar); area.Contains(c.Row, c.Col) {
+		t.Fatalf("Ivar at %v, inside the area %+v", c, area)
+	}
+	pass()
+	if gr.Alarm != gamestate.AlarmCalm {
+		t.Fatalf("alarm %d with the aggressor outside the village", gr.Alarm)
+	}
+	if !w.MoveTo(ivar, m, inside) {
+		t.Fatal("MoveTo")
+	}
+	pass()
+	if gr.Alarm != gamestate.AlarmAttack || gr.Enemy != ivar {
+		t.Fatalf("aggressor inside: alarm %d enemy %d", gr.Alarm, gr.Enemy)
+	}
+	chased := false
+	for k := 0; k < 200 && !chased; k++ {
+		w.Step()
+		for _, n := range w.Maps[m].NPCs {
+			chased = chased || n.Group == st.Group && n.Target == ivar && n.Walking
+		}
+	}
+	if !chased {
+		t.Fatal("no villager went for Ivar")
+	}
+	if !w.MoveTo(ivar, m, out) {
+		t.Fatal("MoveTo")
+	}
+	pass()
+	if gr.Alarm != gamestate.AlarmCalm {
+		t.Fatalf("alarm %d after the aggressor left the area", gr.Alarm)
+	}
+	for _, n := range w.Maps[m].NPCs {
+		if n.Group == st.Group && n.Target == ivar {
+			t.Fatalf("villager %d still goes for Ivar outside the village", n.Entity)
+		}
+	}
+	if !st.Aggressor(ivar) {
+		t.Fatal("leaving the area forgave Ivar")
+	}
+}

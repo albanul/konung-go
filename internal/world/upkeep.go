@@ -124,6 +124,11 @@ func (s *World) VillagerTick(n *NPC) {
 			case !Alive(tw, t):
 				n.Target, n.Intent = -1, 0
 				n.StopWalk()
+			case s.LAN && g.Alarm != gamestate.AlarmAttack:
+				// Port rule: the aggressor left the village's area (the
+				// settlement pass calmed it): the chase ends there.
+				n.Target, n.Intent = -1, 0
+				n.StopWalk()
 			case tw.Cell != n.TargetCell:
 				n.TargetCell = tw.Cell
 				n.Chase(tw.Cell)
