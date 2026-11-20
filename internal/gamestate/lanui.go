@@ -72,7 +72,25 @@ type LANExe struct {
 	// the pointer is over the map in the map window (0x00416B24; index 0
 	// unused).
 	MapNames [LANMaps + 1][]byte
+	// Rating is the «Рейтинг» screen's layout at 800×600 (0x004797AC +
+	// 0x3C·video mode, read by 0x004271AC).
+	Rating LANRatingLayout
 }
+
+// LANRatingLayout is where the «Рейтинг» screen draws its rows: the
+// players' first row and step, their columns (rank, name, clan, amulets,
+// the three kill counters, rating), the clans' first row and step and
+// their columns (rank, name, rating).
+type LANRatingLayout struct {
+	PlayerY, PlayerDY                                      int
+	Rank, Name, Clan, Amulets, Heroes, Hirelings, Monsters int
+	Rating                                                 int
+	ClanY, ClanDY, ClanRankX, ClanNameX, ClanRatingX       int
+}
+
+// lanRatingLayoutVA is the rating screen's layout table (0x3C bytes per
+// video mode).
+const lanRatingLayoutVA = 0x004797AC
 
 // LANMaps is the number of LAN maps (MAPS.RES).
 const LANMaps = 20
@@ -197,6 +215,11 @@ func ParseLANExe(exe []byte) (*LANExe, error) {
 	for m := 1; m <= LANMaps; m++ {
 		x.MapNames[m] = cString(names[(m-1)*0x28:][:0x28])
 	}
+	rl := lanRatingLayoutVA + 0x3C*lanMapMode
+	v := func(k int) int { return at32(rl + 4*k) }
+	x.Rating = LANRatingLayout{PlayerY: v(0), PlayerDY: v(1), Rank: v(2), Name: v(3), Clan: v(4),
+		Amulets: v(5), Heroes: v(6), Hirelings: v(7), Monsters: v(8), Rating: v(9),
+		ClanY: v(10), ClanDY: v(11), ClanRankX: v(12), ClanNameX: v(13), ClanRatingX: v(14)}
 	if bad != nil {
 		return nil, bad
 	}

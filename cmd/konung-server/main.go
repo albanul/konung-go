@@ -142,6 +142,9 @@ func run(dataDir string, st settings) error {
 			if err := store.JoinSession(p.Name); err != nil {
 				log.Printf("session: %v", err)
 			}
+			// The «Рейтинг» table now too (a port addition: the original
+			// sends it only at a session's end, 0x0043465F).
+			sendRating(srv, store, p)
 		},
 		OnLeave: func(p netplay.PlayerInfo) {
 			log.Printf("left: %s", p.Name)
@@ -219,6 +222,11 @@ func run(dataDir string, st settings) error {
 				log.Printf("session end: %v", err)
 			} else {
 				log.Print("session over: ratings updated")
+				// Every player in the world gets the new table
+				// (0x00446FA0, 0x0043465F).
+				for _, p := range srv.WorldPlayers() {
+					sendRating(srv, store, p)
+				}
 			}
 			for _, p := range srv.Session().Players {
 				store.JoinSession(p.Name) // still online: in the next session too
@@ -246,6 +254,19 @@ func run(dataDir string, st settings) error {
 			}
 			return nil
 		}
+	}
+}
+
+// sendRating sends player p its «Рейтинг» table (the ten rows,
+// lanstore.Store.RatingTable).
+func sendRating(srv *netplay.Server, store *lanstore.Store, p netplay.PlayerInfo) {
+	rows, err := store.RatingTable(p.Name)
+	if err != nil {
+		log.Printf("rating table: %v", err)
+		return
+	}
+	if err := srv.SendRating(p.ID, netplay.RatingPayload{Rows: rows}); err != nil {
+		log.Printf("rating table to %s: %v", p.Name, err)
 	}
 }
 

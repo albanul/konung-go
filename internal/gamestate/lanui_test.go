@@ -23,6 +23,11 @@ func TestParseLANExe(t *testing.T) {
 	if r := x.LoginRects[LoginRow0+8]; r != (Rect{76, 454, 354, 478}) {
 		t.Errorf("last row = %+v", r)
 	}
+	// The «Рейтинг» screen at 800×600 (0x004797E8).
+	if r := x.Rating; r != (LANRatingLayout{PlayerY: 53, PlayerDY: 19, Rank: 92, Name: 129, Clan: 282, Amulets: 476,
+		Heroes: 517, Hirelings: 557, Monsters: 597, Rating: 658, ClanY: 300, ClanDY: 19, ClanRankX: 92, ClanNameX: 129, ClanRatingX: 389}) {
+		t.Errorf("rating layout = %+v", r)
+	}
 	// Nested menu hotspots: the first match wins.
 	if HitRects(x.MenuRects, 300, 140) != 0 || HitRects(x.MenuRects, 300, 320) != 2 || HitRects(x.MenuRects, 300, 430) != 4 || HitRects(x.MenuRects, 100, 100) != -1 {
 		t.Error("menu hit test")

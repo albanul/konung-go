@@ -136,3 +136,21 @@ func (s *Server) worldChat(c ChatPayload) {
 		}
 	}
 }
+
+// WorldPlayers are the players in the world (entered), in join order.
+func (s *Server) WorldPlayers() []PlayerInfo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []PlayerInfo
+	for _, id := range s.order {
+		if p := s.players[id]; p.entered {
+			out = append(out, p.info)
+		}
+	}
+	return out
+}
+
+// SendRating sends a player its «Рейтинг» table.
+func (s *Server) SendRating(playerID string, r RatingPayload) error {
+	return s.Send(playerID, mustMessage(MsgRating, r))
+}

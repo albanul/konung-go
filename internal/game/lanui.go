@@ -1,6 +1,7 @@
 package game
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -94,6 +95,11 @@ type lanUI struct {
 
 	cfg     gamestate.LANConfig
 	cfgPath string
+	// rating is the «Рейтинг» table as last received (MsgRating), kept in
+	// hiscoresPath (HISCORES.DAT, the original's client cache: read at
+	// start 0x004313EC, written 0x004173CE).
+	rating       []gamestate.LANRatingRow
+	hiscoresPath string
 
 	client   *netplay.Client
 	hero     *netplay.Hero // the account's hero from a server with accounts
@@ -164,8 +170,9 @@ func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath, newPath str
 	}
 	u := &lanUI{
 		exe: exe, font: newGameFont(slot), focusFnt: assets.largeFont,
-		cfgPath: filepath.Join(gameDir, gamestate.LANConfigFile),
-		results: make(chan func(), 16), hover: -1, model: gamestate.LoginModels[0],
+		cfgPath:      filepath.Join(gameDir, gamestate.LANConfigFile),
+		hiscoresPath: filepath.Join(gameDir, gamestate.LANHiscoresFile),
+		results:      make(chan func(), 16), hover: -1, model: gamestate.LoginModels[0],
 	}
 	for _, f := range me {
 		u.menu = append(u.menu, toEbiten(f))
@@ -178,6 +185,9 @@ func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath, newPath str
 	u.msgText[msgNameTaken] = [2][]byte{cp866("Ошибка: Игрок с таким именем уже в игре"), nil}
 	u.msgText[msgBadHero] = [2][]byte{cp866("Ошибка: Сервер не принял нового героя"), nil}
 
+	if b, err := os.ReadFile(u.hiscoresPath); err == nil {
+		u.rating = gamestate.ParseLANHiscores(b)
+	}
 	data, _ := os.ReadFile(u.cfgPath)
 	u.cfg = gamestate.ParseLANConfig(data)
 	u.name = gamestate.TextField{Text: u.cfg.Name, Max: gamestate.FieldName}
@@ -382,6 +392,11 @@ func (u *lanUI) readSession() {
 					continue // before the world: the chat starts empty there (0x0042F6C2)
 				}
 				u.worldMsgs = append(u.worldMsgs, m)
+			case netplay.MsgRating:
+				var r netplay.RatingPayload
+				if m.Decode(&r) == nil {
+					u.setRating(r.Rows[:])
+				}
 			case netplay.MsgClock:
 				var c netplay.ClockPayload
 				if m.Decode(&c) == nil {
@@ -725,8 +740,8 @@ func (u *lanUI) draw(dst *ebiten.Image) {
 			drawAt(dst, u.menu[f], lanMenuLabelX, lanMenuLabelY)
 		}
 	case lanRating:
-		// The rating rows come from the server (not ported): the frame only.
 		dst.DrawImage(u.play[playRating], nil)
+		u.drawRating(dst)
 	case lanLogin, lanWaiting:
 		u.drawLogin(dst)
 	case lanNewHero:
@@ -845,5 +860,70 @@ func heroValues(h *netplay.Hero) [14]string {
 	return [14]string{
 		n(h.Charisma), n(h.Strength), n(h.Dexterity), n(h.Endurance), n(h.Gold), weight, n(gamestate.LANMaxParty(byte(h.Class), h.Charisma)),
 		n(h.Fencing / 100), n(h.Archery / 100), n(h.Identification), n(h.Trade), n(h.Smithing), n(h.Carpentry), n(h.Herbalism),
+	}
+}
+
+// setRating keeps the «Рейтинг» table the server sent and writes it to
+// HISCORES.DAT, as the original's client keeps it between runs.
+func (u *lanUI) setRating(rows []gamestate.LANRatingRow) {
+	u.rating = append([]gamestate.LANRatingRow(nil), rows...)
+	if u.hiscoresPath == "" {
+		return
+	}
+	if err := os.WriteFile(u.hiscoresPath, gamestate.EncodeLANHiscores(u.rating), 0o644); err != nil {
+		log.Printf("write %s: %v", u.hiscoresPath, err)
+	}
+}
+
+// ratingText is a text of the «Рейтинг» screen at its place; own marks
+// the own name's or the own clan's row (the highlight font).
+type ratingText struct {
+	text []byte
+	x, y int
+	own  bool
+}
+
+// ratingTexts are the «Рейтинг» rows' texts (0x004271AC): for each row with
+// a name the player's rank, name, clan, amulets, the three kill counters
+// and rating ÷ 10, and for each with a clan name the clan's rank, name and
+// rating ÷ 10, at the exe's places; own is the row of the own name, or of
+// the own clan.
+func ratingTexts(rows []gamestate.LANRatingRow, l gamestate.LANRatingLayout, name, clan []byte) []ratingText {
+	var out []ratingText
+	num := func(v int) []byte { return []byte(strconv.Itoa(v)) }
+	for k, r := range rows {
+		if r.Name != "" {
+			own := bytes.Equal(cp866(r.Name), name)
+			y := l.PlayerY + k*l.PlayerDY
+			for _, c := range []struct {
+				t []byte
+				x int
+			}{{num(r.Rank), l.Rank}, {cp866(r.Name), l.Name}, {cp866(r.Clan), l.Clan}, {num(r.Amulets), l.Amulets},
+				{num(r.KillsHeroes), l.Heroes}, {num(r.KillsHirelings), l.Hirelings}, {num(r.KillsMonsters), l.Monsters},
+				{num(r.Rating / 10), l.Rating}} {
+				out = append(out, ratingText{c.t, c.x, y, own})
+			}
+		}
+		if r.ClanName != "" {
+			own := bytes.Equal(cp866(r.ClanName), clan)
+			y := l.ClanY + k*l.ClanDY
+			out = append(out, ratingText{num(r.ClanRank), l.ClanRankX, y, own},
+				ratingText{cp866(r.ClanName), l.ClanNameX, y, own},
+				ratingText{num(r.ClanRating / 10), l.ClanRatingX, y, own})
+		}
+	}
+	return out
+}
+
+// drawRating draws the «Рейтинг» rows: the own name's and clan's in the
+// highlight font (0x007AB36F), the rest in 0x007A5142 (the port's stand-in
+// pair).
+func (u *lanUI) drawRating(dst *ebiten.Image) {
+	for _, t := range ratingTexts(u.rating, u.exe.Rating, u.name.Text, u.clan.Text) {
+		f := u.font
+		if t.own {
+			f = u.focusFnt
+		}
+		f.drawLine(dst, t.text, t.x, t.y)
 	}
 }

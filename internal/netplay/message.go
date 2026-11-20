@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 18
+const ProtocolVersion = 19
 
 // MsgType identifies a message.
 type MsgType int
@@ -63,6 +63,7 @@ const (
 	MsgAmulets                         // server → client: AmuletsPayload, the amulet parts and the nations' counts (amulets.go; the original's 0x16)
 	MsgPlayers                         // server → client: PlayersPayload, the players in the world and the own quest log (players.go; Q)
 	MsgLooks                           // server → client: LooksPayload, the equipment of characters that changed it (looks.go)
+	MsgRating                          // server → client: RatingPayload, the «Рейтинг» table (the original's ten 0x06)
 )
 
 var msgNames = map[MsgType]string{
@@ -72,7 +73,7 @@ var msgNames = map[MsgType]string{
 	MsgClock: "clock", MsgHero: "hero", MsgOrder: "order", MsgView: "view", MsgPlayer: "player",
 	MsgEvents: "events", MsgMapChange: "map-change", MsgInventory: "inventory", MsgPiles: "piles",
 	MsgPileWindow: "pile-window", MsgDialogue: "dialogue", MsgParty: "party", MsgAmulets: "amulets",
-	MsgPlayers: "players", MsgLooks: "looks",
+	MsgPlayers: "players", MsgLooks: "looks", MsgRating: "rating",
 }
 
 func (t MsgType) String() string {
@@ -291,6 +292,13 @@ func (p Position) Valid() bool {
 type EnterPayload struct {
 	Position
 	Slot int `json:"slot"`
+}
+
+// RatingPayload is MsgRating: the «Рейтинг» table's ten rows as the
+// player gets them (gamestate.LANRatingTable; the original sends them as
+// ten messages 0x06, 0x0043465F).
+type RatingPayload struct {
+	Rows [gamestate.LANRatingRows]gamestate.LANRatingRow `json:"rows"`
 }
 
 // ChatPayload is a chat line. A client sends the text and whether it is

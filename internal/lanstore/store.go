@@ -593,7 +593,8 @@ type RatingRow struct {
 }
 
 // Ratings returns the accounts by rating, best first, with each clan's
-// rating (the members' mean, a guess from the code shape) and rank.
+// rating (the members' mean) and rank: a listing for the server's own use;
+// the table the players get is RatingTable.
 func (s *Store) Ratings(limit int) ([]RatingRow, error) {
 	rows, err := s.db.Query(`
 		WITH clan AS (
@@ -651,4 +652,50 @@ func checkPassword(stored, pw string) bool {
 	}
 	got, err := pbkdf2.Key(sha256.New, pw, salt, iter, len(want))
 	return err == nil && subtle.ConstantTimeCompare(got, want) == 1
+}
+
+// RatingTable is the «Рейтинг» table's ten rows for player own
+// (gamestate.LANRatingTable over every account in account order and the
+// clans by index), as the server sends them at a session's end.
+func (s *Store) RatingTable(own string) ([gamestate.LANRatingRows]gamestate.LANRatingRow, error) {
+	var none [gamestate.LANRatingRows]gamestate.LANRatingRow
+	var clans []string
+	crows, err := s.db.Query(`SELECT id, name FROM clans ORDER BY id`)
+	if err != nil {
+		return none, err
+	}
+	for crows.Next() {
+		var id int
+		var name string
+		if err := crows.Scan(&id, &name); err != nil {
+			crows.Close()
+			return none, err
+		}
+		for len(clans) <= id {
+			clans = append(clans, "")
+		}
+		clans[id] = name
+	}
+	crows.Close()
+	if err := crows.Err(); err != nil {
+		return none, err
+	}
+	rows, err := s.db.Query(`SELECT name, clan_id, amulets, kills_heroes, kills_hirelings, kills_monsters, rating
+		FROM accounts ORDER BY id`)
+	if err != nil {
+		return none, err
+	}
+	defer rows.Close()
+	var accounts []gamestate.LANRatingAccount
+	for rows.Next() {
+		var a gamestate.LANRatingAccount
+		if err := rows.Scan(&a.Name, &a.Clan, &a.Amulets, &a.KillsHeroes, &a.KillsHirelings, &a.KillsMonsters, &a.Rating); err != nil {
+			return none, err
+		}
+		accounts = append(accounts, a)
+	}
+	if err := rows.Err(); err != nil {
+		return none, err
+	}
+	return gamestate.LANRatingTable(accounts, clans, own), nil
 }

@@ -509,3 +509,35 @@ func TestSessionClanIsAccounts(t *testing.T) {
 		}
 	}
 }
+
+// The rating table from the accounts: ranks, ratings ÷ 10, the clans by
+// their members' mean.
+func TestRatingTable(t *testing.T) {
+	s, _ := open(t)
+	s.Login(netplay.JoinInfo{Name: "A", Password: "p", Clan: "Викинги"})
+	s.Login(netplay.JoinInfo{Name: "B", Password: "p", Clan: "Варяги"})
+	s.JoinSession("A")
+	s.JoinSession("B")
+	s.Score("A", Amulet, 25)
+	if err := s.EndSession(); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.RatingTable("B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A 1500, B 500 (R̄ = 1000, P = 25, p̄ = 12.5: ±500), sent ÷ 10.
+	if rows[0].Name != "A" || rows[0].Clan != "Викинги" || rows[0].Rating != 150 || rows[0].Amulets != 1 || rows[1].Name != "B" || rows[1].Rank != 2 {
+		t.Errorf("players: %+v / %+v", rows[0], rows[1])
+	}
+	if rows[0].ClanName != "Викинги" || rows[0].ClanRating != 150 || rows[0].ClanRank != 1 {
+		t.Errorf("first clan: %+v", rows[0])
+	}
+	clans := map[string]bool{}
+	for _, r := range rows {
+		clans[r.ClanName] = r.ClanName != ""
+	}
+	if !clans["Византийцы"] || !clans["Русские"] || !clans["Варяги"] {
+		t.Errorf("clans listed: %v (the first clan, «Византийцы», too)", clans)
+	}
+}
