@@ -68,8 +68,11 @@ const KindRetreat = 0x49
 // this map that are not villages (unless alarmed) and not of kind 0x53, the
 // living member inside the attack range closest to cell h (gamestate.Dist).
 // The game centres the range on the leader; the port on the member asking.
-// -1 when there is none.
-func (s *World) NearestEnemy(h mapdata.Cell) int {
+// In a LAN world party is the asking member's group (its player's slot): an
+// alarmed village counts only when that player is one of its aggressors
+// (a port rule, as Foe: the village fights its aggressors only). -1 when
+// there is none.
+func (s *World) NearestEnemy(h mapdata.Cell, party int) int {
 	best, bestD := -1, 1<<30
 	for _, n := range s.NPCs {
 		e := &s.Game.Entities[n.Entity]
@@ -79,6 +82,11 @@ func (s *World) NearestEnemy(h mapdata.Cell) int {
 		g := s.Game.Groups[e.Group]
 		if (g.Kind&0x80 != 0 && g.Alarm != gamestate.AlarmAttack) || g.Kind == 0x53 {
 			continue
+		}
+		if s.LAN {
+			if st := s.Game.SettlementOf(e.Group); st != nil && !st.Aggressor(party) {
+				continue
+			}
 		}
 		dr, dc := n.Cell.Row-h.Row, n.Cell.Col-h.Col
 		if max(dr, -dr) > AttackRangeRows+AttackRangeRows/2 || max(dc, -dc) > AttackRangeCols+AttackRangeCols/2 {

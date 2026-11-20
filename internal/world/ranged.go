@@ -115,7 +115,7 @@ func (s *World) ShootBuilding(m *Member, e *gamestate.Entity) {
 // of the enemy nearest to the shooter) and its first living member with a
 // clear shot.
 func (s *World) FirstShootable(w *Walker, e *gamestate.Entity) int {
-	near := s.NearestEnemy(w.Cell)
+	near := s.NearestEnemy(w.Cell, e.Group)
 	if near < 0 {
 		return -1
 	}

@@ -292,3 +292,60 @@ func TestVillageAlarmArea(t *testing.T) {
 		t.Fatal("leaving the area forgave Ivar")
 	}
 }
+
+// The A key goes for an alarmed village's villagers only when the player
+// is one of its aggressors (a port rule, as world.Foe): Olaf angered the
+// village, Ivar standing among its villagers attacks none of them; once
+// Ivar is an aggressor too, he does.
+func TestAttackKeyLeavesOthersVillage(t *testing.T) {
+	w := load(t)
+	const ivar, olaf, m = 0, 1, 4 // Драгомир's type, in his village
+	for _, slot := range []int{ivar, olaf} {
+		if _, _, err := w.AddPlayer(slot, 1, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st := w.Game.SettlementOnMap(m)
+	gr := &w.Game.Groups[st.Group]
+	v := plainVillager(t, w, m)
+	nextTo(t, w, ivar, v)
+	nextTo(t, w, olaf, v)
+	st.MarkAggressor(olaf)
+	for range gamestate.UpkeepTicks + 1 {
+		w.Step()
+		keepAlive(w, m, olaf)
+	}
+	if gr.Alarm != gamestate.AlarmAttack || gr.Enemy != olaf {
+		t.Fatalf("alarm %d enemy %d, want an attack on Olaf", gr.Alarm, gr.Enemy)
+	}
+	villager := func(i int) bool { return i >= 0 && w.Game.Entities[i].Group == st.Group }
+	w.Attack(ivar)
+	for range 60 {
+		w.Step()
+		keepAlive(w, m, olaf)
+		if mem, _ := w.Maps[m].Member(ivar); mem != nil && villager(mem.Target) {
+			t.Fatalf("Ivar went for villager %d of a village angry at Olaf only", mem.Target)
+		}
+	}
+	st.MarkAggressor(ivar)
+	w.Attack(ivar)
+	for k := 0; ; k++ {
+		w.Step()
+		keepAlive(w, m, olaf)
+		keepAlive(w, m, ivar)
+		if mem, _ := w.Maps[m].Member(ivar); mem != nil && villager(mem.Target) {
+			break
+		}
+		if k == 60 {
+			t.Fatal("Ivar, an aggressor, attacked no villager")
+		}
+	}
+}
+
+// keepAlive keeps slot's hero on map m from dying (the tests are about who
+// fights whom, not the fight).
+func keepAlive(w *World, m, slot int) {
+	if mem, e := w.Maps[m].Member(slot); mem != nil {
+		e.HP = gamestate.HPFull
+	}
+}

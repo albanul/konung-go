@@ -243,7 +243,7 @@ func (s *World) MemberTick(m *Member) {
 		if m.Walking {
 			return // the step in progress ends first
 		}
-		t := s.NearestEnemy(m.Cell)
+		t := s.NearestEnemy(m.Cell, s.Party[m.K].Group)
 		if t < 0 {
 			s.EndFight(m) // no enemy left: the intent ends (0x0041E453)
 			return

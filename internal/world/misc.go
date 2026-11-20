@@ -68,7 +68,7 @@ func (w access) EnemyGroup() int {
 	if l == nil {
 		return -1
 	}
-	i := w.s.NearestEnemy(l.Cell)
+	i := w.s.NearestEnemy(l.Cell, w.s.Party[l.K].Group)
 	if i < 0 {
 		return -1
 	}
