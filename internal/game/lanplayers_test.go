@@ -33,9 +33,9 @@ func TestLANQWindow(t *testing.T) {
 		t.Fatal("no LAN list in window 2")
 	}
 	want := []lanQRow{
-		{cp866("Ivar"), true},
-		{cp866("Olaf клан Волки Владелец амулета"), false},
-		{cp866("Rurik"), true},
+		{cp866("Ivar - Викинги"), true},
+		{cp866("Olaf клан Волки - Русские, Владелец амулета"), false},
+		{cp866("Rurik - Викинги"), true},
 	}
 	if len(q.rows) != len(want) {
 		t.Fatalf("rows %d, want %d", len(q.rows), len(want))
@@ -51,7 +51,7 @@ func TestLANQWindow(t *testing.T) {
 	// The amulet passes to the ground: the holder text goes with the next
 	// amulet state.
 	s.applyAmulets(netplay.AmuletsPayload{Parts: [3]netplay.AmuletPart{{Kind: 1, Holder: -1}}, Nations: [3]int{4, 0, 2}})
-	if r := s.talk.lan.rows[1]; !bytes.Equal(r.text, cp866("Olaf клан Волки")) {
+	if r := s.talk.lan.rows[1]; !bytes.Equal(r.text, cp866("Olaf клан Волки - Русские")) {
 		t.Errorf("row after the drop: %q", r.text)
 	}
 	// Drawing the open window does not fail.

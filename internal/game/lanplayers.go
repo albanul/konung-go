@@ -17,6 +17,9 @@ const (
 	lanClanText   = " клан "            // 0x004703C0
 	lanHolderText = " Владелец амулета" // 0x004703C7
 	lanTeamsText  = "Счет команд"       // 0x004703D9
+	// lanTeamSep comes before the player's team name (a port addition:
+	// the original shows the team only by the font; CP866 has no dash).
+	lanTeamSep = " - "
 )
 
 // lanQList is what window 2 shows in a LAN world besides the quest log.
@@ -64,10 +67,13 @@ func (s *startScene) lanQ() *lanQList {
 		if p.Clan != "" {
 			text = append(append(text, cp866(lanClanText)...), cp866(p.Clan)...)
 		}
+		if p.Nation >= 0 && p.Nation < len(gamestate.NationNames) {
+			text = append(append(text, cp866(lanTeamSep)...), cp866(gamestate.NationNames[p.Nation])...)
+		}
 		if s.amulets != nil {
 			for _, a := range s.amulets.Parts {
 				if a.Kind > 0 && a.Holder == p.Slot {
-					text = append(text, cp866(lanHolderText)...)
+					text = append(append(text, ','), cp866(lanHolderText)...) // the comma: a port addition
 					break
 				}
 			}
