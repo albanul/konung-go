@@ -13,13 +13,16 @@ package netplay
 // to every player when it changes, with the player's own quest log, since
 // the quest flags live on the server.
 
-// ListedPlayer is one player in the world: its slot, account name, clan
-// and nation (hero type: 0 славяне, 1 викинги, 2 византийцы).
+// ListedPlayer is one player in the world: its slot, account name, clan,
+// nation (hero type: 0 славяне, 1 викинги, 2 византийцы) and the map its
+// hero is on (the original's player group +0x1B, which the map window's
+// counts and hover list read: 0x0041E8EC, 0x00416B5E).
 type ListedPlayer struct {
 	Slot   int    `json:"slot"`
 	Name   string `json:"name"`
 	Clan   string `json:"clan,omitempty"`
 	Nation int    `json:"nation"`
+	Map    int    `json:"map"`
 }
 
 // PlayersPayload is the player list (by slot) and the receiving player's

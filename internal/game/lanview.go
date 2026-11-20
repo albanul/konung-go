@@ -518,10 +518,19 @@ func (s *startScene) viewStatus(i int) ([]byte, bool) {
 	return cp866(t), true
 }
 
-// playerCounts is the number of heroes per map for the LAN map window: the
-// own hero and the other players' heroes on its map (the server tells only
-// about the own map).
+// playerCounts is the number of heroes per map for the LAN map window:
+// from the server's player list (MsgPlayers), or before it arrives the own
+// hero and the other players' heroes on its map.
 func (s *startScene) playerCounts() map[int]int {
+	if s.view != nil && s.view.list != nil {
+		// Every player's map from the server's list (the original counts
+		// the 16 player groups' +0x1B).
+		c := map[int]int{}
+		for _, p := range s.view.list.Players {
+			c[p.Map]++
+		}
+		return c
+	}
 	c := map[int]int{s.MapNumber: 1}
 	if s.view != nil {
 		for slot := range s.view.players {

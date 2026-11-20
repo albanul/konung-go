@@ -369,12 +369,14 @@ func hero(q querier, id int64) (*netplay.Hero, error) {
 	err := q.QueryRow(`SELECT level, class, model, palette, free_points, gold,
 		charisma, strength, dexterity, endurance,
 		fencing, archery, identification, trade, smithing, carpentry, herbalism,
-		rating, kills_heroes, kills_hirelings, kills_monsters, amulets, look, hp, poison
+		rating, kills_heroes, kills_hirelings, kills_monsters, amulets, look, hp, poison,
+		COALESCE((SELECT name FROM clans WHERE clans.id = accounts.clan_id), '')
 		FROM accounts WHERE id = ?`, id).Scan(
 		&h.Level, &h.Class, &h.Model, &h.Palette, &h.FreePoints, &h.Gold,
 		&h.Charisma, &h.Strength, &h.Dexterity, &h.Endurance,
 		&h.Fencing, &h.Archery, &h.Identification, &h.Trade, &h.Smithing, &h.Carpentry, &h.Herbalism,
-		&h.Rating, &h.KillsHeroes, &h.KillsHirelings, &h.KillsMonsters, &h.Amulets, &h.Look, &h.HP, &h.Poison)
+		&h.Rating, &h.KillsHeroes, &h.KillsHirelings, &h.KillsMonsters, &h.Amulets, &h.Look, &h.HP, &h.Poison,
+		&h.Clan)
 	return h, err
 }
 

@@ -478,3 +478,34 @@ func TestMigrateV4(t *testing.T) {
 		t.Errorf("migrated hero %+v, %v", h, err)
 	}
 }
+
+// The session lists the account's clan (the hero record's +0x81 in the
+// original's player list), not the clan field a later login sends.
+func TestSessionClanIsAccounts(t *testing.T) {
+	s, _ := open(t)
+	srv, err := netplay.Listen("127.0.0.1:0", netplay.ServerConfig{Accounts: s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	join := func(clan string) *netplay.Client {
+		t.Helper()
+		c, err := netplay.Dial(srv.Addr().String(), netplay.JoinInfo{Name: "Ivar", Password: "pw", Clan: clan}, netplay.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	c := join("Северный")
+	c.Close()
+	c = join("Русские")
+	defer c.Close()
+	if c.Hero == nil || c.Hero.Clan != "Северный" {
+		t.Fatalf("account clan %+v", c.Hero)
+	}
+	for _, p := range c.Session.Players {
+		if p.Name == "Ivar" && p.Clan != "Северный" {
+			t.Errorf("session clan %q, want Северный", p.Clan)
+		}
+	}
+}

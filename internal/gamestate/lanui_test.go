@@ -84,4 +84,17 @@ func TestLANMapWindow(t *testing.T) {
 	if x.MapMarkers[1] != image.Pt(202, 13) || x.MapMarkers[4] != image.Pt(14, 178) {
 		t.Errorf("markers 1, 4 = %v, %v", x.MapMarkers[1], x.MapMarkers[4])
 	}
+	// The location names (0x00479944) are the grid cells: row letter A–D
+	// from the top, column 1–5 from the left, where each map's region lies
+	// in the picture (5 × 4 tiles).
+	for m := 1; m <= LANMaps; m++ {
+		p := x.MapMarkers[m].Add(image.Pt(12, 12))
+		want := string([]byte{byte('A' + p.Y*4/x.Map.Area.Dy()), byte('1' + p.X*5/x.Map.Area.Dx())})
+		if got := string(x.MapNames[m]); got != want {
+			t.Errorf("map %d name %q, want %q", m, got, want)
+		}
+	}
+	if string(x.MapNames[1]) != "A3" || string(x.MapNames[3]) != "B3" || string(x.MapNames[20]) != "B5" {
+		t.Errorf("names 1, 3, 20 = %q %q %q", x.MapNames[1], x.MapNames[3], x.MapNames[20])
+	}
 }

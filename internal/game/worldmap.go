@@ -33,12 +33,9 @@ type worldMapWindow struct {
 	// counts are the players per LAN map (the own hero and the remote
 	// heroes, startScene.playerCounts), set before each draw.
 	counts map[int]int
-	// amuletIcons and amuletLine are the LAN map's amulet status (draw
-	// 0x0041ED44), set before each draw: the three amulet items' icons
-	// (INTR slots, −1 none) and the line "славяне : викинги : византийцы
-	// minutes:seconds" (nil: no status).
-	amuletIcons [3]int
-	amuletLine  []byte
+	// hoverNames are the players on the LAN map under the pointer, set
+	// before each draw (startScene.lanMapHover).
+	hoverNames []lanQRow
 	// lan, when set, is the LAN version's map (draw 0x0041E8EC): its own
 	// picture (INTO640R.RES slot 179) and runs, every location shown,
 	// regions = map numbers, no travel by click.
@@ -50,6 +47,7 @@ type worldMapWindow struct {
 type lanWorldMap struct {
 	m               resfmt.WorldMap
 	markers         [gamestate.LANMaps + 1]image.Point
+	names           [gamestate.LANMaps + 1][]byte // location names (gamestate.LANExe.MapNames)
 	reveal, current image.Image
 }
 
@@ -72,7 +70,7 @@ func newLANWorldMap(exe *gamestate.LANExe, into, graph []byte) (*lanWorldMap, er
 	if err != nil {
 		return nil, err
 	}
-	return &lanWorldMap{m: exe.Map, markers: exe.MapMarkers, reveal: reveal, current: current}, nil
+	return &lanWorldMap{m: exe.Map, markers: exe.MapMarkers, names: exe.MapNames, reveal: reveal, current: current}, nil
 }
 
 func newWorldMapWindow(t *resfmt.ExeTables) *worldMapWindow {
@@ -85,7 +83,7 @@ func newWorldMapWindow(t *resfmt.ExeTables) *worldMapWindow {
 func (w *worldMapWindow) regionAt(g *gamestate.Game, x, y int) (m int, inArea bool) {
 	if w.lan != nil {
 		// The LAN hit test (0x004176AB) only names the location for the
-		// status line; there is no travel and no single-player name.
+		// status line (lanRegionAt); there is no travel.
 		_, ok := w.lan.m.RegionAt(x-viewLeft-w.lan.m.Area.Min.X, y-viewTop-w.lan.m.Area.Min.Y)
 		return 0, ok
 	}
@@ -99,10 +97,23 @@ func (w *worldMapWindow) regionAt(g *gamestate.Game, x, y int) (m int, inArea bo
 	return region + 1, true
 }
 
+// lanRegionAt is the LAN map's hit test (0x004176AB, 0x0044D3D0 on the
+// map's runs): the map number under screen point (x, y), 0 for none.
+func (w *worldMapWindow) lanRegionAt(x, y int) int {
+	if w.lan == nil {
+		return 0
+	}
+	r, ok := w.lan.m.RegionAt(x-viewLeft-w.lan.m.Area.Min.X, y-viewTop-w.lan.m.Area.Min.Y)
+	if !ok || r < 1 || r > gamestate.LANMaps {
+		return 0
+	}
+	return r
+}
+
 // draw tiles the view (tiled: the T setting), draws the map picture (slot 4)
 // at the view's top-left and the known locations over it, the current one
 // tinted red.
-func (w *worldMapWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, mapNumber int, tiled bool, font *gameFont) {
+func (w *worldMapWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, mapNumber int, tiled bool, font, hi *gameFont) {
 	if !w.open {
 		return
 	}
@@ -112,8 +123,8 @@ func (w *worldMapWindow) draw(dst *ebiten.Image, h *hud, g *gamestate.Game, mapN
 	view := dst.SubImage(image.Rect(viewLeft, viewTop, viewRight+1, viewBottom+1)).(*ebiten.Image)
 	h.draw(view, resfmt.WorldMapSlot, viewLeft, viewTop)
 	if w.lan != nil {
-		w.drawLAN(view, mapNumber, font)
-		w.drawAmulets(dst, h, font)
+		w.drawLAN(view, mapNumber, font) // the status line: drawLANStatus
+		w.drawHoverNames(dst, h, hi, font)
 		return
 	}
 	if w.overlay == nil || w.known != g.KnownMaps || w.here != mapNumber {
@@ -189,25 +200,45 @@ func (w *worldMapWindow) drawLAN(view *ebiten.Image, mapNumber int, font *gameFo
 	}
 }
 
-// drawAmulets is the LAN map window's amulet status (0x0041ED44): the
-// nations' delivered amulets and the session's time left (font 0x0078C1A0)
-// and the three amulet items' icons below each other (LAN_KONG.EXE's
-// 800×600 places 0x0047EFE4: the line at (678, 5), the icons at x 700, y 15,
-// 70, 125, right of its map area). Port rule: the single-player HUD on the
-// left moves the map area 140 px right, so the line is drawn right-aligned
-// at the screen's right edge and the icons in the column right of the map
-// picture, at the original's heights.
-func (w *worldMapWindow) drawAmulets(dst *ebiten.Image, h *hud, font *gameFont) {
-	if w.amuletLine == nil || font == nil {
+// lanMapStatus is the status line over the LAN map window's area
+// (0x00416B24): over a map its location name ("B3": the grid cell,
+// gamestate.LANExe.MapNames), over the rest of the area nothing; ok is
+// false outside the area, where the normal status rules apply.
+func (s *startScene) lanMapStatus(mx, my int) (text []byte, ok bool) {
+	if m := s.wmap.lanRegionAt(mx, my); m != 0 {
+		return s.wmap.lan.names[m], true
+	}
+	_, inArea := s.wmap.regionAt(s.Game, mx, my)
+	return nil, inArea
+}
+
+// LAN hover list layout (0x00416B5E): 13 px a line, four lines a column.
+const (
+	lanHoverLine = 13
+	lanHoverRows = 4
+)
+
+// drawHoverNames is the LAN map window's list of the players on the map
+// under the pointer (0x00416B5E): by slot, each name in font 0x0079295E
+// when the player is of the own hero's nation, else 0x0078C1A0 (the port:
+// the highlight font and the small font), from the status line's left
+// (0x00A6EBF0; the port's status line starts at viewLeft + 10) just below
+// the parchment (its INTR slot 4's height), four names a column, 13 px
+// apart, the columns (right − left − 10) / 4 apart.
+func (w *worldMapWindow) drawHoverNames(dst *ebiten.Image, h *hud, hi, font *gameFont) {
+	if len(w.hoverNames) == 0 || font == nil {
 		return
 	}
-	font.drawLine(dst, w.amuletLine, viewRight-4-font.width(w.amuletLine), 5)
-	for k, n := range w.amuletIcons {
-		img := h.slot(n)
-		if n < 0 || img == nil {
-			continue
+	x0, y0 := viewLeft+10, viewTop
+	if img := h.slot(resfmt.WorldMapSlot); img != nil {
+		y0 += img.Bounds().Dy()
+	}
+	colW := (viewRight - x0 - 10) / lanHoverRows
+	for k, r := range w.hoverNames {
+		f := font
+		if r.own && hi != nil {
+			f = hi
 		}
-		x := viewRight + 1 - 8 - img.Bounds().Dx()
-		drawAt(dst, img, x, [3]int{15, 70, 125}[k])
+		f.drawLine(dst, r.text, x0+colW*(k/lanHoverRows), y0+lanHoverLine*(k%lanHoverRows))
 	}
 }

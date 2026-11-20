@@ -106,3 +106,26 @@ func (w *talkWindow) drawLANList(dst *ebiten.Image, x, y, stripTop int) {
 // lanViewRight is the game view's right edge at 800×600 (0x00A6EBFC =
 // 0x31F, 0x0041C0AA).
 const lanViewRight = 0x31F
+
+// lanMapPlayers are the players on map m for the map window's hover list
+// (0x00416B5E): by slot, those whose hero is on m, each marked when of the
+// own hero's nation; none for m = 0 or before the first player list.
+func (s *startScene) lanMapPlayers(m int) []lanQRow {
+	v := s.view
+	if m == 0 || v == nil || v.list == nil {
+		return nil
+	}
+	own := -1
+	for _, p := range v.list.Players {
+		if p.Slot == v.slot {
+			own = p.Nation
+		}
+	}
+	var rows []lanQRow
+	for _, p := range v.list.Players {
+		if p.Map == m {
+			rows = append(rows, lanQRow{text: cp866(p.Name), own: p.Nation == own})
+		}
+	}
+	return rows
+}

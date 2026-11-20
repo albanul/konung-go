@@ -802,6 +802,12 @@ func (s *startScene) statusText() []byte {
 	if s.talk.open() {
 		return nil // 0x00424054 shows the hover line only with no window open
 	}
+	if s.wmap.open && s.wmap.lan != nil {
+		mx, my := ebiten.CursorPosition()
+		if t, ok := s.lanMapStatus(mx, my); ok {
+			return t
+		}
+	}
 	if s.wmap.open {
 		// 0x004240D0: over a known location its name (0x0045B3F4); over
 		// the rest of the area nothing.
@@ -901,12 +907,18 @@ const messageFrames = 12
 func (s *startScene) showMessage(m []byte) { s.msg, s.msgEnd = m, s.gameFrame()+messageFrames }
 
 // cursorSprite is the GRAPH.RES Type 5 cursor to draw: the hand's sprite
-// (0x00A3E790, 0x00428AC0) over the HUD, the window and the bag strip, while
+// (0x00A3E790, 0x00428AC0) over the HUD, any open window (the map window
+// too: the world under it shows no cursor rules) and the bag strip, while
 // holding an item or digging; on the map the rules of 0x00428A50
 // (characterCursor, piles, occupied cells).
 func (s *startScene) cursorSprite() int {
 	mx, my := ebiten.CursorPosition()
-	if !inView(mx, my) || s.inv.open || s.talk.open() || s.trade.open() || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
+	return s.cursorSpriteAt(mx, my)
+}
+
+// cursorSpriteAt is cursorSprite with the pointer at (mx, my).
+func (s *startScene) cursorSpriteAt(mx, my int) int {
+	if !inView(mx, my) || s.inv.open || s.talk.open() || s.trade.open() || s.wmap.open || s.hand.Holding() || s.hand.Digging() || (s.inv.showStrip() && my >= s.inv.strip.y-1) {
 		return s.hand.Cursor
 	}
 	if s.fireReady() && s.hoveredBuilding != 0 {
@@ -1199,7 +1211,6 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	}
 	if s.Hero != nil {
 		s.drawHelp(screen)
-		s.drawSessionLeft(screen)
 	}
 	if len(s.Party) > 0 {
 		s.hud.Draw(screen, s.Party, *s.ButtonEntity(),
@@ -1221,9 +1232,13 @@ func (s *startScene) Draw(screen *ebiten.Image) {
 	}
 	if s.lan && s.wmap.open {
 		s.wmap.counts = s.playerCounts()
-		s.setAmuletStatus()
+		mx, my := ebiten.CursorPosition()
+		s.wmap.hoverNames = s.lanMapPlayers(s.wmap.lanRegionAt(mx, my))
 	}
-	s.wmap.draw(screen, s.hud, s.Game, s.MapNumber, s.tiling, s.font)
+	s.wmap.draw(screen, s.hud, s.Game, s.MapNumber, s.tiling, s.font, s.talk.hi)
+	if s.lan && s.Hero != nil {
+		s.drawLANStatus(screen)
+	}
 	if text := s.statusText(); text != nil {
 		// The status line in the bottom bar (0x0043195C, 0x0042F9B8), small font.
 		s.font.drawWrapped(screen, text, viewLeft+10, viewBottom+5, viewRight-viewLeft-15)

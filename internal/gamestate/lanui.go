@@ -33,6 +33,7 @@ const (
 	lanMapRowsVA    = 0x00477750
 	lanMapRunsVA    = 0x004714D0
 	lanMapMarkerXVA = 0x0047F004
+	lanMapNamesVA   = 0x00479944 // 20 × 0x28-byte location names, index map − 1 (0x00416B24)
 	lanMapMarkerYVA = 0x0047F058
 	lanMapMode      = 1 // 800×600
 )
@@ -66,6 +67,11 @@ type LANExe struct {
 	// relative to the area's top-left (index 0 unused).
 	Map        resfmt.WorldMap
 	MapMarkers [LANMaps + 1]image.Point
+	// MapNames[m] is map m's location name (CP866: "A3", "B2", … the grid
+	// cell, row letter A–D and column 1–5), shown in the status line when
+	// the pointer is over the map in the map window (0x00416B24; index 0
+	// unused).
+	MapNames [LANMaps + 1][]byte
 }
 
 // LANMaps is the number of LAN maps (MAPS.RES).
@@ -183,6 +189,13 @@ func ParseLANExe(exe []byte) (*LANExe, error) {
 	rect := image.Rect(ax, ay, ax+at32(area+8), ay+at32(area+12))
 	for m := 1; m <= LANMaps; m++ {
 		x.MapMarkers[m] = image.Pt(at32(lanMapMarkerXVA+4*m), at32(lanMapMarkerYVA+4*m))
+	}
+	names, err := at(lanMapNamesVA)
+	if err != nil || len(names) < LANMaps*0x28 {
+		return nil, fmt.Errorf("LAN_KONG.EXE: map names")
+	}
+	for m := 1; m <= LANMaps; m++ {
+		x.MapNames[m] = cString(names[(m-1)*0x28:][:0x28])
 	}
 	if bad != nil {
 		return nil, bad

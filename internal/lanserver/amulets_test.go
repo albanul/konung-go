@@ -3,6 +3,7 @@ package lanserver
 import (
 	"bytes"
 	"os"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -339,4 +340,35 @@ func TestAmuletsOverNetwork(t *testing.T) {
 		p, _ := b.amuletState()
 		return p.Nations == [3]int{0, 0, 1}
 	})
+}
+
+// The three parts lie on the ground at their places as visible piles, in
+// the piles a player on that map is sent (MsgPiles), each drawn with an
+// image (the part's ground image, or the heap for a pile of several).
+func TestAmuletPartsOnTheGround(t *testing.T) {
+	w, r := loadAmulets(t, 0)
+	for k := range 3 {
+		p := r.Points[k]
+		at, ok := w.Maps[p[0]].PileAt[mapdata.Cell{Row: p[1], Col: p[2]}]
+		if !ok || partAt(w, r, k) == 0 {
+			t.Fatalf("part %d not at its place %v", k, p)
+		}
+		pile := w.Game.Piles[at]
+		if !pile.Visible() {
+			t.Errorf("part %d: pile %d at %v is hidden (gold %d)", k, at, p, pile.Gold)
+		}
+		if img := w.Game.PileImage(w.Tables, pile); img < 0 {
+			t.Errorf("part %d: pile %d has no ground image", k, at)
+		}
+		sent := w.Piles(p[0])
+		found := false
+		for _, ps := range sent.Piles {
+			if ps.Index == at && slices.Contains(ps.Pile.Items[:], partAt(w, r, k)) {
+				_, found = sent.Items[partAt(w, r, k)]
+			}
+		}
+		if !found {
+			t.Errorf("part %d: not in map %d's MsgPiles", k, p[0])
+		}
+	}
 }

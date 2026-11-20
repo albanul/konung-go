@@ -568,7 +568,7 @@ func (h *Host) listed() []netplay.ListedPlayer {
 	out := []netplay.ListedPlayer{}
 	for slot := range world.LANPlayers {
 		if hp := h.bySlot[slot]; hp != nil {
-			out = append(out, netplay.ListedPlayer{Slot: slot, Name: hp.info.Name, Clan: hp.info.Clan, Nation: hp.info.Model})
+			out = append(out, netplay.ListedPlayer{Slot: slot, Name: hp.info.Name, Clan: hp.info.Clan, Nation: hp.info.Model, Map: h.W.PlayerMap(slot)})
 		}
 	}
 	return out

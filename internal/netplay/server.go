@@ -424,6 +424,13 @@ func (s *Server) join(conn *Conn) (*serverPlayer, bool) {
 		}
 	}
 
+	if hero != nil {
+		// The account's clan, as the original's player list shows it (the
+		// hero record's +0x81): the clan field sent with a later login
+		// does not change it.
+		clan = hero.Clan
+	}
+
 	var clans []string
 	if l, ok := s.cfg.Accounts.(ClanLister); ok {
 		clans, _ = l.Clans()

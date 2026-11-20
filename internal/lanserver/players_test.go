@@ -20,17 +20,18 @@ func (v *viewer) playerList() (netplay.PlayersPayload, bool) {
 }
 
 // The Q window's player list (MsgPlayers) reaches every player in the
-// world, wherever its hero is: every hero by slot with its name and
-// nation, a hero left behind by its player still listed until it goes,
-// and each player's own quest log from the flags the server keeps.
+// world, wherever its hero is: every hero by slot with its name, nation
+// and map (sent again when a hero changes map), a hero left behind by its
+// player still listed until it goes, and each player's own quest log from
+// the flags the server keeps.
 func TestPlayerList(t *testing.T) {
 	w := load(t)
 	ss := startSession(t, w)
 	a := enter(t, ss, "Ivar", 2)
 	b := enter(t, ss, "Olaf", 0) // another nation, another map
 	want := []netplay.ListedPlayer{
-		{Slot: a.at.Slot, Name: "Ivar", Nation: 2},
-		{Slot: b.at.Slot, Name: "Olaf", Nation: 0},
+		{Slot: a.at.Slot, Name: "Ivar", Nation: 2, Map: gamestate.LANStartMap(2)},
+		{Slot: b.at.Slot, Name: "Olaf", Nation: 0, Map: gamestate.LANStartMap(0)},
 	}
 	if a.at.Slot > b.at.Slot {
 		want[0], want[1] = want[1], want[0]
@@ -87,6 +88,15 @@ func TestPlayerList(t *testing.T) {
 	if !away {
 		t.Fatal("Olaf still at home")
 	}
+	olaf := 1
+	if want[0].Name == "Olaf" {
+		olaf = 0
+	}
+	want[olaf].Map = 7 // merchant7: Ivar's village
+	waitUntil(t, "Olaf's new map listed", func() bool {
+		l, _ := a.playerList()
+		return slices.Equal(l.Players, want)
+	})
 	b.c.Close()
 	waitUntil(t, "Olaf lingering", func() bool { return ss.host.Lingering("Olaf") })
 	if l, _ := a.playerList(); !slices.Equal(l.Players, want) {

@@ -31,7 +31,7 @@ const MaxMessageSize = 1 << 20
 
 // ProtocolVersion is checked at join; the original showed an error table for
 // a client of the wrong version.
-const ProtocolVersion = 15
+const ProtocolVersion = 16
 
 // MsgType identifies a message.
 type MsgType int
@@ -238,6 +238,11 @@ type Hero struct {
 	// healed); 0 HP means full (gamestate.HPFull).
 	HP     int `json:"hp,omitempty"`
 	Poison int `json:"poison,omitempty"`
+
+	// Clan is the account's clan (+0x68): set when the account is created
+	// or rebuilt by «Новый герой», not by later logins (read only; SaveHero
+	// does not write it).
+	Clan string `json:"clan,omitempty"`
 }
 
 // ErrorPayload explains a refusal.
