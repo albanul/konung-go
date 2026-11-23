@@ -2,7 +2,11 @@ package netplay
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -73,4 +77,40 @@ func TestWebSocketServerClose(t *testing.T) {
 		t.Fatal("Close hung")
 	}
 	waitClosed(t, web.Conn)
+}
+
+// With the browser build served (ServeFiles), the game port gives the
+// page and its files (.wasm as application/wasm, which browsers require),
+// /info, and the WebSocket session, all at once.
+func TestServeFiles(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.html"), []byte("<title>Князь</title>"), 0o644)
+	os.WriteFile(filepath.Join(dir, "konung.wasm"), []byte("\x00asm"), 0o644)
+	s := startServer(t, ServerConfig{Name: "Тест"})
+	s.ServeFiles(http.FileServer(http.Dir(dir)))
+	addr := s.Addr().String()
+	get := func(path string) (*http.Response, string) {
+		t.Helper()
+		resp, err := http.Get("http://" + addr + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp, string(b)
+	}
+	if resp, body := get("/"); resp.StatusCode != http.StatusOK || !strings.Contains(body, "Князь") {
+		t.Errorf("/: %d %q", resp.StatusCode, body)
+	}
+	if resp, _ := get("/konung.wasm"); resp.Header.Get("Content-Type") != "application/wasm" {
+		t.Errorf("konung.wasm served as %q", resp.Header.Get("Content-Type"))
+	}
+	if _, body := get("/info"); !strings.Contains(body, "Тест") {
+		t.Errorf("/info: %q", body)
+	}
+	web, err := Dial("ws://"+addr+"/", JoinInfo{Name: "Ivar", Model: 1}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	web.Close()
 }

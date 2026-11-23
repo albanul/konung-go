@@ -130,12 +130,19 @@ func build(out, assets string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		if os.Link(p, target) != nil {
+		info, _ := d.Info()
+		os.Remove(target) // a rebuild replaces the old file
+		// A hard link shares the original's permissions: link only files
+		// everyone may read (the server's container reads them as another
+		// user); copy the others readable, leaving the originals as they are.
+		if info.Mode().Perm()&0o004 == 0 || os.Link(p, target) != nil {
 			if err := copyFile(p, target); err != nil {
 				return err
 			}
+			if err := os.Chmod(target, 0o644); err != nil {
+				return err
+			}
 		}
-		info, _ := d.Info()
 		total += info.Size()
 		manifest = append(manifest, path.Join("assets/Konung", rel))
 		return nil

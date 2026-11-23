@@ -23,6 +23,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -46,6 +48,7 @@ func main() {
 	minutes := flag.Int("minutes", d.Minutes, "session length in minutes")
 	speed := flag.Int("speed", d.Speed, "world speed for everyone: 0 normal, 1 double, 2 triple")
 	teamDamage := flag.Bool("team-damage", d.TeamDamage, "heroes of one team (hero type) can hurt each other, as the original; false protects them")
+	webDir := flag.String("web", "", "folder with the browser build (cmd/web-build's output/web) to serve on the game port, so http://server:port/ is the game (default: DATA/web when it exists)")
 	flag.Parse()
 
 	st, err := loadSettings(*dataDir, *configPath)
@@ -71,6 +74,12 @@ func main() {
 			st.TeamDamage = *teamDamage
 		}
 	})
+	webFolder = *webDir
+	if webFolder == "" {
+		if _, err := os.Stat(filepath.Join(*dataDir, "web", "index.html")); err == nil {
+			webFolder = filepath.Join(*dataDir, "web")
+		}
+	}
 	if err := run(*dataDir, st); err != nil {
 		log.Fatal(err)
 	}
@@ -190,6 +199,13 @@ func run(dataDir string, st settings) error {
 	if err := srv.ServeDiscovery(addr); err != nil {
 		log.Printf("LAN discovery off: %v", err) // the game still joins by typed address
 	}
+	if webFolder != "" {
+		if err := serveBrowserGame(srv, webFolder); err != nil {
+			log.Printf("browser game not served: %v", err)
+		} else {
+			log.Printf("browser game: open http://<this machine>:%d/ (from %s)", srv.Addr().(*net.TCPAddr).Port, webFolder)
+		}
+	}
 	log.Printf("«%s»: TCP and WebSocket (browsers) %s, %d players, %d-minute sessions, speed %d, team damage %v, data in %s",
 		sessionName, srv.Addr(), maxPlayers, sessionMinutes, srv.Clock().Speed, teamDamage, dataDir)
 	if sw != nil {
@@ -255,6 +271,28 @@ func run(dataDir string, st settings) error {
 			return nil
 		}
 	}
+}
+
+// webFolder is the browser build to serve (-web), "" for none.
+var webFolder string
+
+// serveBrowserGame serves the browser build in dir on the game port
+// (netplay.Server.ServeFiles): http://server:port/ is the game, and the
+// page finds this server by itself (its own host).
+func serveBrowserGame(srv *netplay.Server, dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, "index.html")); err != nil {
+		return fmt.Errorf("%s has no index.html (build it with: go run ./cmd/web-build)", dir)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "konung.wasm")); err != nil {
+		return fmt.Errorf("%s has no konung.wasm (build it with: go run ./cmd/web-build)", dir)
+	}
+	files := http.FileServer(http.Dir(dir))
+	srv.ServeFiles(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Revalidate, so players get a rebuilt konung.wasm after an update.
+		w.Header().Set("Cache-Control", "no-cache")
+		files.ServeHTTP(w, r)
+	}))
+	return nil
 }
 
 // sendRating sends player p its «Рейтинг» table (the ten rows,

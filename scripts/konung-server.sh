@@ -8,7 +8,12 @@
 #   scripts/konung-server.sh logs      follow the server log (Ctrl+C to leave)
 #   scripts/konung-server.sh status    show whether it runs, and the data volume
 #   scripts/konung-server.sh build     only build the image
+#   scripts/konung-server.sh web       (re)build the browser game (output/web) in a Go container
 #   scripts/konung-server.sh reset     delete the server AND its data (all accounts); asks first
+#
+# The server also serves the browser game: "start" builds it on the first run
+# (output/web, a few minutes) and then http://<this machine>:<port>/ is the
+# game, for anyone on the network. "update" rebuilds it with the server.
 #
 # Server settings (name, port, players, session length, speed, team damage)
 # live in konung-server.conf in the repo root: copy konung-server.conf.example
@@ -28,6 +33,8 @@
 #   KONUNG_NETWORK=           set to "host" to use the host's network directly; LAN
 #                             discovery (UDP broadcast) may not pass a port mapping
 #   KONUNG_SERVER_ARGS=       extra server flags, e.g. '-minutes 60 -max 8 -speed 1 -team-damage=false'
+#   KONUNG_WEB=output/web     the browser game's folder; "off" to not build or serve it
+#   KONUNG_GO_IMAGE=docker.io/library/golang:1.26   the Go image that builds the browser game
 #   KONUNG_IMAGE=konung-server  KONUNG_CONTAINER=konung-server  KONUNG_VOLUME=konung-data
 #   KONUNG_ENGINE=podman      or docker
 #
@@ -46,6 +53,8 @@ if [[ -z $port && -f $config ]]; then
 fi
 port=${port:-7777}
 assets=${KONUNG_ASSETS:-$repo/assets/Konung}
+web=${KONUNG_WEB:-$repo/output/web}
+go_image=${KONUNG_GO_IMAGE:-docker.io/library/golang:1.26}
 network=${KONUNG_NETWORK:-}
 image=${KONUNG_IMAGE:-konung-server}
 container=${KONUNG_CONTAINER:-konung-server}
@@ -58,6 +67,13 @@ if [[ -z $engine ]]; then
 	fi
 fi
 
+# zl is the SELinux relabel option for bind mounts where SELinux enforces
+# (Fedora); elsewhere none (Docker Desktop rejects unknown options).
+zl=""
+if [[ -r /sys/fs/selinux/enforce && $(cat /sys/fs/selinux/enforce) == 1 ]]; then
+	zl=Z
+fi
+
 say() { printf '%s\n' "$*"; }
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
@@ -68,6 +84,27 @@ have_image() { "$engine" image inspect "$image" >/dev/null 2>&1; }
 build() {
 	say "Building image $image from $repo ..."
 	"$engine" build -t "$image" -f "$repo/Containerfile" "$repo"
+}
+
+# build_web builds the browser game (cmd/web-build) into $web inside a Go
+# container, so the host needs no Go. The game files come from $assets; Go's
+# downloads are kept in the volume konung-gocache for the next build. ffmpeg
+# in the container repackages the converted films for the browser (without
+# it the build still works, and the browser decodes them slowly).
+build_web() {
+	[[ $web == off ]] && return
+	[[ -f $assets/GRAPH.RES ]] || die "$assets has no game files (copy the installed game there, see README.md)"
+	say "Building the browser game into $web (a few minutes the first time) ..."
+	mkdir -p "$web"
+	# With rootful Docker the files would belong to root: give them back.
+	local own=""
+	if [[ $engine == docker ]]; then
+		own=" && chown -R $(id -u):$(id -g) /out"
+	fi
+	"$engine" run --rm \
+		-v "$repo:/src${zl:+:$zl}" -v "$assets:/assets:ro${zl:+,$zl}" -v "$web:/out${zl:+:$zl}" \
+		-v konung-gocache:/go/pkg/mod -w /src \
+		"$go_image" sh -c "apt-get update -qq && apt-get install -y -qq ffmpeg >/dev/null; go run ./cmd/web-build -assets /assets -out /out$own"
 }
 
 # copy_data puts GAME.RES (and SERVER, if present) into the volume through the
@@ -118,13 +155,39 @@ create() {
 		# shellcheck disable=SC2206 # split like a command line on purpose
 		eval "args+=($KONUNG_SERVER_ARGS)"
 	fi
+	# The browser game, read-only, served on the game port.
+	# (Arrays are never empty here: macOS's bash 3.2 fails on empty ones
+	# under set -u.)
+	local mounts=(-v "$volume:/data")
+	if [[ $web != off && -f $web/index.html ]]; then
+		mounts+=(-v "$web:/web:ro${zl:+,$zl}")
+		args+=(-web /web)
+	fi
 	"$engine" volume inspect "$volume" >/dev/null 2>&1 || "$engine" volume create "$volume" >/dev/null
 	"$engine" create --name "$container" --restart unless-stopped \
-		"${net[@]}" -v "$volume:/data" "$image" "${args[@]}" >/dev/null
+		"${net[@]}" "${mounts[@]}" "$image" "${args[@]}" >/dev/null
+}
+
+# addresses prints how others reach this machine: its network addresses.
+addresses() {
+	local ips=""
+	if command -v hostname >/dev/null && hostname -I >/dev/null 2>&1; then
+		ips=$(hostname -I)
+	elif command -v ipconfig >/dev/null; then # macOS
+		ips=$(ipconfig getifaddr en0 2>/dev/null || true)
+	fi
+	local ip
+	for ip in $ips; do
+		[[ $ip == *:* ]] && continue # skip IPv6
+		say "    http://$ip:$port/"
+	done
 }
 
 start() {
 	have_image || build
+	if [[ $web != off && ! -f $web/index.html ]]; then
+		build_web
+	fi
 	if running; then
 		say "$container is already running."
 		status
@@ -144,6 +207,10 @@ start() {
 		die "$container stopped right after starting (log above)"
 	fi
 	say "Started. Players connect to this machine's address, port $port."
+	if [[ $web != off && -f $web/index.html ]]; then
+		say "Browser game: on this machine http://localhost:$port/ ; for others on the network:"
+		addresses
+	fi
 	"$engine" logs "$container" 2>&1 | tail -n 5
 }
 
@@ -158,6 +225,7 @@ stop() {
 
 update() {
 	build
+	build_web
 	stop
 	start
 }
@@ -188,6 +256,7 @@ reset() {
 
 case ${1:-} in
 build) build ;;
+web) build_web ;;
 start) start ;;
 stop) stop ;;
 restart) stop; start ;;
@@ -196,7 +265,7 @@ logs) "$engine" logs -f "$container" ;;
 status) status ;;
 reset) reset ;;
 *)
-	sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
 	exit 2
 	;;
 esac

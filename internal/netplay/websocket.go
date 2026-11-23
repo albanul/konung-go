@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,9 +84,10 @@ func (p *peekedConn) Read(b []byte) (int, error) { return p.r.Read(b) }
 
 // webState is the web server for browsers (started on first use).
 type webState struct {
-	once sync.Once
-	ln   *chanListener
-	srv  *http.Server
+	once  sync.Once
+	ln    *chanListener
+	srv   *http.Server
+	files http.Handler // the browser build (ServeFiles); nil: none
 }
 
 // webListener is the web server's listener: the connections sniff hands
@@ -100,13 +102,31 @@ func (s *Server) webListener() *chanListener {
 	return w.ln
 }
 
-// serveWeb is the web server: GET /info answers the session, any other
-// request becomes a WebSocket connection to the session.
+// ServeFiles serves the browser build of the game (h, e.g. an
+// http.FileServer of output/web) on the game port: every request that is
+// neither /info nor a WebSocket goes to h, so http://server:port/ is the
+// game, and the page finds its server without typing (the page's host).
+func (s *Server) ServeFiles(h http.Handler) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.web.files = h
+}
+
+// serveWeb is the web server: GET /info answers the session, a WebSocket
+// request joins the session, anything else is a file of the browser build
+// (ServeFiles; without it a WebSocket is expected).
 func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/info" {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(s.Session())
+		return
+	}
+	s.mu.Lock()
+	files := s.web.files
+	s.mu.Unlock()
+	if files != nil && !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		files.ServeHTTP(w, r)
 		return
 	}
 	// Any page may connect (a LAN game: the server has no origin to trust).
