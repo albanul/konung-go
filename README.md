@@ -6,6 +6,7 @@ The game's own files (pictures, maps, sounds) are **not** included. You need you
 
 **Contents**
 
+* [The easy way: download a ready bundle](#the-easy-way-download-a-ready-bundle)
 * [What do you want to do?](#what-do-you-want-to-do)
 * [Step 1: the game files](#step-1-the-game-files)
 * [Step 2: the tools](#step-2-the-tools)
@@ -17,6 +18,33 @@ The game's own files (pictures, maps, sounds) are **not** included. You need you
 * [When something does not work](#when-something-does-not-work)
 * [For developers](#for-developers)
 * [Legal](#legal)
+
+## The easy way: download a ready bundle
+
+Ready-to-run downloads for every system are on the project's [Releases page](https://github.com/albanul/konung-go/releases): **«Latest build (main)»** is always the newest, numbered versions (`v1.0`, …) are the stable ones. Nothing to install, no terminal.
+
+1. Download the file for your computer:
+
+   | Your computer | File |
+   |---|---|
+   | Windows | `konung-…-windows.zip` |
+   | Mac with Apple silicon (M1, M2, M3, …) | `konung-…-macos-apple-silicon.zip` |
+   | Mac with an Intel processor | `konung-…-macos-intel.zip` |
+   | Linux PC | `konung-…-linux.tar.gz` |
+   | Linux on ARM (Raspberry Pi 4/5, …) | `konung-…-linux-arm64.tar.gz` |
+
+2. Unpack it anywhere.
+3. Copy **everything** from the original game's folder (the one with `konung.exe`, `GRAPH.RES`, `KONUNG.1`, …) into the bundle's `assets/Konung` folder.
+4. **Play alone:** double-click `konung` (`konung.exe` on Windows).
+5. **Play together on your network:** on one computer double-click `konung-server` (`konung-server.exe`). A window shows what it does; keep it open while you play. Then everyone opens `http://<that computer's address>:7777/` in a browser (`http://localhost:7777/` on that computer itself), or joins from the game's menu «Сетевая игра». See [Join a network game](#join-a-network-game).
+
+* **macOS**, the first time: right-click the program → **Open** → **Open** (it is not from the App Store). If macOS says it is «damaged», run `xattr -dr com.apple.quarantine <the bundle folder>` in Terminal.
+* **The address** of the server's computer: Windows: `ipconfig` in a Command Prompt («IPv4 Address»); macOS: System Settings → Network; Linux: `hostname -I`.
+* **Firewall:** allow `konung-server` when the system asks, so the others can reach port 7777.
+* **Server settings:** copy `konung-server.conf.example` to `konung-server.conf` next to the server, edit it, start the server again. Accounts and progress are kept in the folder `server-data` next to it.
+* The films need a one-time conversion ([Films](#films)); without it the game skips them.
+
+The rest of this guide builds everything yourself from this project, with containers, and runs the server in the background.
 
 ## What do you want to do?
 
@@ -233,15 +261,7 @@ The server's log (`scripts/konung-server.sh logs`) usually tells what went wrong
 
 ### Requirements
 
-* Go 1.26.4 or newer (see `go.mod`).
-* For the desktop build on Linux: a C compiler and the X11/OpenGL/ALSA development headers, e.g. on Fedora:
-
-  ```bash
-  sudo dnf install gcc mesa-libGL-devel libXrandr-devel libXcursor-devel \
-      libXinerama-devel libXi-devel libXxf86vm-devel alsa-lib-devel
-  ```
-
-  Windows and macOS builds need no C compiler (they cross-compile from any system). See [Ebitengine's install guide](https://ebitengine.org/en/documents/install.html).
+* Go 1.26.4 or newer (see `go.mod`). Nothing else: every system's build is pure Go (`CGO_ENABLED=0`) and cross-compiles from any system; on Linux, Ebitengine and its sound library load the system's X11/OpenGL/ALSA libraries when the game starts.
 
 ### Run from source
 
@@ -253,7 +273,7 @@ go run ./cmd/web-build -serve :8080              # browser build into output/web
 go run ./cmd/video-convert assets/Konung/Video   # convert the films (needs ffmpeg with WMV3, libsvtav1, libvorbis)
 ```
 
-The server needs `GAME.RES`, `MAPS.RES`, `GRAPH.RES`, `OBJECTS.RES`, `konung.exe`, `GAME.0`–`GAME.2` and `QUESTR.RES` in its data folder (`scripts/konung-server.sh` copies them from `assets/Konung`). Its settings: `konung-server.conf.example`. The browser build without Go on the host: build `output/web` with Go, then `./konung-web -build=false -serve :8080` (`go build -o konung-web ./cmd/web-build`); details in [docs/konung_web.md](docs/konung_web.md).
+The server reads `GAME.RES`, `MAPS.RES`, `GRAPH.RES`, `OBJECTS.RES`, `konung.exe`, `GAME.0`–`GAME.2` and `QUESTR.RES` from its data folder, else from the game folder (`-game`; by default `assets/Konung` in the working folder, next to the program or above). In a bundle (a `web` folder next to it) its data folder defaults to `server-data` next to it, and it serves the bundle's page with the game files straight from the game folder (`internal/webgame`), never the host's `LAN.CFG`, `HISCORES.DAT`, settings or saves. Its settings: `konung-server.conf.example`. The browser build without Go on the host: build `output/web` with Go, then `./konung-web -build=false -serve :8080` (`go build -o konung-web ./cmd/web-build`); details in [docs/konung_web.md](docs/konung_web.md).
 
 ### The scripts
 
@@ -263,6 +283,7 @@ The server needs `GAME.RES`, `MAPS.RES`, `GRAPH.RES`, `OBJECTS.RES`, `konung.exe
 | `scripts/build-game.sh [windows\|mac\|linux\|all]` | builds the desktop game in a Go container → `output/game/` |
 | `scripts/konung-server.sh <command>` | the server in a container (start, stop, update, logs, web, …; environment variables in the script's header) |
 | `scripts/convert-films.sh [-force]` | converts the films in a container with ffmpeg |
+| `scripts/bundle.sh` | builds the release bundles for every system into `dist/` (needs Go; the GitHub workflow `.github/workflows/release.yml` runs it on every push: a push to `main` replaces the pre-release «latest», a tag `v*` makes a release) |
 
 All of them use Podman or Docker (`KONUNG_ENGINE=docker` to choose).
 

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,12 +32,17 @@ type serverWorld struct {
 // worldFiles are the files the world needs in the data folder.
 var worldFiles = []string{"GAME.RES", "MAPS.RES", "GRAPH.RES", "OBJECTS.RES", "konung.exe", "GAME.0", "GAME.1", "GAME.2"}
 
-// loadWorld builds the world from dir with the amulet rules; an error names
-// a missing file.
-func loadWorld(dir string, amulets lanserver.AmuletRules) (*serverWorld, error) {
+// loadWorld builds the world from the files in dirs (each file from the
+// first that has it: the data folder, then the game folder) with the amulet
+// rules; an error names a missing file.
+func loadWorld(dirs []string, amulets lanserver.AmuletRules) (*serverWorld, error) {
 	data := map[string][]byte{}
 	for _, name := range worldFiles {
-		b, err := os.ReadFile(filepath.Join(dir, name))
+		p := findFile(name, dirs...)
+		if p == "" {
+			return nil, fmt.Errorf("%s not found in %s", name, strings.Join(nonEmpty(dirs), " or "))
+		}
+		b, err := os.ReadFile(p)
 		if err != nil {
 			return nil, err
 		}
@@ -51,14 +55,11 @@ func loadWorld(dir string, amulets lanserver.AmuletRules) (*serverWorld, error) 
 	}
 	// QUESTR.RES (the installed name is questr.RES): the dialogues and
 	// trade; without it nobody talks.
-	for _, name := range []string{"QUESTR.RES", "questr.RES"} {
-		if b, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
-			f.Quests = b
-			break
-		}
+	if p := findFile("QUESTR.RES", dirs...); p != "" {
+		f.Quests, _ = os.ReadFile(p)
 	}
 	if f.Quests == nil {
-		log.Printf("QUESTR.RES not found in %s: no dialogues or trade in the world", dir)
+		log.Printf("QUESTR.RES not found in %s: no dialogues or trade in the world", strings.Join(nonEmpty(dirs), " or "))
 	}
 	w, err := lanserver.Load(f)
 	if err != nil {
@@ -132,3 +133,14 @@ func (s *serverWorld) logSummary() {
 
 // summaryEvery is how often the world logs its summary line.
 var summaryEvery = time.Minute
+
+// nonEmpty is dirs without the empty ones.
+func nonEmpty(dirs []string) []string {
+	var out []string
+	for _, d := range dirs {
+		if d != "" {
+			out = append(out, d)
+		}
+	}
+	return out
+}

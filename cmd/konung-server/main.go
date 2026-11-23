@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -36,11 +35,13 @@ import (
 	"konung1.5/internal/lanserver"
 	"konung1.5/internal/lanstore"
 	"konung1.5/internal/netplay"
+	"konung1.5/internal/webgame"
 )
 
 func main() {
-	dataDir := flag.String("data", ".", "folder for konung.db, the game files and server.conf")
-	configPath := flag.String("config", "", "settings file (default: DATA/server.conf when it exists; see konung-server.conf.example)")
+	dataDir := flag.String("data", "", "folder for konung.db (accounts and progress) and server.conf (default: server-data next to the program in a release bundle, else the working folder)")
+	gameDir := flag.String("game", "", "the game files' folder (default: assets/Konung in the working folder, next to the program or above; the data folder's own copies come first)")
+	configPath := flag.String("config", "", "settings file (default: DATA/server.conf, else konung-server.conf next to the program; see konung-server.conf.example)")
 	d := defaultSettings()
 	port := flag.Int("port", d.Port, "TCP game port; UDP on the same port answers LAN discovery")
 	maxPlayers := flag.Int("max", d.MaxPlayers, "players at once (the original allowed 16)")
@@ -48,9 +49,19 @@ func main() {
 	minutes := flag.Int("minutes", d.Minutes, "session length in minutes")
 	speed := flag.Int("speed", d.Speed, "world speed for everyone: 0 normal, 1 double, 2 triple")
 	teamDamage := flag.Bool("team-damage", d.TeamDamage, "heroes of one team (hero type) can hurt each other, as the original; false protects them")
-	webDir := flag.String("web", "", "folder with the browser build (cmd/web-build's output/web) to serve on the game port, so http://server:port/ is the game (default: DATA/web when it exists)")
+	webDir := flag.String("web", "", "folder with the browser build (cmd/web-build's output/web, or a bundle's page) to serve on the game port, so http://server:port/ is the game (default: DATA/web, else web next to the program)")
 	flag.Parse()
 
+	if *dataDir == "" {
+		*dataDir = defaultDataDir()
+	}
+	if err := os.MkdirAll(*dataDir, 0o755); err != nil {
+		log.Fatal(err)
+	}
+	gameFolder = *gameDir
+	if gameFolder == "" {
+		gameFolder = findGameDir()
+	}
 	st, err := loadSettings(*dataDir, *configPath)
 	if err != nil {
 		log.Fatal(err)
@@ -75,9 +86,12 @@ func main() {
 		}
 	})
 	webFolder = *webDir
-	if webFolder == "" {
-		if _, err := os.Stat(filepath.Join(*dataDir, "web", "index.html")); err == nil {
-			webFolder = filepath.Join(*dataDir, "web")
+	for _, d := range []string{filepath.Join(*dataDir, "web"), filepath.Join(exeDir(), "web")} {
+		if webFolder != "" {
+			break
+		}
+		if _, err := os.Stat(filepath.Join(d, "index.html")); err == nil {
+			webFolder = d
 		}
 	}
 	if err := run(*dataDir, st); err != nil {
@@ -90,7 +104,11 @@ func main() {
 // when it exists).
 func loadSettings(dataDir, configPath string) (settings, error) {
 	st := defaultSettings()
-	if data, err := os.ReadFile(filepath.Join(dataDir, "SERVER")); err == nil {
+	if p := findFile("SERVER", dataDir, gameFolder); p != "" {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return st, err
+		}
 		if err := st.applyServerFile(data); err != nil {
 			return st, fmt.Errorf("SERVER: %w", err)
 		}
@@ -98,6 +116,13 @@ func loadSettings(dataDir, configPath string) (settings, error) {
 	path := configPath
 	if path == "" {
 		path = filepath.Join(dataDir, "server.conf")
+		if _, err := os.Stat(path); err != nil {
+			if p := filepath.Join(exeDir(), "konung-server.conf"); exeDir() != "" {
+				if _, err := os.Stat(p); err == nil {
+					path = p
+				}
+			}
+		}
 	}
 	data, err := os.ReadFile(path)
 	switch {
@@ -119,7 +144,7 @@ func run(dataDir string, st settings) error {
 	// The whole world (docs/konung_lan.md#server-world): every map runs
 	// here; players see their hero's map. Without its files players can
 	// log in but not enter (the server answers «Ok» with an error).
-	sw, err := loadWorld(dataDir, lanserver.AmuletRules{Points: st.AmuletPoints, Limit: st.Amulets})
+	sw, err := loadWorld([]string{dataDir, gameFolder}, lanserver.AmuletRules{Points: st.AmuletPoints, Limit: st.Amulets})
 	if err != nil {
 		log.Printf("world not running, players cannot enter: %v", err)
 		sw = nil
@@ -273,8 +298,9 @@ func run(dataDir string, st settings) error {
 	}
 }
 
-// webFolder is the browser build to serve (-web), "" for none.
-var webFolder string
+// webFolder is the browser build to serve (-web), "" for none; gameFolder
+// the game files (-game), "" when not found.
+var webFolder, gameFolder string
 
 // serveBrowserGame serves the browser build in dir on the game port
 // (netplay.Server.ServeFiles): http://server:port/ is the game, and the
@@ -286,12 +312,12 @@ func serveBrowserGame(srv *netplay.Server, dir string) error {
 	if _, err := os.Stat(filepath.Join(dir, "konung.wasm")); err != nil {
 		return fmt.Errorf("%s has no konung.wasm (build it with: go run ./cmd/web-build)", dir)
 	}
-	files := http.FileServer(http.Dir(dir))
-	srv.ServeFiles(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Revalidate, so players get a rebuilt konung.wasm after an update.
-		w.Header().Set("Cache-Control", "no-cache")
-		files.ServeHTTP(w, r)
-	}))
+	// A page without its own game files (a release bundle's) gets them
+	// from the game folder (webgame.Handler).
+	if _, err := os.Stat(filepath.Join(dir, webgame.ManifestFile)); err != nil && gameFolder == "" {
+		return fmt.Errorf("%s has no game files and no game folder was found (put the game in assets/Konung next to the server)", dir)
+	}
+	srv.ServeFiles(webgame.Handler(dir, gameFolder))
 	return nil
 }
 

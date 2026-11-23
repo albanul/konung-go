@@ -7,3 +7,4 @@ konung
 !cmd/konung/
 main
 konung-web
+dist/

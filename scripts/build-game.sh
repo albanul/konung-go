@@ -59,10 +59,10 @@ mac() {
 }
 
 linux() {
-	# Ebitengine needs C and the X11/OpenGL/ALSA headers on Linux.
-	say "Building output/game/linux/konung (installs the build libraries in the container first) ..."
-	run_go "apt-get update -qq && apt-get install -y -qq libgl1-mesa-dev libxrandr-dev libxcursor-dev libxinerama-dev libxi-dev libxxf86vm-dev libasound2-dev >/dev/null &&
-		CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o output/game/linux/konung ./cmd/konung"
+	# No C needed: Ebitengine loads the system's graphics and sound libraries
+	# when the game starts.
+	say "Building output/game/linux/konung ..."
+	run_go "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o output/game/linux/konung ./cmd/konung"
 }
 
 target=${1:-}

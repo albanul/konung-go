@@ -1,0 +1,64 @@
+# Build the ready-to-run bundles (scripts/bundle.sh) on every push and
+# publish them: a push to main replaces the pre-release "latest"; a pushed
+# tag v* makes a release of that name.
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create releases
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0" # every build is pure Go, as tested (no C headers needed)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags, for the version name
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Build the bundles
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
+        run: scripts/bundle.sh
+
+      - name: Keep the bundles with the run
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundles
+          path: dist/*
+
+      - name: Release (tag)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Konung $GITHUB_REF_NAME" --notes-file scripts/release-notes.md
+
+      - name: Release (latest build of main)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest dist/* --target "$GITHUB_SHA" --prerelease \
+            --title "Latest build (main)" --notes-file scripts/release-notes.md

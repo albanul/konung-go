@@ -18,13 +18,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"konung1.5/internal/webgame"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -33,26 +33,12 @@ import (
 //go:embed web/index.html web/konungfs.js
 var webFiles embed.FS
 
-// gameFile matches the files the port reads from the game directory
-// (case-insensitive); everything else (DLLs, other executables, the
-// original .flm films, 640×480 resources) is left out. The LAN client's
-// files are in (LAN_KONG.EXE's tables, its screens, MAPS.RES, GAME.RES,
-// the map window's INTO640R.RES, CLANS.CFG); LAN.CFG (the player's login,
-// with a saved password) and HISCORES.DAT (other players' names) are not
-// served: the browser writes its own (IndexedDB).
-var gameFile = regexp.MustCompile(`(?i)^(` +
-	`konung\.exe|lan_kong\.exe|clans\.cfg|` +
-	`(graph|objects|lights|flames|sounds|musics|intr800r|menu800r|newh800r|save800r|questr)\.res|` +
-	`(me800r|play800r|new800r|maps|game|into640r)\.res|` +
-	`(konung|lights|game)\.\d+|konung\.(cfg|sav|sa\d)|` +
-	`video/[^/]+\.(ivf|ogg)` + // only without ffmpeg; see remuxFilms
-	`)$`)
-
 func main() {
 	out := flag.String("out", "output/web", "output directory")
 	assets := flag.String("assets", "assets/Konung", "game directory")
 	serve := flag.String("serve", "", "after building, serve the output on this address or port (e.g. :8080 or 8080)")
 	doBuild := flag.Bool("build", true, "build before serving; -build=false serves an earlier build without the Go toolchain (the default when Go is not on PATH)")
+	pageOnly := flag.Bool("page-only", false, "build only the page and konung.wasm, without the game files and manifest.txt (a release bundle: konung-server lists and serves the game files from the game folder)")
 	flag.Parse()
 
 	buildSet := false
@@ -67,7 +53,7 @@ func main() {
 	}
 
 	if *doBuild {
-		if err := build(*out, *assets); err != nil {
+		if err := build(*out, *assets, *pageOnly); err != nil {
 			log.Fatal(err)
 		}
 	} else if _, err := os.Stat(filepath.Join(*out, "konung.wasm")); err != nil {
@@ -84,7 +70,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(addr, noCache(webHandler(*out))))
 }
 
-func build(out, assets string) error {
+func build(out, assets string, pageOnly bool) error {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
 	}
@@ -103,6 +89,12 @@ func build(out, assets string) error {
 	}
 	if err := writeWebFiles(out); err != nil {
 		return err
+	}
+	if pageOnly {
+		os.Remove(filepath.Join(out, webgame.ManifestFile)) // the server lists the game folder
+		os.RemoveAll(filepath.Join(out, "assets"))
+		log.Printf("built %s: the page only (serve it with konung-server and a game folder)", out)
+		return nil
 	}
 
 	_, lookErr := exec.LookPath("ffmpeg")
@@ -123,7 +115,7 @@ func build(out, assets string) error {
 		}
 		rel, _ := filepath.Rel(assets, p)
 		rel = filepath.ToSlash(rel)
-		if !gameFile.MatchString(rel) || (haveFFmpeg && isFilmPart(rel)) {
+		if !webgame.GameFile.MatchString(rel) || (haveFFmpeg && isFilmPart(rel)) {
 			return nil
 		}
 		target := filepath.Join(dst, filepath.FromSlash(rel))
@@ -159,7 +151,7 @@ func build(out, assets string) error {
 	}
 	manifest = append(manifest, films...)
 	sort.Strings(manifest)
-	if err := os.WriteFile(filepath.Join(out, "manifest.txt"), []byte(strings.Join(manifest, "\n")+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(out, webgame.ManifestFile), []byte(strings.Join(manifest, "\n")+"\n"), 0o644); err != nil {
 		return err
 	}
 	log.Printf("built %s: %d game files (%.0f MB)", out, len(manifest), float64(total)/1e6)
