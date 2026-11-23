@@ -229,7 +229,7 @@ func New(resourcePath, graphPath string) (*Menu, error) {
 		if err != nil {
 			log.Printf("LAN screens unavailable: %v", err)
 		} else {
-			labels, err := networkButton(assets.tables)
+			labels, err := networkButton()
 			if err != nil {
 				return nil, err
 			}

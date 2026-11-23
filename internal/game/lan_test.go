@@ -1,35 +1,35 @@
 package game
 
 import (
-	"os"
 	"testing"
 
 	"konung1.5/internal/resfmt"
 )
 
-func TestNetworkLabelText(t *testing.T) {
-	if got := resfmt.CP866ToUTF8(networkLabel); got != "Сетевая игра" {
-		t.Errorf("networkLabel = %q", got)
-	}
-}
-
 func TestNetworkButton(t *testing.T) {
-	exe, err := os.ReadFile("../../assets/Konung/konung.exe")
-	if err != nil {
-		t.Skip("konung.exe not available:", err)
-	}
-	tables, err := resfmt.NewExeTables(exe)
+	b, err := networkButton()
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := networkButton(tables)
-	if err != nil {
-		t.Fatal(err)
+	// The pictures: 171×51, transparent around the letters.
+	if w, h := b[0].Bounds().Dx(), b[0].Bounds().Dy(); w != 171 || h != 51 {
+		t.Errorf("label %dx%d, want 171x51", w, h)
 	}
-	// Large font: the text is 111 px wide and its glyphs 20 px tall; scaled 2x
-	// plus the 2 px shadow offset.
-	if w, h := b[0].Bounds().Dx(), b[0].Bounds().Dy(); w != 224 || h != 42 {
-		t.Errorf("label %dx%d, want 224x42", w, h)
+	for k, img := range b {
+		clear, solid := 0, 0
+		for y := range img.Bounds().Dy() {
+			for x := range img.Bounds().Dx() {
+				switch img.RGBAAt(x, y).A {
+				case 0:
+					clear++
+				case 255:
+					solid++
+				}
+			}
+		}
+		if clear == 0 || solid == 0 {
+			t.Errorf("label %d: %d clear and %d solid pixels: not cut out of its background", k, clear, solid)
+		}
 	}
 	// It must stay on the menu stone, above «Загрузить игру» (y 250).
 	if networkLabelY+b[0].Bounds().Dy() > menuButtons800[itemLoad][1] {
