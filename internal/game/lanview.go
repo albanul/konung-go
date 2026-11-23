@@ -3,7 +3,6 @@ package game
 import (
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -119,7 +118,7 @@ func (a *sceneAssets) lanView(gameDir string, exe *gamestate.LANExe, at netplay.
 	v := &lanView{slot: at.Slot, players: map[int]*viewPlayer{}, home: map[int]int{}}
 	for m := range v.tmpl {
 		la.gamePath = filepath.Join(a.mapDir, fmt.Sprintf("GAME.%d", m))
-		data, err := os.ReadFile(la.gamePath)
+		data, err := gamefs.ReadFile(la.gamePath)
 		if err != nil {
 			return nil, err
 		}

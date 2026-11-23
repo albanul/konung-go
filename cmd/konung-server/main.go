@@ -190,7 +190,7 @@ func run(dataDir string, st settings) error {
 	if err := srv.ServeDiscovery(addr); err != nil {
 		log.Printf("LAN discovery off: %v", err) // the game still joins by typed address
 	}
-	log.Printf("«%s»: TCP %s, %d players, %d-minute sessions, speed %d, team damage %v, data in %s",
+	log.Printf("«%s»: TCP and WebSocket (browsers) %s, %d players, %d-minute sessions, speed %d, team damage %v, data in %s",
 		sessionName, srv.Addr(), maxPlayers, sessionMinutes, srv.Clock().Speed, teamDamage, dataDir)
 	if sw != nil {
 		stopWorld := make(chan struct{})

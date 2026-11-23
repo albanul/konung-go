@@ -108,9 +108,15 @@ func BroadcastAddrs() []string {
 }
 
 // Discover asks every target ("host:port" UDP addresses; nil = the
-// BroadcastAddrs on DefaultPort) for servers and collects the answers until
+// BroadcastAddrs on DefaultPort; in the browser the page's host and the
+// targets are asked over HTTP, DiscoverHTTP) for servers and collects the answers until
 // ctx ends (give it a deadline, e.g. one second). Each server appears once.
 func Discover(ctx context.Context, targets []string) ([]Found, error) {
+	if browser {
+		// No UDP in a browser: ask the page's host and the targets over
+		// HTTP.
+		return DiscoverHTTP(ctx, append(defaultTargets(), targets...)), nil
+	}
 	if targets == nil {
 		for _, b := range BroadcastAddrs() {
 			targets = append(targets, net.JoinHostPort(b, strconv.Itoa(DefaultPort)))

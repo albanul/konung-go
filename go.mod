@@ -3,6 +3,7 @@ module konung1.5
 go 1.26.4
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/gen2brain/gav1d v0.2.6
 	github.com/hajimehoshi/ebiten/v2 v2.10.5
 	golang.org/x/image v0.45.0

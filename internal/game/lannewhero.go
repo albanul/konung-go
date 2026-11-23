@@ -3,15 +3,13 @@ package game
 import (
 	"bytes"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/netplay"
-	"konung1.5/internal/resfmt"
 )
 
 // «Новый герой» (LAN state 4; draw 0x00427D14, clicks 0x0042E3CA,
@@ -46,7 +44,7 @@ const msgBadHero = 10
 // loadNewHero loads NEW800R.RES and CLANS.CFG; without NEW800R the menu
 // item does nothing, as before.
 func (u *lanUI) loadNewHero(newPath string, a *sceneAssets) error {
-	frames, err := resfmt.LoadType5File(newPath)
+	frames, err := loadType5File(newPath)
 	if err != nil {
 		return err
 	}
@@ -59,7 +57,7 @@ func (u *lanUI) loadNewHero(newPath string, a *sceneAssets) error {
 	u.graph, u.tables, u.items = a.graph, a.tables, gamestate.NewHeroItems()
 	// The clan list starts with CLANS.CFG (CP866 lines); the server's list
 	// is merged in on every join.
-	if data, err := os.ReadFile(filepath.Join(u.gameDir, "CLANS.CFG")); err == nil {
+	if data, err := gamefs.ReadFileFold(u.gameDir, "CLANS.CFG"); err == nil {
 		for _, line := range bytes.Split(data, []byte("\n")) {
 			u.addClan(bytes.TrimSpace(line))
 		}

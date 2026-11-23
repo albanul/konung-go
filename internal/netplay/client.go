@@ -3,7 +3,6 @@ package netplay
 import (
 	"errors"
 	"fmt"
-	"net"
 	"time"
 )
 
@@ -29,7 +28,7 @@ type Client struct {
 // with a *JoinError when the server refuses.
 func Dial(addr string, j JoinInfo, opts Options) (*Client, error) {
 	opts = opts.withDefaults()
-	c, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	c, err := dialServer(addr) // TCP, or WebSocket in the browser (dial.go, dial_js.go)
 	if err != nil {
 		return nil, fmt.Errorf("netplay: connect %s: %w", addr, err)
 	}

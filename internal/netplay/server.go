@@ -143,7 +143,10 @@ type Server struct {
 	paused bool
 
 	disc *announcer
-	wg   sync.WaitGroup
+	web  webState // the browsers' WebSocket and /info (websocket.go)
+	// sniffing are the new connections whose first bytes are awaited.
+	sniffing map[net.Conn]bool
+	wg       sync.WaitGroup
 }
 
 // Listen starts a server on addr (":7777", "127.0.0.1:0", ...).
@@ -153,11 +156,12 @@ func Listen(addr string, cfg ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("netplay: listen: %w", err)
 	}
 	s := &Server{
-		cfg:     cfg.withDefaults(),
-		ln:      ln,
-		port:    ln.Addr().(*net.TCPAddr).Port,
-		players: map[string]*serverPlayer{},
-		pending: map[*Conn]bool{},
+		cfg:      cfg.withDefaults(),
+		ln:       ln,
+		port:     ln.Addr().(*net.TCPAddr).Port,
+		players:  map[string]*serverPlayer{},
+		pending:  map[*Conn]bool{},
+		sniffing: map[net.Conn]bool{},
 	}
 	s.wg.Add(1)
 	go s.acceptLoop()
@@ -269,10 +273,14 @@ func (s *Server) Close() {
 	for c := range s.pending {
 		conns = append(conns, c)
 	}
+	for c := range s.sniffing {
+		c.Close()
+	}
 	disc := s.disc
 	s.mu.Unlock()
 
 	s.ln.Close()
+	s.closeWeb()
 	if disc != nil {
 		disc.close()
 	}
@@ -300,18 +308,24 @@ func (s *Server) acceptLoop() {
 			time.Sleep(10 * time.Millisecond) // e.g. too many open files
 			continue
 		}
-		conn := NewConn(c, s.cfg.Conn)
-		s.mu.Lock()
-		if s.closed {
-			s.mu.Unlock()
-			conn.Close()
-			continue
-		}
-		s.pending[conn] = true
 		s.wg.Add(1)
-		s.mu.Unlock()
-		go s.serve(conn)
+		go s.sniff(c) // a browser's HTTP/WebSocket or the JSON-line protocol
 	}
+}
+
+// accept starts the session protocol on connection c.
+func (s *Server) accept(c net.Conn) {
+	conn := NewConn(c, s.cfg.Conn)
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		conn.Close()
+		return
+	}
+	s.pending[conn] = true
+	s.wg.Add(1)
+	s.mu.Unlock()
+	go s.serve(conn)
 }
 
 // serve runs one connection: the join handshake, then its messages.

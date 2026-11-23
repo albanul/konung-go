@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"konung1.5/internal/gamefs"
 	"konung1.5/internal/gamestate"
 	"konung1.5/internal/netplay"
 	"konung1.5/internal/resfmt"
@@ -154,7 +154,7 @@ type lanUI struct {
 }
 
 func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath, newPath string) (*lanUI, error) {
-	exeData, err := os.ReadFile(filepath.Join(gameDir, "LAN_KONG.EXE"))
+	exeData, err := gamefs.ReadFileFold(gameDir, "LAN_KONG.EXE")
 	if err != nil {
 		return nil, err
 	}
@@ -162,11 +162,11 @@ func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath, newPath str
 	if err != nil {
 		return nil, err
 	}
-	me, err := resfmt.LoadType5File(mePath)
+	me, err := loadType5File(mePath)
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", mePath, err)
 	}
-	play, err := resfmt.LoadType5File(playPath)
+	play, err := loadType5File(playPath)
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", playPath, err)
 	}
@@ -195,10 +195,10 @@ func newLANUI(gameDir string, assets *sceneAssets, mePath, playPath, newPath str
 	u.msgText[msgNameTaken] = [2][]byte{cp866("Ошибка: Игрок с таким именем уже в игре"), nil}
 	u.msgText[msgBadHero] = [2][]byte{cp866("Ошибка: Сервер не принял нового героя"), nil}
 
-	if b, err := os.ReadFile(u.hiscoresPath); err == nil {
+	if b, err := gamefs.ReadFile(u.hiscoresPath); err == nil {
 		u.rating = gamestate.ParseLANHiscores(b)
 	}
-	data, _ := os.ReadFile(u.cfgPath)
+	data, _ := gamefs.ReadFile(u.cfgPath)
 	u.cfg = gamestate.ParseLANConfig(data)
 	u.name = gamestate.TextField{Text: u.cfg.Name, Max: gamestate.FieldName}
 	u.pass = gamestate.TextField{Text: u.cfg.Password, Max: gamestate.FieldPassword}
@@ -742,7 +742,7 @@ func (u *lanUI) saveConfig() {
 	if u.focus != 6 && len(u.addr.Text) > 0 && u.session == "" {
 		u.cfg.Address = u.addr.Text
 	}
-	if err := os.WriteFile(u.cfgPath, u.cfg.Marshal(), 0o644); err != nil {
+	if err := gamefs.WriteFile(u.cfgPath, u.cfg.Marshal()); err != nil {
 		log.Printf("write %s: %v", u.cfgPath, err)
 	}
 }
@@ -896,7 +896,7 @@ func (u *lanUI) setRating(rows []gamestate.LANRatingRow) {
 	if u.hiscoresPath == "" {
 		return
 	}
-	if err := os.WriteFile(u.hiscoresPath, gamestate.EncodeLANHiscores(u.rating), 0o644); err != nil {
+	if err := gamefs.WriteFile(u.hiscoresPath, gamestate.EncodeLANHiscores(u.rating)); err != nil {
 		log.Printf("write %s: %v", u.hiscoresPath, err)
 	}
 }

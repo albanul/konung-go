@@ -35,6 +35,20 @@ All game-file I/O in `internal/game` goes through `gamefs` (`ReadFile`, `WriteFi
 * Fetches block the calling goroutine on a promise. This is safe because Ebitengine runs `Update` in a goroutine, not in a JS callback. On a map change the game waits for `KONUNG.N` and `LIGHTS.N`; a film waits for its `.ivf`/`.ogg`.
 * `FindGameResource` returns the page-relative path when the manifest lists it.
 
+## Network game
+
+The LAN client works in the browser; the dedicated server (`cmd/konung-server`, [LAN version](konung_lan.md)) serves browsers and desktop games on the same port.
+
+* **Transport.** A browser cannot open TCP or UDP, so `netplay` connects over **WebSocket** (`github.com/coder/websocket`, which uses the browser's `WebSocket` in WASM). The JSON lines are the same, one per text message (`websocket.NetConn`).
+  * Client: `dialServer` in `internal/netplay/dial_js.go` dials `ws://host:port/`, or `wss://` when the page came over HTTPS (browsers refuse `ws://` there). The desktop build keeps TCP (`dial.go`; a `ws://` address works there too, for tests).
+  * Server (`internal/netplay/websocket.go`): the game port's listener reads each new connection's first bytes (`sniff`). An HTTP request (`GET`, `HEAD`, `OPTIONS`) goes to a small web server; anything else is the JSON-line protocol as before. A connection silent for the join timeout is the JSON protocol too, so its own timeout answers it. The web server answers **`GET /info`** with the `SessionInfo` (with `Access-Control-Allow-Origin: *`) and upgrades any other request to the WebSocket session. Any origin may connect (a LAN game has no origin to trust).
+* **Server list.** UDP discovery is impossible in the browser. `Discover` there asks the page's host and any typed address for `/info` (`DiscoverHTTP`; in the browser through `fetch` directly, `getInfo` in `dial_js.go`). With the page served by `web-build -serve` on the server's machine, the server shows up without typing anything; another server is reached by typing its address in the address field.
+* **Files.** The LAN screens read and write through `gamefs` like the rest. `web-build` serves `LAN_KONG.EXE`, `ME800R`/`PLAY800R`/`NEW800R`/`MAPS`/`GAME`/`INTO640R.RES` and `CLANS.CFG`. It never serves `LAN.CFG` (the player's login, with a saved password) or `HISCORES.DAT` (other players' names); the browser writes its own into IndexedDB (`TestGameFileLAN`).
+* **Limits.**
+  * A page served over HTTPS needs the server behind TLS (`wss://`), for example a reverse proxy.
+  * Protocol version 19 as the desktop game: browser and desktop players meet on one server.
+* **Verified** under Node, which has the browser's `WebSocket` and `fetch`. `netplay`'s `TestBrowserTransport` (`browser_js_test.go`, run with `GOOS=js` against a running server, `KONUNG_TEST_SERVER`) discovers the server, joins and gets its chat line back. The native `TestWebSocketAndInfo` checks `/info`, a WebSocket player with a TCP player on one port, and `DiscoverHTTP`; `TestWebSocketServerClose` checks that `Close` ends WebSocket players. The game itself has not been run in a browser from the container.
+
 ## Behaviour differences
 
 * There is no fullscreen at start (the browser requires a user gesture). The canvas fills the page and Ebitengine scales the 800×600 screen.

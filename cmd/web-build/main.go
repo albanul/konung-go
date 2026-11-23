@@ -35,10 +35,15 @@ var webFiles embed.FS
 
 // gameFile matches the files the port reads from the game directory
 // (case-insensitive); everything else (DLLs, other executables, the
-// original .flm films, LAN files, 640×480 resources) is left out.
+// original .flm films, 640×480 resources) is left out. The LAN client's
+// files are in (LAN_KONG.EXE's tables, its screens, MAPS.RES, GAME.RES,
+// the map window's INTO640R.RES, CLANS.CFG); LAN.CFG (the player's login,
+// with a saved password) and HISCORES.DAT (other players' names) are not
+// served: the browser writes its own (IndexedDB).
 var gameFile = regexp.MustCompile(`(?i)^(` +
-	`konung\.exe|` +
+	`konung\.exe|lan_kong\.exe|clans\.cfg|` +
 	`(graph|objects|lights|flames|sounds|musics|intr800r|menu800r|newh800r|save800r|questr)\.res|` +
+	`(me800r|play800r|new800r|maps|game|into640r)\.res|` +
 	`(konung|lights|game)\.\d+|konung\.(cfg|sav|sa\d)|` +
 	`video/[^/]+\.(ivf|ogg)` + // only without ffmpeg; see remuxFilms
 	`)$`)
